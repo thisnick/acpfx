@@ -269,9 +269,6 @@ export class AcpxIpcClient {
         if (error) {
           opts.onError(error);
           reject(error);
-        } else {
-          // Resolved with requestId immediately after accepted;
-          // completion is signaled via onComplete callback
         }
       };
 
@@ -302,7 +299,6 @@ export class AcpxIpcClient {
 
         if (parsed.type === "accepted") {
           acknowledged = true;
-          resolve(requestId);
           return;
         }
 
@@ -332,20 +328,22 @@ export class AcpxIpcClient {
         }
 
         if (parsed.type === "result") {
+          opts.onComplete(fullText);
           if (!settled) {
             settled = true;
             cleanup();
+            resolve(requestId);
           }
-          opts.onComplete(fullText);
           return;
         }
 
         if (parsed.type === "cancel_result") {
+          opts.onComplete(fullText);
           if (!settled) {
             settled = true;
             cleanup();
+            resolve(requestId);
           }
-          opts.onComplete(fullText);
           return;
         }
       };
@@ -373,9 +371,10 @@ export class AcpxIpcClient {
             finish(new Error("Queue owner disconnected before acknowledging request"));
           } else {
             // Connection closed after acknowledgement, treat as completion
+            opts.onComplete(fullText);
             settled = true;
             cleanup();
-            opts.onComplete(fullText);
+            resolve(requestId);
           }
         }
       });
@@ -501,30 +500,35 @@ export async function resolveSessionId(
   const indexPath = path.join(os.homedir(), ".acpx", "sessions", "index.json");
   try {
     const data = await fs.readFile(indexPath, "utf8");
-    const index = JSON.parse(data);
-    if (!Array.isArray(index)) return undefined;
+    const raw = JSON.parse(data);
+
+    // Support both array format and {entries: [...]} format
+    const entries: unknown[] = Array.isArray(raw) ? raw : Array.isArray(raw?.entries) ? raw.entries : [];
+    if (entries.length === 0) return undefined;
 
     // Find most recent open session matching the agent
     type IndexEntry = {
+      acpxRecordId?: string;
       acpSessionId?: string;
       agentCommand?: string;
       closed?: boolean;
       lastUsedAt?: string;
     };
 
-    const matches = (index as IndexEntry[])
+    const matches = (entries as IndexEntry[])
       .filter(
         (entry) =>
           entry.agentCommand &&
           entry.agentCommand.includes(agentName) &&
           !entry.closed &&
-          entry.acpSessionId,
+          (entry.acpxRecordId || entry.acpSessionId),
       )
       .sort((a, b) =>
         (b.lastUsedAt ?? "").localeCompare(a.lastUsedAt ?? ""),
       );
 
-    return matches[0]?.acpSessionId;
+    // Queue owner uses acpxRecordId as the session key, not acpSessionId
+    return matches[0]?.acpxRecordId ?? matches[0]?.acpSessionId;
   } catch {
     return undefined;
   }

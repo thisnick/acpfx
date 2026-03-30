@@ -1,17 +1,17 @@
 /**
  * ElevenLabs TTS provider — streaming text-token input via WebSocket.
  *
- * Uses ElevenLabs' WebSocket streaming API to send text incrementally
- * and receive audio chunks in real-time. Falls back to REST API if
- * WebSocket is unavailable.
+ * Supports two modes:
+ * 1. Batch: synthesize(text) opens a WebSocket per call (legacy, used by non-streaming callers)
+ * 2. Streaming: startStream() opens one persistent WebSocket, sendText() streams tokens,
+ *    endStream() closes gracefully. Audio chunks yield as they arrive from the WebSocket.
  */
 
-import type { TtsProvider, TtsChunk } from "./types.js";
+import type { StreamingTtsProvider, TtsChunk } from "./types.js";
 
 const DEFAULT_MODEL = "eleven_turbo_v2_5";
 const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel
 const WS_BASE_URL = "wss://api.elevenlabs.io/v1/text-to-speech";
-const REST_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 const OUTPUT_FORMAT = "pcm_16000";
 const SAMPLE_RATE = 16000;
 const CHANNELS = 1;
@@ -21,10 +21,25 @@ const CHUNK_SIZE = Math.floor(
   (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE * CHUNK_DURATION_MS) / 1000,
 );
 
-export class ElevenLabsProvider implements TtsProvider {
+/** Per-stream state, scoped to one WebSocket session. */
+type StreamSession = {
+  ws: WebSocket;
+  audioQueue: TtsChunk[];
+  pcmBuffer: Buffer;
+  done: boolean;
+  error: Error | null;
+  resolveWait: (() => void) | null;
+  signal?: AbortSignal;
+  abortHandler: (() => void) | null;
+};
+
+export class ElevenLabsProvider implements StreamingTtsProvider {
+  readonly supportsStreaming = true as const;
+
   private _apiKey: string;
   private _voiceId: string;
   private _model: string;
+  private _session: StreamSession | null = null;
 
   constructor(opts: { apiKey: string; voiceId?: string; model?: string }) {
     this._apiKey = opts.apiKey;
@@ -37,15 +52,30 @@ export class ElevenLabsProvider implements TtsProvider {
     signal?: AbortSignal,
   ): AsyncGenerator<TtsChunk> {
     if (signal?.aborted) return;
-
-    // Use WebSocket streaming API for low-latency audio
-    yield* this.synthesizeWebSocket(text, signal);
+    const gen = await this.startStream(signal);
+    this.sendText(text);
+    this.endStream();
+    yield* gen;
   }
 
-  private async *synthesizeWebSocket(
-    text: string,
-    signal?: AbortSignal,
-  ): AsyncGenerator<TtsChunk> {
+  async startStream(signal?: AbortSignal): Promise<AsyncGenerator<TtsChunk>> {
+    // If there's an old session, kill it
+    if (this._session) {
+      this._killSession(this._session);
+      this._session = null;
+    }
+
+    const session: StreamSession = {
+      ws: null!,
+      audioQueue: [],
+      pcmBuffer: Buffer.alloc(0),
+      done: false,
+      error: null,
+      resolveWait: null,
+      signal,
+      abortHandler: null,
+    };
+
     const url =
       `${WS_BASE_URL}/${this._voiceId}/stream-input` +
       `?model_id=${encodeURIComponent(this._model)}` +
@@ -53,26 +83,17 @@ export class ElevenLabsProvider implements TtsProvider {
       `&xi_api_key=${encodeURIComponent(this._apiKey)}`;
 
     const ws = new WebSocket(url);
+    session.ws = ws;
+    this._session = session;
 
-    // Collect audio chunks from the WebSocket
-    const audioQueue: TtsChunk[] = [];
-    let done = false;
-    let error: Error | null = null;
-    let resolveWait: (() => void) | null = null;
-
-    const onAbort = () => {
-      done = true;
-      try {
-        ws.close();
-      } catch {
-        // ignore
-      }
-      resolveWait?.();
+    session.abortHandler = () => {
+      session.done = true;
+      try { ws.close(); } catch { /* ignore */ }
+      session.resolveWait?.();
     };
-    signal?.addEventListener("abort", onAbort, { once: true });
+    signal?.addEventListener("abort", session.abortHandler, { once: true });
 
-    let pcmBuffer = Buffer.alloc(0);
-
+    // All handlers are scoped to `session` — a new stream won't be affected
     ws.addEventListener("message", (event: MessageEvent) => {
       try {
         const data =
@@ -82,83 +103,79 @@ export class ElevenLabsProvider implements TtsProvider {
         const msg = JSON.parse(data);
 
         if (msg.audio) {
-          // audio is base64-encoded PCM
           const rawPcm = Buffer.from(msg.audio, "base64");
-          pcmBuffer = Buffer.concat([pcmBuffer, rawPcm]);
+          session.pcmBuffer = Buffer.concat([session.pcmBuffer, rawPcm]);
 
-          // Emit chunks of consistent size
-          while (pcmBuffer.length >= CHUNK_SIZE) {
-            const chunk = pcmBuffer.subarray(0, CHUNK_SIZE);
-            pcmBuffer = pcmBuffer.subarray(CHUNK_SIZE);
+          while (session.pcmBuffer.length >= CHUNK_SIZE) {
+            const chunk = session.pcmBuffer.subarray(0, CHUNK_SIZE);
+            session.pcmBuffer = session.pcmBuffer.subarray(CHUNK_SIZE);
             const durationMs = Math.floor(
-              (chunk.length / (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE)) *
-                1000,
+              (chunk.length / (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE)) * 1000,
             );
-            audioQueue.push({
+            session.audioQueue.push({
               format: "pcm_s16le",
               sampleRate: SAMPLE_RATE,
               channels: CHANNELS,
               data: Buffer.from(chunk).toString("base64"),
               durationMs,
             });
-            resolveWait?.();
+            session.resolveWait?.();
           }
         }
 
         if (msg.isFinal) {
-          // Flush remaining PCM buffer
-          if (pcmBuffer.length > 0) {
+          if (session.pcmBuffer.length > 0) {
             const durationMs = Math.floor(
-              (pcmBuffer.length /
-                (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE)) *
-                1000,
+              (session.pcmBuffer.length / (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE)) * 1000,
             );
-            audioQueue.push({
+            session.audioQueue.push({
               format: "pcm_s16le",
               sampleRate: SAMPLE_RATE,
               channels: CHANNELS,
-              data: Buffer.from(pcmBuffer).toString("base64"),
+              data: Buffer.from(session.pcmBuffer).toString("base64"),
               durationMs,
             });
-            pcmBuffer = Buffer.alloc(0);
+            session.pcmBuffer = Buffer.alloc(0);
           }
-          done = true;
-          resolveWait?.();
+          session.done = true;
+          session.resolveWait?.();
         }
       } catch (err) {
-        error = err instanceof Error ? err : new Error(String(err));
-        done = true;
-        resolveWait?.();
+        session.error = err instanceof Error ? err : new Error(String(err));
+        session.done = true;
+        session.resolveWait?.();
       }
     });
 
     ws.addEventListener("error", (event: Event) => {
-      error = new Error(
+      session.error = new Error(
         `ElevenLabs WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`,
       );
-      done = true;
-      resolveWait?.();
+      session.done = true;
+      session.resolveWait?.();
     });
 
     ws.addEventListener("close", () => {
-      done = true;
-      resolveWait?.();
+      session.done = true;
+      session.resolveWait?.();
     });
 
-    // Wait for connection to open before sending
+    // Wait for connection to open
     await new Promise<void>((resolve, reject) => {
       ws.addEventListener("open", () => resolve(), { once: true });
-      ws.addEventListener("error", () => reject(error ?? new Error("WebSocket connection failed")), {
-        once: true,
-      });
+      ws.addEventListener(
+        "error",
+        () => reject(session.error ?? new Error("WebSocket connection failed")),
+        { once: true },
+      );
     });
 
     if (signal?.aborted) {
       ws.close();
-      return;
+      return (async function* () {})();
     }
 
-    // Send the BOS (beginning of stream) message with API key auth
+    // Send BOS with voice settings
     ws.send(
       JSON.stringify({
         text: " ",
@@ -173,46 +190,76 @@ export class ElevenLabsProvider implements TtsProvider {
       }),
     );
 
-    // Send the text
-    ws.send(JSON.stringify({ text }));
+    // Return generator that drains audio from this session
+    const self = this;
+    return (async function* (): AsyncGenerator<TtsChunk> {
+      while (!session.done || session.audioQueue.length > 0) {
+        if (session.audioQueue.length > 0) {
+          yield session.audioQueue.shift()!;
+          continue;
+        }
+        if (session.done) break;
 
-    // Send EOS (end of stream)
-    ws.send(JSON.stringify({ text: "" }));
-
-    // Yield audio chunks as they arrive
-    while (!done || audioQueue.length > 0) {
-      if (audioQueue.length > 0) {
-        yield audioQueue.shift()!;
-        continue;
+        await new Promise<void>((resolve) => {
+          session.resolveWait = resolve;
+        });
+        session.resolveWait = null;
       }
 
-      if (done) break;
+      if (session.error && !signal?.aborted) {
+        throw session.error;
+      }
 
-      // Wait for new data
-      await new Promise<void>((resolve) => {
-        resolveWait = resolve;
-      });
-      resolveWait = null;
+      self._cleanupSession(session);
+    })();
+  }
+
+  sendText(chunk: string): void {
+    const s = this._session;
+    if (!s || s.ws.readyState !== WebSocket.OPEN) return;
+    s.ws.send(JSON.stringify({ text: chunk }));
+  }
+
+  endStream(): void {
+    const s = this._session;
+    if (!s || s.ws.readyState !== WebSocket.OPEN) return;
+    s.ws.send(JSON.stringify({ text: "" }));
+  }
+
+  abort(): void {
+    if (this._session) {
+      this._killSession(this._session);
+      this._session = null;
     }
+  }
 
-    if (error && !signal?.aborted) {
-      throw error;
+  private _killSession(session: StreamSession): void {
+    session.done = true;
+    session.audioQueue = [];
+    session.pcmBuffer = Buffer.alloc(0);
+    try { session.ws.close(); } catch { /* ignore */ }
+    session.resolveWait?.();
+    this._cleanupSession(session);
+  }
+
+  private _cleanupSession(session: StreamSession): void {
+    if (session.abortHandler && session.signal) {
+      session.signal.removeEventListener("abort", session.abortHandler);
     }
-
-    signal?.removeEventListener("abort", onAbort);
+    session.abortHandler = null;
+    session.signal = undefined;
+    if (this._session === session) {
+      this._session = null;
+    }
   }
 }
 
-/**
- * Create an ElevenLabs provider, reading API key from env or options.
- */
 export function createElevenLabsProvider(opts?: {
   apiKey?: string;
   voiceId?: string;
   model?: string;
 }): ElevenLabsProvider {
-  const apiKey =
-    opts?.apiKey ?? process.env.ELEVENLABS_API_KEY;
+  const apiKey = opts?.apiKey ?? process.env.ELEVENLABS_API_KEY;
   if (!apiKey) {
     throw new Error(
       "ElevenLabs API key required. Set ELEVENLABS_API_KEY env var, " +
