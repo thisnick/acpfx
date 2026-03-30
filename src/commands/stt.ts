@@ -15,6 +15,7 @@ import * as os from "node:os";
 import { createEventWriter, readEvents } from "../pipeline-io.js";
 import type { AnyEvent, AudioChunkEvent } from "../protocol.js";
 import type { SttProvider } from "../providers/stt/types.js";
+import type { ElevenLabsStreamingSttProvider } from "../providers/stt/elevenlabs.js";
 
 const DEFAULT_CHUNK_MS = 3000;
 const FLUSH_IDLE_MS = 500; // Flush if no audio arrives for this long
@@ -29,6 +30,124 @@ export type SttOptions = {
 export async function runStt(opts: SttOptions): Promise<void> {
   await loadEnv();
 
+  const providerName = opts.provider ?? "elevenlabs";
+
+  // Use streaming path for ElevenLabs
+  if (providerName === "elevenlabs") {
+    return runSttStreaming(opts);
+  }
+
+  // Batch path for other providers (openai, etc.)
+  return runSttBatch(opts);
+}
+
+/**
+ * Streaming STT: sends audio chunks in real-time via WebSocket,
+ * receives partial/final transcripts immediately.
+ * Much lower latency than batch (~150ms vs ~3000ms).
+ */
+async function runSttStreaming(opts: SttOptions): Promise<void> {
+  const { ElevenLabsStreamingSttProvider } = await import(
+    "../providers/stt/elevenlabs.js"
+  );
+  const { createElevenLabsSttProvider } = await import(
+    "../providers/stt/elevenlabs.js"
+  );
+
+  let streamingProvider: InstanceType<typeof ElevenLabsStreamingSttProvider>;
+  try {
+    const p = createElevenLabsSttProvider({
+      apiKey: opts.apiKey,
+      language: opts.language,
+      streaming: true,
+    });
+    streamingProvider = p as InstanceType<typeof ElevenLabsStreamingSttProvider>;
+  } catch (err) {
+    process.stderr.write(
+      `[acpfx:stt] ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(1);
+  }
+
+  const writer = createEventWriter(process.stdout);
+  const streamId = randomUUID();
+
+  // Wire up transcript events
+  streamingProvider.setEvents({
+    onPartial: (text: string) => {
+      writer.write({
+        type: "speech.partial",
+        streamId,
+        text,
+      });
+    },
+    onFinal: (text: string) => {
+      if (text.trim().length > 0) {
+        writer.write({
+          type: "speech.final",
+          streamId,
+          text: text.trim(),
+        });
+      }
+    },
+    onError: (error: Error) => {
+      writer.write({
+        type: "control.error",
+        message: `STT error: ${error.message}`,
+        source: "stt",
+      });
+    },
+  });
+
+  // Connect WebSocket
+  try {
+    await streamingProvider.connect();
+  } catch (err) {
+    process.stderr.write(
+      `[acpfx:stt] Failed to connect: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(1);
+  }
+
+  await readEvents(
+    process.stdin,
+    async (event: AnyEvent) => {
+      if (event.type === "audio.chunk") {
+        const e = event as AudioChunkEvent;
+        const pcm = Buffer.from(e.data, "base64");
+        streamingProvider.sendAudio(pcm);
+
+        // Forward audio.chunk for downstream consumers (VAD)
+        await writer.write(event);
+        return;
+      }
+
+      // Forward unknown events unchanged
+      await writer.write(event);
+    },
+    async (error: Error, _line: string) => {
+      await writer.write({
+        type: "control.error",
+        message: `Invalid JSON: ${error.message}`,
+        source: "stt",
+      });
+    },
+  );
+
+  // Flush and close
+  streamingProvider.flush();
+  // Give a moment for final transcripts to arrive
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  streamingProvider.close();
+
+  await writer.end();
+}
+
+/**
+ * Batch STT: buffers audio chunks, sends to API in segments.
+ * Higher latency but works with any provider (OpenAI Whisper, etc.).
+ */
+async function runSttBatch(opts: SttOptions): Promise<void> {
   let provider: SttProvider;
   try {
     provider = await createProvider(opts);
@@ -138,7 +257,7 @@ export async function runStt(opts: SttOptions): Promise<void> {
 }
 
 async function createProvider(opts: SttOptions): Promise<SttProvider> {
-  const providerName = opts.provider ?? "openai";
+  const providerName = opts.provider ?? "elevenlabs";
 
   switch (providerName) {
     case "openai": {
@@ -149,6 +268,19 @@ async function createProvider(opts: SttOptions): Promise<SttProvider> {
         apiKey: opts.apiKey,
         language: opts.language,
       });
+    }
+    case "elevenlabs": {
+      const { ElevenLabsBatchSttProvider } = await import(
+        "../providers/stt/elevenlabs.js"
+      );
+      const apiKey = opts.apiKey ?? process.env.ELEVENLABS_API_KEY;
+      if (!apiKey) {
+        throw new Error(
+          "ElevenLabs API key required. Set ELEVENLABS_API_KEY env var, " +
+            "add it to ~/.acpfx/.env, or pass --api-key.",
+        );
+      }
+      return new ElevenLabsBatchSttProvider({ apiKey, language: opts.language });
     }
     default:
       throw new Error(`Unknown STT provider: ${providerName}`);
