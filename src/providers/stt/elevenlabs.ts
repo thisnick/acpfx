@@ -1,17 +1,19 @@
 /**
  * ElevenLabs Scribe v2 Realtime STT provider.
  *
- * Uses WebSocket streaming for low-latency (~150ms) speech-to-text.
- * Sends audio chunks incrementally, receives partial and final transcripts.
+ * Uses WebSocket streaming for low-latency speech-to-text.
+ * Sends audio chunks as JSON with base64-encoded audio,
+ * receives partial and committed transcripts.
  *
  * Endpoint: wss://api.elevenlabs.io/v1/speech-to-text/realtime
- * Auth: xi-api-key query param or in initial config message
- * Audio: pcm_16000 (16-bit signed LE, 16kHz mono)
+ * Auth: xi-api-key header
+ * Audio: JSON { message_type: "input_audio_chunk", audio_base_64: "<b64>", commit: false }
  */
 
 import type { SttProvider, SttResult } from "./types.js";
 
 const WS_URL = "wss://api.elevenlabs.io/v1/speech-to-text/realtime";
+const DEFAULT_MODEL = "scribe_v2_realtime";
 
 export interface ElevenLabsSttEvents {
   onPartial?: (text: string) => void;
@@ -21,7 +23,7 @@ export interface ElevenLabsSttEvents {
 
 /**
  * Streaming STT provider that keeps a WebSocket open and accepts
- * audio chunks incrementally.
+ * audio chunks incrementally. Sends JSON messages with base64 audio.
  */
 export class ElevenLabsStreamingSttProvider {
   private _apiKey: string;
@@ -29,7 +31,6 @@ export class ElevenLabsStreamingSttProvider {
   private _ws: WebSocket | null = null;
   private _events: ElevenLabsSttEvents = {};
   private _connected = false;
-  private _error: Error | null = null;
 
   constructor(opts: { apiKey: string; language?: string }) {
     this._apiKey = opts.apiKey;
@@ -42,41 +43,32 @@ export class ElevenLabsStreamingSttProvider {
 
   async connect(signal?: AbortSignal): Promise<void> {
     const url =
-      `${WS_URL}?model_id=scribe_v2` +
+      `${WS_URL}?model_id=${DEFAULT_MODEL}` +
       `&language_code=${encodeURIComponent(this._language)}` +
       `&sample_rate=16000` +
       `&encoding=pcm_s16le`;
 
-    this._ws = new WebSocket(url);
-    this._error = null;
+    // Node.js 22+ WebSocket supports headers via options object
+    this._ws = new WebSocket(url, {
+      headers: { "xi-api-key": this._apiKey },
+    } as unknown as string[]);
 
     const onAbort = () => {
       this.close();
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 
-    // Wait for connection
     await new Promise<void>((resolve, reject) => {
       this._ws!.addEventListener("open", () => {
         this._connected = true;
-
-        // Send initial config with auth
-        this._ws!.send(
-          JSON.stringify({
-            type: "configure",
-            xi_api_key: this._apiKey,
-          }),
-        );
-
         resolve();
       }, { once: true });
 
       this._ws!.addEventListener("error", () => {
-        reject(this._error ?? new Error("ElevenLabs STT WebSocket connection failed"));
+        reject(new Error("ElevenLabs STT WebSocket connection failed"));
       }, { once: true });
     });
 
-    // Handle incoming messages
     this._ws.addEventListener("message", (event: MessageEvent) => {
       try {
         const data =
@@ -85,26 +77,31 @@ export class ElevenLabsStreamingSttProvider {
             : Buffer.from(event.data as ArrayBuffer).toString("utf-8");
         const msg = JSON.parse(data);
 
-        if (msg.type === "partial_transcript" && msg.text) {
+        if (msg.message_type === "partial_transcript" && msg.text) {
           this._events.onPartial?.(msg.text);
-        } else if (msg.type === "committed_transcript" && msg.text) {
+        } else if (
+          (msg.message_type === "committed_transcript" ||
+            msg.message_type === "committed_transcript_with_timestamps") &&
+          msg.text
+        ) {
           this._events.onFinal?.(msg.text);
-        } else if (msg.type === "auth_error" || msg.type === "error") {
-          this._error = new Error(
-            `ElevenLabs STT error: ${msg.message ?? msg.type}`,
+        } else if (
+          msg.message_type === "auth_error" ||
+          msg.message_type === "error"
+        ) {
+          this._events.onError?.(
+            new Error(`ElevenLabs STT: ${msg.message ?? msg.error ?? msg.message_type}`),
           );
-          this._events.onError?.(this._error);
         }
-      } catch (err) {
-        // Ignore parse errors on non-JSON messages
+      } catch {
+        // Ignore parse errors
       }
     });
 
     this._ws.addEventListener("error", (event: Event) => {
-      this._error = new Error(
-        `ElevenLabs STT WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`,
+      this._events.onError?.(
+        new Error(`ElevenLabs STT WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`),
       );
-      this._events.onError?.(this._error);
     });
 
     this._ws.addEventListener("close", () => {
@@ -113,27 +110,42 @@ export class ElevenLabsStreamingSttProvider {
   }
 
   /**
-   * Send a chunk of PCM audio data to the STT service.
-   * Audio should be 16-bit signed LE PCM at 16kHz mono.
+   * Send a chunk of PCM audio data. Audio should be 16-bit signed LE at 16kHz mono.
+   * Sent as JSON with base64-encoded audio (not binary frames).
    */
   sendAudio(pcmData: Buffer): void {
     if (!this._ws || !this._connected) return;
 
-    // ElevenLabs realtime STT expects base64-encoded audio in a JSON message
     this._ws.send(
       JSON.stringify({
-        type: "input_audio_chunk",
-        audio: pcmData.toString("base64"),
+        message_type: "input_audio_chunk",
+        audio_base_64: pcmData.toString("base64"),
+        commit: false,
+        sample_rate: 16000,
       }),
     );
   }
 
   /**
-   * Signal end of audio input. The service will finalize any pending transcription.
+   * Commit current audio buffer — triggers final transcript for accumulated audio.
+   */
+  commit(): void {
+    if (!this._ws || !this._connected) return;
+    this._ws.send(
+      JSON.stringify({
+        message_type: "input_audio_chunk",
+        audio_base_64: "",
+        commit: true,
+        sample_rate: 16000,
+      }),
+    );
+  }
+
+  /**
+   * Signal end of audio and commit any pending transcription.
    */
   flush(): void {
-    if (!this._ws || !this._connected) return;
-    this._ws.send(JSON.stringify({ type: "flush" }));
+    this.commit();
   }
 
   close(): void {
@@ -154,8 +166,7 @@ export class ElevenLabsStreamingSttProvider {
 }
 
 /**
- * Batch-compatible wrapper that uses the REST API for non-streaming use.
- * Falls back to the standard /v1/speech-to-text endpoint.
+ * Batch-compatible wrapper using the REST API.
  */
 export class ElevenLabsBatchSttProvider implements SttProvider {
   private _apiKey: string;
@@ -171,27 +182,22 @@ export class ElevenLabsBatchSttProvider implements SttProvider {
     opts: { sampleRate: number; channels: number },
     signal?: AbortSignal,
   ): Promise<SttResult> {
-    // Build a WAV file from PCM data
     const wavHeader = buildWavHeader(pcmData.length, opts.sampleRate, opts.channels);
     const wavData = Buffer.concat([wavHeader, pcmData]);
 
-    // Use multipart form upload
     const boundary = `----acpfx-${Date.now()}`;
     const parts: Buffer[] = [];
 
-    // File part
     parts.push(Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="audio.wav"\r\nContent-Type: audio/wav\r\n\r\n`,
     ));
     parts.push(wavData);
     parts.push(Buffer.from("\r\n"));
 
-    // Model part
     parts.push(Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="model_id"\r\n\r\nscribe_v2\r\n`,
     ));
 
-    // Language part
     parts.push(Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="language_code"\r\n\r\n${this._language}\r\n`,
     ));
@@ -231,7 +237,7 @@ function buildWavHeader(dataSize: number, sampleRate: number, channels: number):
   header.write("WAVE", 8);
   header.write("fmt ", 12);
   header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20); // PCM
+  header.writeUInt16LE(1, 20);
   header.writeUInt16LE(channels, 22);
   header.writeUInt32LE(sampleRate, 24);
   header.writeUInt32LE(byteRate, 28);
