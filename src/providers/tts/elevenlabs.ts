@@ -263,7 +263,7 @@ export function createElevenLabsProvider(opts?: {
   if (!apiKey) {
     throw new Error(
       "ElevenLabs API key required. Set ELEVENLABS_API_KEY env var, " +
-        "add it to ~/.acpfx/.env, or pass --api-key.",
+        "add it to .env in the project root, or pass --api-key.",
     );
   }
   return new ElevenLabsProvider({

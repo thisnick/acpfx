@@ -13,7 +13,6 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as os from "node:os";
 import { createEventWriter, readEvents } from "../pipeline-io.js";
 import type {
   AnyEvent,
@@ -312,7 +311,7 @@ async function createProvider(opts: TtsOptions): Promise<TtsProvider> {
 }
 
 async function loadEnv(): Promise<void> {
-  const envPath = path.join(os.homedir(), ".acpfx", ".env");
+  const envPath = path.join(process.cwd(), ".env");
   try {
     const content = await fs.readFile(envPath, "utf-8");
     for (const line of content.split("\n")) {

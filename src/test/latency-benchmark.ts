@@ -9,7 +9,7 @@
  * 4. Interrupt latency: time from control.interrupt to last audio.chunk
  *
  * Prerequisites:
- * - ELEVENLABS_API_KEY set in env or ~/.acpfx/.env
+ * - ELEVENLABS_API_KEY set in env or .env in project root
  * - For ACP tests: acpx claude session active with --ttl 0
  */
 

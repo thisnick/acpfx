@@ -11,7 +11,6 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import * as os from "node:os";
 import { createEventWriter, readEvents } from "../pipeline-io.js";
 import type { AnyEvent, AudioChunkEvent } from "../protocol.js";
 import type { SttProvider } from "../providers/stt/types.js";
@@ -277,7 +276,7 @@ async function createProvider(opts: SttOptions): Promise<SttProvider> {
       if (!apiKey) {
         throw new Error(
           "ElevenLabs API key required. Set ELEVENLABS_API_KEY env var, " +
-            "add it to ~/.acpfx/.env, or pass --api-key.",
+            "add it to .env in the project root, or pass --api-key.",
         );
       }
       return new ElevenLabsBatchSttProvider({ apiKey, language: opts.language });
@@ -288,7 +287,7 @@ async function createProvider(opts: SttOptions): Promise<SttProvider> {
 }
 
 async function loadEnv(): Promise<void> {
-  const envPath = path.join(os.homedir(), ".acpfx", ".env");
+  const envPath = path.join(process.cwd(), ".env");
   try {
     const content = await fs.readFile(envPath, "utf-8");
     for (const line of content.split("\n")) {
