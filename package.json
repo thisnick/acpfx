@@ -1,0 +1,28 @@
+{
+  "name": "acpfx",
+  "version": "0.1.0",
+  "description": "CLI-composable voice pipeline for ACP agents",
+  "type": "module",
+  "bin": {
+    "acpfx": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "node --test dist/test/**/*.test.js"
+  },
+  "keywords": ["acp", "voice", "pipeline", "cli"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "commander": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  },
+  "packageManager": "pnpm@10.29.3"
+}
