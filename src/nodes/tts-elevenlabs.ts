@@ -204,35 +204,56 @@ async function main(): Promise<void> {
 
   const rl = createInterface({ input: process.stdin });
 
-  rl.on("line", async (line) => {
-    if (!line.trim()) return;
-    try {
-      const event = JSON.parse(line);
-      if (event.type === "agent.delta") {
-        if (event.delta) {
-          // Reconnect if needed: after interrupt, after previous stream ended, or new request
-          if (interrupted || !connected || currentRequestId !== event.requestId) {
-            log(`Reconnecting for request ${event.requestId?.slice(0, 8)} (interrupted=${interrupted}, connected=${connected}, newRequest=${currentRequestId !== event.requestId})`);
-            interrupted = false;
-            currentRequestId = event.requestId;
-            closeWebSocket();
-            await openWebSocket();
-          }
-          sendText(event.delta);
-        }
-      } else if (event.type === "agent.complete" && !interrupted) {
-        // Agent is done — signal end of text stream so TTS can finalize
-        endStream();
-        currentRequestId = null;
-      } else if (event.type === "control.interrupt") {
-        interrupted = true;
-        // Close WebSocket immediately to stop audio generation
-        closeWebSocket();
-        currentRequestId = null;
+  // Queue events and process sequentially to avoid async races
+  const eventQueue: string[] = [];
+  let processing = false;
+
+  async function processQueue(): Promise<void> {
+    if (processing) return;
+    processing = true;
+
+    while (eventQueue.length > 0) {
+      const line = eventQueue.shift()!;
+      try {
+        const event = JSON.parse(line);
+        await handleEvent(event);
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
+
+    processing = false;
+  }
+
+  async function handleEvent(event: Record<string, unknown>): Promise<void> {
+    if (event.type === "agent.delta") {
+      if (event.delta) {
+        // Only reconnect if WebSocket is actually down or we were interrupted.
+        // Don't reconnect just because requestId changed — reuse the open connection.
+        if (interrupted || !connected) {
+          log(`Reconnecting (interrupted=${interrupted}, connected=${connected})`);
+          interrupted = false;
+          closeWebSocket();
+          await openWebSocket();
+        }
+        currentRequestId = event.requestId as string;
+        sendText(event.delta as string);
+      }
+    } else if (event.type === "agent.complete" && !interrupted) {
+      // Agent is done — signal end of text stream so TTS can finalize
+      endStream();
+      currentRequestId = null;
+    } else if (event.type === "control.interrupt") {
+      interrupted = true;
+      closeWebSocket();
+      currentRequestId = null;
+    }
+  }
+
+  rl.on("line", (line) => {
+    if (!line.trim()) return;
+    eventQueue.push(line);
+    processQueue();
   });
 
   rl.on("close", () => {
