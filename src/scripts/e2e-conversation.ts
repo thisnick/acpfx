@@ -538,6 +538,9 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   process.stderr.write(`\n[e2e] FATAL: ${err instanceof Error ? err.message : String(err)}\n`);
+  if (err instanceof Error && err.cause) {
+    process.stderr.write(`Cause: ${err.cause instanceof Error ? err.cause.message : String(err.cause)}\n`);
+  }
   if (err instanceof Error && err.stack) {
     process.stderr.write(err.stack + "\n");
   }
