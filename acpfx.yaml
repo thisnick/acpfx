@@ -4,7 +4,13 @@ nodes:
     settings:
       sampleRate: 16000
       channels: 1
-    outputs: [stt, recorder, ui]
+    outputs: [echo-gate, recorder, ui]
+
+  echo-gate:
+    use: "@acpfx/echo-gate"
+    settings:
+      bargeInThreshold: 1500
+    outputs: [stt]
 
   stt:
     use: "@acpfx/stt-elevenlabs"
@@ -16,16 +22,16 @@ nodes:
     use: "@acpfx/bridge-acpx"
     settings:
       agent: claude
-      session: voice              # named session
+      session: voice
       args:
-        approve-all: true         # extra acpx flags passed through
+        approve-all: true
     outputs: [tts, ui, recorder]
 
   tts:
     use: "@acpfx/tts-elevenlabs"
     settings:
       voiceId: JBFqnCBsd6RMkjVDRZzb
-    outputs: [speaker, recorder, ui]
+    outputs: [speaker, recorder, ui, echo-gate]
 
   speaker:
     use: "@acpfx/play-sox"

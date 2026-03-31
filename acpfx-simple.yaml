@@ -3,6 +3,12 @@ nodes:
     use: "@acpfx/mic-sox"
     settings:
       sampleRate: 16000
+    outputs: [echo-gate]
+
+  echo-gate:
+    use: "@acpfx/echo-gate"
+    settings:
+      bargeInThreshold: 1500
     outputs: [stt]
 
   stt:
@@ -24,7 +30,7 @@ nodes:
     use: "@acpfx/tts-elevenlabs"
     settings:
       voiceId: JBFqnCBsd6RMkjVDRZzb
-    outputs: [speaker]
+    outputs: [speaker, echo-gate]
 
   speaker:
     use: "@acpfx/play-sox"
