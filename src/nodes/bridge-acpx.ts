@@ -192,6 +192,12 @@ async function cancelCurrentPrompt(): Promise<void> {
   }
 
   streaming = false;
+
+  // Emit control.interrupt so downstream nodes (TTS, play) flush their buffers
+  emit({
+    type: "control.interrupt",
+    reason: "user_speech",
+  });
 }
 
 function cleanup(): void {

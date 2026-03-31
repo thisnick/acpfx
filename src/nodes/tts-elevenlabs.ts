@@ -198,18 +198,20 @@ async function main(): Promise<void> {
 
   const rl = createInterface({ input: process.stdin });
 
-  rl.on("line", (line) => {
+  rl.on("line", async (line) => {
     if (!line.trim()) return;
     try {
       const event = JSON.parse(line);
-      if (event.type === "agent.delta" && !interrupted) {
-        // Track the current request
-        if (currentRequestId !== event.requestId) {
-          // New request — if we had a previous one, the stream was already
-          // ended or interrupted. Start fresh for this request.
-          currentRequestId = event.requestId;
-        }
+      if (event.type === "agent.delta") {
         if (event.delta) {
+          // If this is a new request after an interrupt, reconnect first
+          if (interrupted || currentRequestId !== event.requestId) {
+            interrupted = false;
+            currentRequestId = event.requestId;
+            // Close old WS if any, open fresh one
+            closeWebSocket();
+            await openWebSocket();
+          }
           sendText(event.delta);
         }
       } else if (event.type === "agent.complete" && !interrupted) {
@@ -218,13 +220,8 @@ async function main(): Promise<void> {
         currentRequestId = null;
       } else if (event.type === "control.interrupt") {
         interrupted = true;
-        // Close and reopen WebSocket to cancel any in-flight audio
+        // Close WebSocket immediately to stop audio generation
         closeWebSocket();
-        openWebSocket().then(() => {
-          interrupted = false;
-        }).catch((err) => {
-          log(`Failed to reconnect after interrupt: ${err.message}`);
-        });
         currentRequestId = null;
       }
     } catch {
