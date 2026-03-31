@@ -101,11 +101,17 @@ export class NodeRunner {
       }
     });
 
-    // Forward stderr to parent stderr with prefix
-    const stderrRl = createInterface({ input: this.proc.stderr! });
-    stderrRl.on("line", (line) => {
-      process.stderr.write(`[${this.name}] ${line}\n`);
-    });
+    // Forward stderr to parent stderr
+    if (this.use.includes("ui-cli") || this.use.includes("ui-web")) {
+      // UI nodes: pipe raw bytes so Ink's ANSI escape sequences work
+      this.proc.stderr!.pipe(process.stderr);
+    } else {
+      // Other nodes: prefix each line with node name
+      const stderrRl = createInterface({ input: this.proc.stderr! });
+      stderrRl.on("line", (line) => {
+        process.stderr.write(`[${this.name}] ${line}\n`);
+      });
+    }
 
     this.proc.on("error", (err) => {
       this.options.onError(err);

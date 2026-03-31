@@ -89,13 +89,15 @@ process.on("SIGTERM", () => {
 
 recProc = spawn("rec", [
   "-q",
-  "-t", "raw",
+  "-t", "raw",       // output format: raw PCM
   "-b", "16",
   "-e", "signed-integer",
   "-r", String(SAMPLE_RATE),
   "-c", String(CHANNELS),
   "--endian", "little",
   "-",
+  "rate", String(SAMPLE_RATE),   // resample to target rate
+  "channels", String(CHANNELS),  // downmix to mono
 ], {
   stdio: ["ignore", "pipe", "pipe"],
 });
