@@ -1,5 +1,11 @@
 node_modules/
 dist/
 .env
-*.tgz
 .envrc
+*.tgz
+recordings/
+tmp-test-*/
+*.DS_Store
+eval/e2e/
+*.wav
+*.mp3

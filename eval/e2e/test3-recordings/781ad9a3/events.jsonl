@@ -1,6 +1,0 @@
-{"type":"lifecycle.ready","component":"stt-elevenlabs","ts":1774934904709,"_from":"stt"}
-{"type":"speech.partial","trackId":"stt","text":"Hello world, this","ts":1774934906617,"_from":"stt"}
-{"type":"speech.partial","trackId":"stt","text":"Hello world, this is a test of pause to","ts":1774934906717,"_from":"stt"}
-{"type":"speech.delta","trackId":"stt","text":"Hello world, this is a test of pause detection.","replaces":"Hello world, this is a test of pause to","ts":1774934907628,"_from":"stt"}
-{"type":"speech.final","trackId":"stt","text":"Hello world, this is a test of pause detection.","ts":1774934907853,"_from":"stt"}
-{"type":"speech.pause","trackId":"stt","pendingText":"Hello world, this is a test of pause detection.","silenceMs":600,"ts":1774934907853,"_from":"stt"}
