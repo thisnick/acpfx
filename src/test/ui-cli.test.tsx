@@ -38,7 +38,7 @@ describe("ui-cli components", () => {
 
   it("InputSection renders level meter and STT text", () => {
     const { lastFrame } = render(
-      <InputSection rms={16384} dbfs={-6} sttText="Write me" sttState="partial" echoGateState="passthrough" echoGateRms={0} />,
+      <InputSection rms={16384} dbfs={-6} sttText="Write me" sttState="partial" />,
     );
     const frame = lastFrame()!;
     assert.ok(frame.includes("Write me"), "Should show STT text");
@@ -50,7 +50,7 @@ describe("ui-cli components", () => {
 
   it("InputSection renders empty level for rms=0", () => {
     const { lastFrame } = render(
-      <InputSection rms={0} dbfs={-Infinity} sttText="" sttState="idle" echoGateState="passthrough" echoGateRms={0} />,
+      <InputSection rms={0} dbfs={-Infinity} sttText="" sttState="idle" />,
     );
     const frame = lastFrame()!;
     assert.ok(frame.includes("[--------------------]"), "Should show empty meter");
@@ -58,7 +58,7 @@ describe("ui-cli components", () => {
 
   it("InputSection updates with new STT text", () => {
     const { lastFrame, rerender } = render(
-      <InputSection rms={0} dbfs={-Infinity} sttText="Write me" sttState="partial" echoGateState="passthrough" echoGateRms={0} />,
+      <InputSection rms={0} dbfs={-Infinity} sttText="Write me" sttState="partial" />,
     );
     assert.ok(lastFrame()!.includes("Write me"));
 
@@ -68,8 +68,6 @@ describe("ui-cli components", () => {
         dbfs={-Infinity}
         sttText="Write me an essay"
         sttState="partial"
-        echoGateState="passthrough"
-        echoGateRms={0}
       />,
     );
     assert.ok(lastFrame()!.includes("Write me an essay"), "Should update text");

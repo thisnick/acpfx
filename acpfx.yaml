@@ -4,13 +4,7 @@ nodes:
     settings:
       sampleRate: 16000
       channels: 1
-    outputs: [echo-gate, recorder, ui]
-
-  echo-gate:
-    use: "@acpfx/echo-gate"
-    settings:
-      bargeInThreshold: 1500
-    outputs: [stt, ui]
+    outputs: [stt, recorder, ui]
 
   stt:
     use: "@acpfx/stt-elevenlabs"
@@ -31,7 +25,7 @@ nodes:
     use: "@acpfx/tts-elevenlabs"
     settings:
       voiceId: JBFqnCBsd6RMkjVDRZzb
-    outputs: [speaker, recorder, ui, echo-gate]
+    outputs: [speaker, recorder, ui]
 
   speaker:
     use: "@acpfx/play-sox"
