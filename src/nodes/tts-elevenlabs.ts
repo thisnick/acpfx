@@ -96,7 +96,7 @@ async function openWebSocket(): Promise<void> {
         similarity_boost: 0.75,
       },
       generation_config: {
-        chunk_length_schedule: [120],
+        chunk_length_schedule: [50],
       },
     }),
   );

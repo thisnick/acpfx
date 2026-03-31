@@ -4,7 +4,7 @@ nodes:
     settings:
       sampleRate: 16000
       channels: 1
-    outputs: [stt, recorder]
+    outputs: [stt, recorder, ui]
 
   stt:
     use: "@acpfx/stt-elevenlabs"
@@ -24,7 +24,7 @@ nodes:
     use: "@acpfx/tts-elevenlabs"
     settings:
       voiceId: JBFqnCBsd6RMkjVDRZzb
-    outputs: [speaker, recorder]
+    outputs: [speaker, recorder, ui]
 
   speaker:
     use: "@acpfx/play-sox"

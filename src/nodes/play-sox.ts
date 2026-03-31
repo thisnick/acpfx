@@ -79,20 +79,24 @@ rl.on("line", (line) => {
     const event = JSON.parse(line);
 
     if (event.type === "control.interrupt") {
-      interrupted = true;
+      // Kill current playback immediately (silence)
       cleanup();
+      playProc = null;
+      // Don't set interrupted=true permanently — allow new audio after interrupt
       return;
     }
 
-    if (event.type === "audio.chunk" && !interrupted) {
-      if (!playProc) {
+    if (event.type === "audio.chunk") {
+      // Start or restart sox play on demand
+      if (!playProc || playProc.killed) {
         playProc = startPlay();
       }
       const pcm = Buffer.from(event.data, "base64");
       try {
         playProc.stdin!.write(pcm);
       } catch {
-        // play process may have exited
+        // play process may have exited — restart on next chunk
+        playProc = null;
       }
     }
   } catch {}
