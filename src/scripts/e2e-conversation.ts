@@ -26,27 +26,7 @@ const ELEVENLABS_MODEL = "eleven_turbo_v2_5";
 const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 const SAMPLE_RATE = 16000;
 
-// ---- Env loading (mirrors tts.ts) ----
-
-async function loadEnv(): Promise<void> {
-  const envPath = path.join(PROJECT_DIR, ".env");
-  try {
-    const content = await fs.readFile(envPath, "utf-8");
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx === -1) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      const value = trimmed.slice(eqIdx + 1).trim();
-      if (key && !process.env[key]) {
-        process.env[key] = value;
-      }
-    }
-  } catch {
-    // .env file is optional
-  }
-}
+// Env vars loaded by direnv (see .envrc)
 
 // ---- WAV header helpers ----
 
@@ -465,7 +445,6 @@ let globalStartTime = Date.now();
 
 async function main(): Promise<void> {
   globalStartTime = Date.now();
-  await loadEnv();
 
   const inputText = process.argv[2] || "What is the fibonacci sequence and why is it important?";
 

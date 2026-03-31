@@ -9,8 +9,6 @@
  */
 
 import { randomUUID } from "node:crypto";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { createEventWriter, readEvents } from "../pipeline-io.js";
 import type { AnyEvent, AudioChunkEvent } from "../protocol.js";
 import type { SttProvider } from "../providers/stt/types.js";
@@ -27,7 +25,6 @@ export type SttOptions = {
 };
 
 export async function runStt(opts: SttOptions): Promise<void> {
-  await loadEnv();
 
   const providerName = opts.provider ?? "elevenlabs";
 
@@ -283,25 +280,5 @@ async function createProvider(opts: SttOptions): Promise<SttProvider> {
     }
     default:
       throw new Error(`Unknown STT provider: ${providerName}`);
-  }
-}
-
-async function loadEnv(): Promise<void> {
-  const envPath = path.join(process.cwd(), ".env");
-  try {
-    const content = await fs.readFile(envPath, "utf-8");
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx === -1) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      const value = trimmed.slice(eqIdx + 1).trim();
-      if (key && !process.env[key]) {
-        process.env[key] = value;
-      }
-    }
-  } catch {
-    // .env file is optional
   }
 }

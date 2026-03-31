@@ -25,6 +25,9 @@ program
   .option("--raw", "Raw mode: read speech events from stdin, write text events to stdout")
   .option("--input <pipeline>", "Custom input pipeline command (default: acpfx mic | acpfx stt | acpfx vad)")
   .option("--output <pipeline>", "Custom output pipeline command (default: acpfx tts | acpfx play)")
+  .option("--model <id>", "Agent model ID (passed to acpx --model)")
+  .option("--approve-all", "Auto-approve all agent permission requests")
+  .option("--acpx-args <args>", "Additional args to pass to acpx session setup")
   .option("--verbose", "Enable verbose logging to stderr")
   .action(async (agent: string, opts) => {
     const { runBridge } = await import("./commands/bridge.js");
@@ -47,7 +50,7 @@ program
 program
   .command("stt")
   .description("Speech-to-text: reads audio.chunk events, emits speech.final events")
-  .option("--provider <name>", "STT provider (openai)", "openai")
+  .option("--provider <name>", "STT provider (elevenlabs, openai)", "elevenlabs")
   .option("--api-key <key>", "API key (or set OPENAI_API_KEY env var)")
   .option("--language <lang>", "Language hint (e.g., en)")
   .option("--chunk-ms <ms>", "Audio accumulation window in ms", "3000")

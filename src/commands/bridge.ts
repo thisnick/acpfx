@@ -21,6 +21,9 @@ export type BridgeOptions = {
   verbose?: boolean;
   input?: string;
   output?: string;
+  model?: string;
+  approveAll?: boolean;
+  acpxArgs?: string;
 };
 
 export async function runBridge(

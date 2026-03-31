@@ -11,8 +11,6 @@
  */
 
 import { randomUUID } from "node:crypto";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { createEventWriter, readEvents } from "../pipeline-io.js";
 import type {
   AnyEvent,
@@ -35,8 +33,7 @@ export type TtsOptions = {
 };
 
 export async function runTts(opts: TtsOptions): Promise<void> {
-  // Load .env for API keys
-  await loadEnv();
+
 
   let provider: TtsProvider;
   try {
@@ -310,22 +307,3 @@ async function createProvider(opts: TtsOptions): Promise<TtsProvider> {
   }
 }
 
-async function loadEnv(): Promise<void> {
-  const envPath = path.join(process.cwd(), ".env");
-  try {
-    const content = await fs.readFile(envPath, "utf-8");
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (trimmed.length === 0 || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx === -1) continue;
-      const key = trimmed.slice(0, eqIdx).trim();
-      const value = trimmed.slice(eqIdx + 1).trim();
-      if (key && !process.env[key]) {
-        process.env[key] = value;
-      }
-    }
-  } catch {
-    // .env file is optional
-  }
-}
