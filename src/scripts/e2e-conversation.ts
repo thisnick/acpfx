@@ -113,7 +113,7 @@ type PipelineResult = {
  */
 async function runPipeline(inputText: string, outputWavPath: string, startTime: number): Promise<PipelineResult> {
   return new Promise((resolve, reject) => {
-    // Stage 1: bridge claude --raw (reads speech events from stdin, writes text events to stdout)
+    // Stage 1: bridge claude --raw (connects to acpx session via queue IPC)
     const bridgeCmd = `node ${CLI_PATH} bridge claude --raw --verbose`;
 
     // Stage 2: tts -> play --provider file (reads text events, writes audio to file)
@@ -449,18 +449,19 @@ async function main(): Promise<void> {
   const inputText = process.argv[2] || "What is the fibonacci sequence and why is it important?";
   const model = process.argv[3] || process.env.ACPFX_MODEL || undefined;
 
-  // If a model is specified, set it on the acpx session before running
-  if (model) {
-    log(`Setting model to: ${model}`);
-    const { execSync } = await import("node:child_process");
-    try {
-      execSync(`acpx --model ${model} claude sessions ensure`, {
-        stdio: ["ignore", "ignore", "inherit"],
-        cwd: PROJECT_DIR,
-      });
-    } catch {
-      log(`Warning: could not set model via acpx. Continuing with current session model.`);
-    }
+  // Ensure an acpx session exists (use --model if specified)
+  const { execSync } = await import("node:child_process");
+  const modelArgs = model ? `--model ${model}` : "";
+  try {
+    log("Ensuring acpx session...");
+    execSync(`acpx ${modelArgs} --approve-all claude sessions ensure`, {
+      stdio: ["ignore", "ignore", "inherit"],
+      cwd: PROJECT_DIR,
+      timeout: 60000,
+    });
+    log("Session ready.");
+  } catch (err) {
+    log(`Warning: could not ensure acpx session: ${err instanceof Error ? err.message : err}`);
   }
 
   // Ensure output directory exists
