@@ -21,6 +21,7 @@ import {
 
 type Settings = {
   agent: string;
+  session?: string;   // named session (acpx -s <name>)
   model?: string;
   approveAll?: boolean;
   verbose?: boolean;
@@ -65,9 +66,11 @@ async function ensureSession(): Promise<string> {
   // No session — spawn acpx with the agent
   log(`No active session for "${AGENT}", starting acpx...`);
 
-  const args: string[] = [AGENT];
+  const args: string[] = [];
   if (settings.model) args.push("--model", settings.model);
   if (settings.approveAll) args.push("--approve-all");
+  args.push(AGENT);
+  if (settings.session) args.push("-s", settings.session);
   args.push("--format", "quiet");
   args.push("hello"); // Initial prompt to establish session
 
