@@ -109,6 +109,8 @@ export class NodeRunner {
       // Other nodes: prefix each line with node name
       const stderrRl = createInterface({ input: this.proc.stderr! });
       stderrRl.on("line", (line) => {
+        // Suppress noisy CoreAudio buffer underflow warnings
+        if (line.includes("buffer underflow") || line.includes("Didn't have any audio")) return;
         process.stderr.write(`[${this.name}] ${line}\n`);
       });
     }

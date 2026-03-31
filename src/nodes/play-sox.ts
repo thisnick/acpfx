@@ -60,7 +60,10 @@ function createSpeaker(): InstanceType<typeof Speaker> {
   });
 
   s.on("error", (err: Error) => {
-    log(`Speaker error: ${err.message}`);
+    // Filter out harmless buffer underflow warnings
+    if (!err.message?.includes("underflow")) {
+      log(`Speaker error: ${err.message}`);
+    }
   });
 
   return s;
