@@ -1,0 +1,30 @@
+nodes:
+  mic:
+    use: "@acpfx/mic-sox"
+    settings:
+      sampleRate: 16000
+    outputs: [stt]
+
+  stt:
+    use: "@acpfx/stt-elevenlabs"
+    settings:
+      language: en
+    outputs: [bridge]
+
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    settings:
+      agent: claude
+      model: claude-haiku-4-5-20251001
+      approveAll: true
+    outputs: [tts]
+
+  tts:
+    use: "@acpfx/tts-elevenlabs"
+    settings:
+      voiceId: JBFqnCBsd6RMkjVDRZzb
+    outputs: [speaker]
+
+  speaker:
+    use: "@acpfx/play-sox"
+    outputs: []

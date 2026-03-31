@@ -18,17 +18,28 @@ export async function runPipeline(opts: RunOptions): Promise<void> {
 
   process.stderr.write(`[acpfx] Loading config: ${configPath}\n`);
 
+  // Check if config has a UI node — if so, suppress verbose event logging
+  // since the UI renders to stderr and verbose logs would interleave
+  const { loadConfig } = await import("./config.js");
+  const config = loadConfig(configPath);
+  const hasUi = Object.values(config.nodes).some(
+    (n) => n.use.includes("ui-cli") || n.use.includes("ui-web"),
+  );
+
   const orch = Orchestrator.fromFile(configPath, {
-    onEvent: (event: AnyEvent) => {
-      // Log all events to stderr in a compact format
-      const { type, _from, ts, ...rest } = event;
-      const elapsed = ts ? `+${ts - startTime}ms` : "";
-      process.stderr.write(
-        `[${_from ?? "?"}] ${elapsed} ${type} ${JSON.stringify(rest)}\n`,
-      );
-    },
+    onEvent: hasUi
+      ? undefined
+      : (event: AnyEvent) => {
+          const { type, _from, ts, ...rest } = event;
+          const elapsed = ts ? `+${ts - startTime}ms` : "";
+          process.stderr.write(
+            `[${_from ?? "?"}] ${elapsed} ${type} ${JSON.stringify(rest)}\n`,
+          );
+        },
     onError: (error: Error) => {
-      process.stderr.write(`[acpfx] ERROR: ${error.message}\n`);
+      if (!hasUi) {
+        process.stderr.write(`[acpfx] ERROR: ${error.message}\n`);
+      }
     },
   });
 

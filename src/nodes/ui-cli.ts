@@ -63,8 +63,11 @@ emit({ type: "lifecycle.ready", component: "ui-cli" });
 
 const eventStream = createEventStream();
 
-// Render the dashboard — Ink takes over the terminal
-render(React.createElement(Dashboard, { eventStream }));
+// Render the dashboard to stderr — stdout must stay clean for NDJSON
+render(React.createElement(Dashboard, { eventStream }), {
+  stdout: process.stderr,
+  stderr: process.stderr,
+});
 
 process.on("SIGTERM", () => {
   process.exit(0);

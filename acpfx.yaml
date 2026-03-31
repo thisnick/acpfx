@@ -1,0 +1,41 @@
+nodes:
+  mic:
+    use: "@acpfx/mic-sox"
+    settings:
+      sampleRate: 16000
+      channels: 1
+    outputs: [stt, recorder]
+
+  stt:
+    use: "@acpfx/stt-elevenlabs"
+    settings:
+      language: en
+    outputs: [bridge, ui]
+
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    settings:
+      agent: claude
+      model: claude-haiku-4-5-20251001
+      approveAll: true
+    outputs: [tts, ui, recorder]
+
+  tts:
+    use: "@acpfx/tts-elevenlabs"
+    settings:
+      voiceId: JBFqnCBsd6RMkjVDRZzb
+    outputs: [speaker, recorder]
+
+  speaker:
+    use: "@acpfx/play-sox"
+    outputs: []
+
+  recorder:
+    use: "@acpfx/recorder"
+    settings:
+      outputDir: ./recordings
+    outputs: []
+
+  ui:
+    use: "@acpfx/ui-cli"
+    outputs: []
