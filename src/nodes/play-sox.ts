@@ -34,9 +34,22 @@ function log(msg: string): void {
   process.stderr.write(`[play-sox] ${msg}\n`);
 }
 
+// Convert mono PCM to stereo by duplicating each sample
+function monoToStereo(mono: Buffer): Buffer {
+  const stereo = Buffer.alloc(mono.length * 2);
+  for (let i = 0; i < mono.length; i += 2) {
+    const sample = mono.readInt16LE(i);
+    stereo.writeInt16LE(sample, i * 2);       // left
+    stereo.writeInt16LE(sample, i * 2 + 2);   // right
+  }
+  return stereo;
+}
+
 function createSpeaker(): InstanceType<typeof Speaker> {
+  // Always open in stereo — macOS CoreAudio often rejects mono channel maps.
+  // We convert mono→stereo before writing.
   const s = new Speaker({
-    channels: CHANNELS,
+    channels: 2,
     bitDepth: 16,
     sampleRate: SAMPLE_RATE,
   } as Record<string, unknown>);
@@ -86,7 +99,8 @@ async function processQueue(): Promise<void> {
           log("Creating speaker");
           speaker = createSpeaker();
         }
-        const pcm = Buffer.from(event.data, "base64");
+        const monopcm = Buffer.from(event.data, "base64");
+        const pcm = CHANNELS === 1 ? monoToStereo(monopcm) : monopcm;
         const ok = speaker.write(pcm);
         if (!ok) {
           // Backpressure — wait for speaker to drain
