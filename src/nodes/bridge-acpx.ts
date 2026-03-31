@@ -104,15 +104,6 @@ async function ensureSession(): Promise<string> {
 async function handleSpeechPause(pendingText: string): Promise<void> {
   if (!ipcClient || interrupted) return;
 
-  // Always interrupt downstream (TTS/speaker may still be playing even if
-  // LLM finished). Then cancel LLM if still streaming.
-  log("New speech — interrupting downstream");
-  emit({ type: "control.interrupt", reason: "user_speech" });
-
-  if (streaming) {
-    await cancelCurrentPrompt();
-  }
-
   const requestId = randomUUID();
   streaming = true;
   activeAbort = new AbortController();
@@ -221,15 +212,38 @@ async function main(): Promise<void> {
 
   const rl = createInterface({ input: process.stdin });
 
+  // Track whether we're "active" — streaming or TTS may still be playing.
+  // Active from agent.submit until next speech.pause resets it.
+  let active = false;
+  let interruptedForBargein = false;
+
   rl.on("line", (line) => {
     if (!line.trim()) return;
     try {
       const event = JSON.parse(line);
 
-      if (event.type === "speech.pause" && !interrupted) {
+      if (event.type === "speech.partial" && active && !interruptedForBargein) {
+        // User started speaking while agent is active — interrupt immediately.
+        // Don't wait for speech.pause. Stop TTS + speaker + cancel ACP now.
+        log("Barge-in detected (speech.partial while active) — interrupting");
+        interruptedForBargein = true;
+        emit({ type: "control.interrupt", reason: "user_speech" });
+        if (streaming) {
+          cancelCurrentPrompt();
+        }
+      } else if (event.type === "speech.pause") {
+        // Full utterance ready — submit to agent.
+        interruptedForBargein = false;
+        active = true;
         const text = event.pendingText ?? event.text ?? "";
         if (text) {
-          handleSpeechPause(text);
+          // Interrupt any remaining playback before submitting
+          emit({ type: "control.interrupt", reason: "user_speech" });
+          if (streaming) {
+            cancelCurrentPrompt().then(() => handleSpeechPause(text));
+          } else {
+            handleSpeechPause(text);
+          }
         }
       } else if (event.type === "control.interrupt") {
         interrupted = true;
