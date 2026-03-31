@@ -449,19 +449,21 @@ async function main(): Promise<void> {
   const inputText = process.argv[2] || "What is the fibonacci sequence and why is it important?";
   const model = process.argv[3] || process.env.ACPFX_MODEL || undefined;
 
-  // Ensure an acpx session exists (use --model if specified)
+  // Warm up acpx session by sending a trivial prompt.
+  // This starts the queue owner process so the bridge can connect via IPC.
+  // `sessions ensure` only creates the session record but doesn't start the queue owner.
   const { execSync } = await import("node:child_process");
   const modelArgs = model ? `--model ${model}` : "";
   try {
-    log("Ensuring acpx session...");
-    execSync(`acpx ${modelArgs} --approve-all claude sessions ensure`, {
+    log("Warming up acpx session (sending ping)...");
+    execSync(`acpx ${modelArgs} --approve-all --format quiet claude "ping"`, {
       stdio: ["ignore", "ignore", "inherit"],
       cwd: PROJECT_DIR,
       timeout: 60000,
     });
-    log("Session ready.");
+    log("Session warm.");
   } catch (err) {
-    log(`Warning: could not ensure acpx session: ${err instanceof Error ? err.message : err}`);
+    log(`Warning: could not warm acpx session: ${err instanceof Error ? err.message : err}`);
   }
 
   // Ensure output directory exists
