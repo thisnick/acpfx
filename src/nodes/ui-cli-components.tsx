@@ -331,7 +331,6 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
 
   return (
     <Box flexDirection="column">
-      <Text bold> acpfx </Text>
       <PipelineStatus state={pipelineState} nodes={nodes} error={error} />
       <InputSection rms={rms} dbfs={dbfs} sttText={sttText} sttState={sttState} />
       <AgentSection

@@ -16,17 +16,14 @@ export type RunOptions = {
 export async function runPipeline(opts: RunOptions): Promise<void> {
   const configPath = resolve(opts.config);
 
-  // Logging helper — suppressed when UI is active
-  let hasUi = false;
+  const { loadConfig } = await import("./config.js");
+  const config = loadConfig(configPath);
+  const hasUi = Object.values(config.nodes).some(
+    (n) => n.use.includes("ui-cli") || n.use.includes("ui-web"),
+  );
   const log = (msg: string) => { if (!hasUi) process.stderr.write(`[acpfx] ${msg}\n`); };
 
   log(`Loading config: ${configPath}`);
-
-  const { loadConfig } = await import("./config.js");
-  const config = loadConfig(configPath);
-  hasUi = Object.values(config.nodes).some(
-    (n) => n.use.includes("ui-cli") || n.use.includes("ui-web"),
-  );
 
   const orch = Orchestrator.fromFile(configPath, {
     onEvent: (event: AnyEvent) => {
