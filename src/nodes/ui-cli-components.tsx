@@ -5,7 +5,7 @@
  * Each receives events from stdin and renders independently.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { render, Box, Text } from "ink";
 import { createInterface } from "node:readline";
 
@@ -41,9 +41,9 @@ function PipelineStatus({
       </Text>
       <Text>
         Nodes:{" "}
-        {nodes.map((n) => (
+        {nodes.map((n, i) => (
           <Text key={n.name}>
-            {n.name} {n.ready ? "+" : "?"}{" "}
+            {n.ready ? "+" : "?"}{n.name}{i < nodes.length - 1 ? "  " : ""}
           </Text>
         ))}
       </Text>
@@ -190,8 +190,7 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
   const [tokens, setTokens] = useState(0);
   const [ttft, setTtft] = useState<number | null>(null);
   const [agentElapsed, setAgentElapsed] = useState(0);
-  const [submitTime, setSubmitTime] = useState<number | null>(null);
-  const [firstDeltaTime, setFirstDeltaTime] = useState<number | null>(null);
+  // submitTime and firstDeltaTime moved to refs (see below)
 
   // Output
   const [ttsChunks, setTtsChunks] = useState(0);
@@ -203,9 +202,11 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
   const [agentMs, setAgentMs] = useState<number | null>(null);
   const [ttsMs, setTtsMs] = useState<number | null>(null);
 
-  // Timing refs
-  const [lastSpeechFinalTs, setLastSpeechFinalTs] = useState<number | null>(null);
-  const [lastSpeechPauseTs, setLastSpeechPauseTs] = useState<number | null>(null);
+  // Timing refs (refs, not state — need synchronous reads within event loop)
+  const lastSpeechFinalTsRef = useRef<number | null>(null);
+  const lastSpeechPauseTsRef = useRef<number | null>(null);
+  const submitTimeRef = useRef<number | null>(null);
+  const firstDeltaTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -218,15 +219,16 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
 
         switch (type) {
           case "lifecycle.ready": {
-            const comp = (event.component as string) ?? (event._from as string) ?? "?";
+            // Use _from (config node name) not component (implementation name)
+            const name = (event._from as string) ?? (event.component as string) ?? "?";
             setNodes((prev) => {
-              const existing = prev.find((n) => n.name === comp);
+              const existing = prev.find((n) => n.name === name);
               if (existing) {
                 return prev.map((n) =>
-                  n.name === comp ? { ...n, ready: true } : n,
+                  n.name === name ? { ...n, ready: true } : n,
                 );
               }
-              return [...prev, { name: comp, ready: true }];
+              return [...prev, { name, ready: true }];
             });
             break;
           }
@@ -250,15 +252,14 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
           case "speech.final":
             setSttText((event as any).text ?? "");
             setSttState("final");
-            setLastSpeechFinalTs(ts);
+            lastSpeechFinalTsRef.current = ts;
             break;
 
           case "speech.pause": {
             setPipelineState("Processing");
-            setLastSpeechPauseTs(ts);
-            // Compute VAD latency
-            if (lastSpeechFinalTs) {
-              setVadMs(ts - lastSpeechFinalTs);
+            lastSpeechPauseTsRef.current = ts;
+            if (lastSpeechFinalTsRef.current) {
+              setVadMs(ts - lastSpeechFinalTsRef.current);
             }
             break;
           }
@@ -268,10 +269,11 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
             setAgentText("");
             setTokens(0);
             setTtft(null);
-            setSubmitTime(ts);
-            setFirstDeltaTime(null);
+            submitTimeRef.current = ts;
+            firstDeltaTimeRef.current = null;
             setTtsChunks(0);
             setTtsDurationMs(0);
+            setTtsMs(null); // reset for new turn
             break;
 
           case "agent.delta": {
@@ -279,14 +281,14 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
             setPipelineState("Streaming");
             setAgentText((prev) => prev + ((event as any).delta ?? ""));
             setTokens((prev) => prev + 1);
-            if (firstDeltaTime === null) {
-              setFirstDeltaTime(ts);
-              if (submitTime) {
-                setAgentMs(ts - submitTime);
-                setTtft(ts - submitTime);
+            if (firstDeltaTimeRef.current === null) {
+              firstDeltaTimeRef.current = ts;
+              if (submitTimeRef.current) {
+                setAgentMs(ts - submitTimeRef.current);
+                setTtft(ts - submitTimeRef.current);
               }
             }
-            setAgentElapsed(submitTime ? ts - submitTime : 0);
+            setAgentElapsed(submitTimeRef.current ? ts - submitTimeRef.current : 0);
             break;
           }
 
@@ -301,8 +303,8 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
               setTtsDurationMs((prev) => prev + ((event as any).durationMs ?? 0));
               setPipelineState("Speaking");
               // TTS latency: first TTS chunk after first agent delta
-              if (ttsMs === null && firstDeltaTime) {
-                setTtsMs(ts - firstDeltaTime);
+              if (ttsMs === null && firstDeltaTimeRef.current) {
+                setTtsMs(ts - firstDeltaTimeRef.current);
               }
             }
             break;
