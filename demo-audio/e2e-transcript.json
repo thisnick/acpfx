@@ -1,21 +1,21 @@
 {
   "input": {
-    "text": "What is the fibonacci sequence and why is it important?",
+    "text": "What is two plus two?",
     "startMs": 0,
-    "endMs": 3297.25,
-    "durationMs": 3297.25
+    "endMs": 1253.875,
+    "durationMs": 1253.875
   },
   "processing": {
-    "startMs": 3297.25,
-    "endMs": 7196.25,
-    "latencyMs": 3899
+    "startMs": 1253.875,
+    "endMs": 4844.875,
+    "latencyMs": 3591
   },
   "output": {
-    "text": "The **Fibonacci sequence** is 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, … — each number is the sum of the two before it.\n\n**Why it matters:**\n\n- **Mathematics**: The ratio of consecutive terms converges to the golden ratio (φ ≈ 1.618), linking it to number theory, combinatorics, and algebra.\n\n- **Nature**: It appears in leaf arrangements, sunflower seed spirals, pinecone patterns, tree branching, and shell spirals.\n\n- **Computer science**: It's a go-to example for recursion and dynamic programming, and shows up in data structures like Fibonacci heaps and in algorithm analysis.\n\n- **Finance**: Fibonacci retracement levels are widely used in technical analysis.\n\n- **Art and design**: The golden ratio has influenced composition in art, architecture, and graphic design for centuries.\n\nWhat makes it remarkable is that such a simple rule — add the last two numbers — generates patterns found across mathematics, nature, and technology.",
-    "startMs": 7196.25,
-    "endMs": 84472.25,
-    "durationMs": 77276
+    "text": "4",
+    "startMs": 4844.875,
+    "endMs": 5169.9375,
+    "durationMs": 325.0625
   },
-  "totalDurationMs": 84472.25,
-  "recordedAt": "2026-03-31T00:05:58.280Z"
+  "totalDurationMs": 5169.9375,
+  "recordedAt": "2026-03-31T00:10:53.307Z"
 }

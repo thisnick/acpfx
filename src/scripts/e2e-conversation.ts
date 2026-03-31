@@ -20,7 +20,8 @@ const PROJECT_DIR = path.resolve(import.meta.dirname, "..", "..");
 const CLI_PATH = path.join(PROJECT_DIR, "dist", "cli.js");
 const OUTPUT_DIR = path.join(PROJECT_DIR, "demo-audio");
 
-const ELEVENLABS_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel
+const INPUT_VOICE_ID = "EXAVITQu4vr4xnSDxMaL"; // Sarah - female, american (user/question)
+const OUTPUT_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb"; // George - male, british (agent/answer)
 const ELEVENLABS_MODEL = "eleven_turbo_v2_5";
 const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 const SAMPLE_RATE = 16000;
@@ -83,7 +84,7 @@ async function generateInputAudio(text: string, outputPath: string): Promise<num
   if (!apiKey) throw new Error("ELEVENLABS_API_KEY not set");
 
   log(`Generating input speech for: "${text}"`);
-  const url = `${ELEVENLABS_TTS_URL}/${ELEVENLABS_VOICE_ID}?output_format=pcm_16000`;
+  const url = `${ELEVENLABS_TTS_URL}/${INPUT_VOICE_ID}?output_format=pcm_16000`;
 
   const response = await fetch(url, {
     method: "POST",
@@ -137,7 +138,7 @@ async function runPipeline(inputText: string, outputWavPath: string, startTime: 
 
     // Stage 2: tts -> play --provider file (reads text events, writes audio to file)
     const stage2Cmd = [
-      `node ${CLI_PATH} tts --provider elevenlabs`,
+      `node ${CLI_PATH} tts --provider elevenlabs --voice-id ${OUTPUT_VOICE_ID}`,
       `node ${CLI_PATH} play --provider file --path "${outputWavPath}"`,
     ].join(" | ");
 
