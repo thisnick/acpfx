@@ -1,21 +1,21 @@
 {
   "input": {
-    "text": "What is two plus two?",
+    "text": "Write me an essay about why people should not fear the advent of AI",
     "startMs": 0,
-    "endMs": 1253.875,
-    "durationMs": 1253.875
+    "endMs": 3854.5,
+    "durationMs": 3854.5
   },
   "processing": {
-    "startMs": 1253.875,
-    "endMs": 4844.875,
-    "latencyMs": 3591
+    "startMs": 3854.5,
+    "endMs": 8060.5,
+    "latencyMs": 4206
   },
   "output": {
-    "text": "4",
-    "startMs": 4844.875,
-    "endMs": 5169.9375,
-    "durationMs": 325.0625
+    "text": "# Why We Should Not Fear the Advent of AI\n\nThroughout history, transformative technologies have been met with fear. The printing press threatened scribes, the industrial revolution alarmed craftsmen, and the internet unsettled entire industries. Each time, society adapted and ultimately benefited. Artificial intelligence is the latest in this long line of disruptive innovations, and while caution is warranted, fear is not.\n\n## AI as a Tool, Not a Replacement\n\nAt its core, AI is a tool built by humans to serve human purposes. It excels at pattern recognition, data processing, and repetitive tasks — but it lacks intention, consciousness, and genuine understanding. When a language model generates text or an algorithm recommends a product, it is executing statistical patterns, not exercising will. The fear that AI will \"take over\" misunderstands what these systems fundamentally are: sophisticated instruments that extend human capability, much like a telescope extends human vision.\n\n## Augmentation Over Automation\n\nThe most productive applications of AI are not about replacing people but augmenting them. Doctors use AI to detect tumors earlier. Scientists use it to model protein structures that would take decades to solve manually. Programmers use it to handle boilerplate so they can focus on architecture and design. In each case, AI handles the tedious or computationally intensive work while humans provide judgment, creativity, and ethical reasoning. The result is not fewer jobs but transformed jobs — a pattern we have seen with every major technological shift.\n\n## Economic Disruption Is Not New\n\nConcerns about job displacement are legitimate but not unique to AI. The agricultural revolution displaced farm workers, yet it freed humanity to pursue education, science, and art. The automation of manufacturing eliminated assembly line roles but created entirely new industries in software, services, and logistics. AI will similarly displace some roles while creating others we cannot yet imagine. The challenge is not to halt progress but to manage the transition through education, retraining, and policy.\n\n## Safety Through Engagement, Not Avoidance\n\nFear often leads to avoidance, and avoidance leads to ignorance. If thoughtful, ethically minded people disengage from AI development out of fear, they cede influence to those less concerned with safety. The best path to safe AI is broad, informed participation — researchers studying alignment, policymakers crafting regulation, and everyday users developing literacy about what AI can and cannot do. Engagement is a far better safeguard than retreat.\n\n## The Risks Are Manageable\n\nThis is not to say AI poses no risks. Bias in training data, misuse for surveillance, deepfakes, and concentration of power are real concerns. But these are engineering and governance problems, not existential inevitabilities. We regulate pharmaceuticals, aviation, and nuclear energy — all powerful technologies with serious risks. There is no reason we cannot do the same with AI. In fact, the global conversation about AI safety is more advanced and more widespread than it was for any previous technology at a comparable stage of development.\n\n## A Hopeful Trajectory\n\nAI offers the potential to solve problems that have long seemed intractable: accelerating drug discovery, optimizing energy grids, making education personalized and accessible, and bridging language barriers across the globe. Fearing AI means fearing these possibilities. A measured, informed optimism — paired with vigilance and accountability — is a far more productive stance.\n\nThe advent of AI is not something to fear. It is something to shape. The technology will reflect the values of those who build and govern it. The best response to uncertainty is not fear but responsibility: learning how these systems work, advocating for thoughtful regulation, and ensuring that the benefits of AI are distributed broadly. History suggests that humanity rises to meet its technological challenges. There is no reason to believe this time will be different.",
+    "startMs": 8060.5,
+    "endMs": 280662.75,
+    "durationMs": 272602.25
   },
-  "totalDurationMs": 5169.9375,
-  "recordedAt": "2026-03-31T00:10:53.307Z"
+  "totalDurationMs": 280662.75,
+  "recordedAt": "2026-03-31T00:22:55.779Z"
 }

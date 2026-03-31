@@ -447,6 +447,21 @@ async function main(): Promise<void> {
   globalStartTime = Date.now();
 
   const inputText = process.argv[2] || "What is the fibonacci sequence and why is it important?";
+  const model = process.argv[3] || process.env.ACPFX_MODEL || undefined;
+
+  // If a model is specified, set it on the acpx session before running
+  if (model) {
+    log(`Setting model to: ${model}`);
+    const { execSync } = await import("node:child_process");
+    try {
+      execSync(`acpx --model ${model} claude sessions ensure`, {
+        stdio: ["ignore", "ignore", "inherit"],
+        cwd: PROJECT_DIR,
+      });
+    } catch {
+      log(`Warning: could not set model via acpx. Continuing with current session model.`);
+    }
+  }
 
   // Ensure output directory exists
   await fs.mkdir(OUTPUT_DIR, { recursive: true });

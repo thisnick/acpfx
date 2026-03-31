@@ -14,6 +14,7 @@
     "check": "tsc --noEmit",
     "test": "node --test dist/test/**/*.test.js",
     "e2e": "node dist/scripts/e2e-conversation.js",
+    "e2e:haiku": "ACPFX_MODEL=claude-haiku-4-5-20251001 node dist/scripts/e2e-conversation.js",
     "e2e:record": "node dist/scripts/e2e-conversation.js"
   },
   "keywords": ["acp", "voice", "pipeline", "cli"],
