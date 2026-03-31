@@ -29,14 +29,29 @@ export async function runPipeline(opts: RunOptions): Promise<void> {
   );
 
   const orch = Orchestrator.fromFile(configPath, {
-    onEvent: hasUi
-      ? undefined
-      : (event: AnyEvent) => {
+    onEvent: (event: AnyEvent) => {
           const { type, _from, ts } = event;
           // Skip noisy events
           if (type === "audio.chunk" || type === "audio.level") return;
+
+          if (hasUi) {
+            // In UI mode, only log events need special handling — they're displayed
+            // by the UI node which receives them through normal routing.
+            // Nothing to do here.
+            return;
+          }
+
           const elapsed = ts ? `+${ts - startTime}ms` : "";
-          // Show relevant fields without huge data blobs
+
+          if (type === "log") {
+            const logEvent = event as { level?: string; component?: string; message?: string };
+            const level = logEvent.level === "error" ? "ERROR" : "";
+            process.stderr.write(
+              `[${logEvent.component ?? _from ?? "?"}] ${level} ${logEvent.message ?? ""}\n`,
+            );
+            return;
+          }
+
           const { _from: _f, ts: _t, type: _ty, ...rest } = event;
           delete (rest as Record<string, unknown>).data;
           process.stderr.write(

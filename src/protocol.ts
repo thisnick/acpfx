@@ -116,6 +116,15 @@ export type LifecycleDoneEvent = OrchestratorStamp & {
   component: string;
 };
 
+// ---- Log ----
+
+export type LogEvent = OrchestratorStamp & {
+  type: "log";
+  level: "info" | "warn" | "error" | "debug";
+  component: string;
+  message: string;
+};
+
 // ---- Union types ----
 
 export type AudioEvent = AudioChunkEvent | AudioLevelEvent;
@@ -137,13 +146,15 @@ export type ControlEvent =
   | ControlErrorEvent;
 
 export type LifecycleEvent = LifecycleReadyEvent | LifecycleDoneEvent;
+export type LogEventType = LogEvent;
 
 export type PipelineEvent =
   | AudioEvent
   | SpeechEvent
   | AgentEvent
   | ControlEvent
-  | LifecycleEvent;
+  | LifecycleEvent
+  | LogEvent;
 
 /** An event with a `type` field that doesn't match a known type. Forwarded unchanged. */
 export type UnknownEvent = OrchestratorStamp & {
@@ -170,6 +181,7 @@ const KNOWN_TYPES = new Set([
   "control.error",
   "lifecycle.ready",
   "lifecycle.done",
+  "log",
 ]);
 
 export function isKnownEventType(type: string): boolean {

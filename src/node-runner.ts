@@ -102,19 +102,25 @@ export class NodeRunner {
       }
     });
 
-    // Forward stderr to parent stderr
+    // Forward stderr
     if (this.use.includes("ui-cli") || this.use.includes("ui-web")) {
       // UI nodes: pipe raw bytes so Ink's ANSI escape sequences work
       this.proc.stderr!.pipe(process.stderr);
-    } else if (!this.options.quiet) {
-      // Other nodes: prefix each line with node name (unless quiet mode for UI)
+    } else {
+      // Convert node stderr lines to log events routed through the orchestrator
       const stderrRl = createInterface({ input: this.proc.stderr! });
       stderrRl.on("line", (line) => {
         if (line.includes("buffer underflow") || line.includes("Didn't have any audio")) return;
-        process.stderr.write(`[${this.name}] ${line}\n`);
+        if (!line.trim()) return;
+        // Emit as a log event so it flows through the orchestrator like any other event
+        this.options.onEvent({
+          type: "log",
+          level: line.toLowerCase().includes("error") ? "error" : "info",
+          component: this.name,
+          message: line,
+        } as AnyEvent);
       });
     }
-    // In quiet mode, stderr from non-UI nodes is discarded
 
     this.proc.on("error", (err) => {
       this.options.onError(err);

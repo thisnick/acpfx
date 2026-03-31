@@ -136,6 +136,17 @@ export class Orchestrator {
       }
     }
 
+    // Log events are broadcast to all UI and recorder nodes regardless of DAG wiring
+    if (stamped.type === "log") {
+      for (const [name, node] of this.dag.nodes) {
+        const isObserver = node.use.includes("ui-") || node.use.includes("recorder");
+        if (isObserver && !dagNode?.outputs.includes(name)) {
+          const runner = this.runners.get(name);
+          if (runner) runner.send(stamped);
+        }
+      }
+    }
+
     // If this is speech.pause from an STT node while bridge might be streaming,
     // propagate interrupt to bridge and all downstream of bridge.
     // The orchestrator checks: if speech.pause arrives and there's a bridge node
