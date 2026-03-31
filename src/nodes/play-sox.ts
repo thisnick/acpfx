@@ -92,7 +92,7 @@ async function processQueue(): Promise<void> {
       const event = JSON.parse(line);
 
       if (event.type === "control.interrupt") {
-        // Immediate silence
+        log(`INTERRUPT received — destroying speaker`);
         destroySpeaker();
         continue;
       }
@@ -104,12 +104,14 @@ async function processQueue(): Promise<void> {
         }
         const monopcm = Buffer.from(event.data, "base64");
         const pcm = CHANNELS === 1 ? monoToStereo(monopcm) : monopcm;
-        const ok = speaker.write(pcm);
-        if (!ok) {
-          // Backpressure — wait for speaker to drain
-          await new Promise<void>((resolve) => {
-            speaker!.once("drain", resolve);
-          });
+        // Write to speaker. Don't await drain — if backpressure hits,
+        // just keep going. Awaiting drain deadlocks if interrupt destroys
+        // the speaker mid-wait. Dropping a frame is fine for real-time audio.
+        try {
+          speaker.write(pcm);
+        } catch {
+          // Speaker may have been destroyed by interrupt
+          speaker = null;
         }
       }
     } catch {}
