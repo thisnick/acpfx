@@ -193,6 +193,10 @@ async function cancelCurrentPrompt(): Promise<void> {
 
   streaming = false;
 
+  // Tell downstream nodes (TTS, speaker) to stop immediately
+  log("Emitting control.interrupt downstream");
+  emit({ type: "control.interrupt", reason: "user_speech" });
+
   // Emit control.interrupt so downstream nodes (TTS, play) flush their buffers
   emit({
     type: "control.interrupt",
