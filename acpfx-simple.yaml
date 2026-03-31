@@ -32,6 +32,7 @@ nodes:
       voiceId: JBFqnCBsd6RMkjVDRZzb
     outputs: [speaker, echo-gate]
 
+
   speaker:
     use: "@acpfx/play-sox"
     outputs: []

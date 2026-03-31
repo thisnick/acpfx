@@ -95,7 +95,7 @@ rl.on("line", (line) => {
     if (event.type === "audio.chunk" && event.trackId === "tts") {
       lastTtsChunkTime = Date.now();
       enterPlaybackMode();
-      // Don't forward TTS chunks — they're just for detecting playback state
+      // Don't forward TTS chunks to STT
       return;
     }
 

@@ -1,10 +1,9 @@
 /**
- * DAG construction and validation from a PipelineConfig.
+ * Graph construction from a PipelineConfig.
  *
  * - Builds an adjacency list from node outputs
- * - Detects cycles (rejects invalid configs)
- * - Produces topological sort order
- * - Computes downstream sets for interrupt propagation
+ * - Produces a spawn order (best-effort topological, tolerates cycles)
+ * - Computes downstream sets for interrupt propagation (with cycle protection)
  */
 
 import { PipelineConfig } from "./config.js";
@@ -26,13 +25,13 @@ export type DagNode = {
 export type Dag = {
   /** All nodes keyed by name. */
   nodes: Map<string, DagNode>;
-  /** Topological order (sources first). */
+  /** Spawn order (best-effort topological — sources first, cycles tolerated). */
   order: string[];
-  /** For a given node, all nodes downstream (transitive). Used for interrupt propagation. */
+  /** For a given node, all nodes reachable downstream (transitive, cycle-safe). */
   downstream: Map<string, Set<string>>;
 };
 
-/** Build and validate a DAG from a pipeline config. */
+/** Build a graph from a pipeline config. Cycles are allowed. */
 export function buildDag(config: PipelineConfig): Dag {
   const nodes = new Map<string, DagNode>();
 
@@ -45,7 +44,7 @@ export function buildDag(config: PipelineConfig): Dag {
     });
   }
 
-  // Validate all output references exist (config.ts already does this, but belt-and-suspenders)
+  // Validate all output references exist
   for (const node of nodes.values()) {
     for (const out of node.outputs) {
       if (!nodes.has(out)) {
@@ -56,16 +55,18 @@ export function buildDag(config: PipelineConfig): Dag {
     }
   }
 
-  const order = topologicalSort(nodes);
+  const order = spawnOrder(nodes);
   const downstream = computeDownstream(nodes);
 
   return { nodes, order, downstream };
 }
 
-// ---- Topological sort with cycle detection (Kahn's algorithm) ----
-
-function topologicalSort(nodes: Map<string, DagNode>): string[] {
-  // Compute in-degrees
+/**
+ * Best-effort topological sort. Processes zero-in-degree nodes first (Kahn's),
+ * then appends any remaining nodes (in a cycle) in alphabetical order.
+ * This gives a reasonable spawn order even with cycles.
+ */
+function spawnOrder(nodes: Map<string, DagNode>): string[] {
   const inDegree = new Map<string, number>();
   for (const name of nodes.keys()) {
     inDegree.set(name, 0);
@@ -76,12 +77,10 @@ function topologicalSort(nodes: Map<string, DagNode>): string[] {
     }
   }
 
-  // Start with zero in-degree nodes
   const queue: string[] = [];
   for (const [name, deg] of inDegree) {
     if (deg === 0) queue.push(name);
   }
-  // Sort for deterministic order
   queue.sort();
 
   const result: string[] = [];
@@ -93,7 +92,6 @@ function topologicalSort(nodes: Map<string, DagNode>): string[] {
       const newDeg = (inDegree.get(out) ?? 1) - 1;
       inDegree.set(out, newDeg);
       if (newDeg === 0) {
-        // Insert sorted for deterministic order
         const idx = queue.findIndex((q) => q > out);
         if (idx === -1) queue.push(out);
         else queue.splice(idx, 0, out);
@@ -101,19 +99,21 @@ function topologicalSort(nodes: Map<string, DagNode>): string[] {
     }
   }
 
-  if (result.length !== nodes.size) {
-    // Find a cycle for a helpful error message
-    const remaining = [...nodes.keys()].filter((n) => !result.includes(n));
-    throw new DagError(
-      `DAG contains a cycle involving nodes: ${remaining.join(", ")}`,
-    );
+  // Append any remaining nodes involved in cycles
+  if (result.length < nodes.size) {
+    const remaining = [...nodes.keys()]
+      .filter((n) => !result.includes(n))
+      .sort();
+    result.push(...remaining);
   }
 
   return result;
 }
 
-// ---- Downstream computation (transitive closure) ----
-
+/**
+ * Compute downstream sets (transitive closure). Handles cycles by tracking
+ * visited nodes — won't infinite loop.
+ */
 function computeDownstream(nodes: Map<string, DagNode>): Map<string, Set<string>> {
   const downstream = new Map<string, Set<string>>();
 

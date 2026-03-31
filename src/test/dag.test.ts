@@ -66,7 +66,7 @@ nodes:
     assert.ok(dag.order.indexOf("mixer") > dag.order.indexOf("caller2"));
   });
 
-  it("rejects config with a cycle (A→B→A)", () => {
+  it("tolerates cycles (A→B→A) and includes all nodes in order", () => {
     const config = parseConfig(`
 nodes:
   a:
@@ -76,11 +76,14 @@ nodes:
     use: "@acpfx/node-b"
     outputs: [a]
 `);
-    assert.throws(() => buildDag(config), DagError);
-    assert.throws(() => buildDag(config), /cycle/i);
+    const dag = buildDag(config);
+    assert.equal(dag.nodes.size, 2);
+    assert.equal(dag.order.length, 2);
+    assert.ok(dag.order.includes("a"));
+    assert.ok(dag.order.includes("b"));
   });
 
-  it("rejects config with a longer cycle (A→B→C→A)", () => {
+  it("tolerates longer cycles (A→B→C→A) and computes downstream", () => {
     const config = parseConfig(`
 nodes:
   a:
@@ -93,7 +96,11 @@ nodes:
     use: "@acpfx/node-c"
     outputs: [a]
 `);
-    assert.throws(() => buildDag(config), DagError);
+    const dag = buildDag(config);
+    assert.equal(dag.order.length, 3);
+    // All nodes are downstream of each other in a cycle
+    assert.ok(dag.downstream.get("a")!.has("b"));
+    assert.ok(dag.downstream.get("a")!.has("c"));
   });
 
   it("computes downstream sets for interrupt propagation", () => {
