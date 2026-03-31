@@ -144,7 +144,8 @@ async function openWebSocket(): Promise<void> {
     });
   });
 
-  ws.addEventListener("close", () => {
+  ws.addEventListener("close", (event: CloseEvent) => {
+    log(`WebSocket closed (code=${event.code}, reason=${event.reason || "none"})`);
     connected = false;
   });
 }
@@ -165,14 +166,19 @@ function emitAudioChunk(pcm: Buffer): void {
 }
 
 function sendText(text: string): void {
-  if (!ws || !connected) return;
+  if (!ws || !connected) {
+    log(`sendText dropped (connected=${connected}): "${text.slice(0, 30)}"`);
+    return;
+  }
   ws.send(JSON.stringify({ text }));
 }
 
 function endStream(): void {
   if (!ws || !connected) return;
   // Send empty text to signal EOS (end of stream)
+  log("Sending EOS");
   ws.send(JSON.stringify({ text: "" }));
+  // Don't close the WebSocket — let ElevenLabs close it after isFinal
 }
 
 function closeWebSocket(): void {
@@ -204,11 +210,11 @@ async function main(): Promise<void> {
       const event = JSON.parse(line);
       if (event.type === "agent.delta") {
         if (event.delta) {
-          // If this is a new request after an interrupt, reconnect first
-          if (interrupted || currentRequestId !== event.requestId) {
+          // Reconnect if needed: after interrupt, after previous stream ended, or new request
+          if (interrupted || !connected || currentRequestId !== event.requestId) {
+            log(`Reconnecting for request ${event.requestId?.slice(0, 8)} (interrupted=${interrupted}, connected=${connected}, newRequest=${currentRequestId !== event.requestId})`);
             interrupted = false;
             currentRequestId = event.requestId;
-            // Close old WS if any, open fresh one
             closeWebSocket();
             await openWebSocket();
           }
