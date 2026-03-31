@@ -209,7 +209,9 @@ async function main(): Promise<void> {
           // ended or interrupted. Start fresh for this request.
           currentRequestId = event.requestId;
         }
-        sendText(event.delta);
+        if (event.delta) {
+          sendText(event.delta);
+        }
       } else if (event.type === "agent.complete" && !interrupted) {
         // Agent is done — signal end of text stream so TTS can finalize
         endStream();
