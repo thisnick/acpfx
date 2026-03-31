@@ -16,13 +16,15 @@ export type RunOptions = {
 export async function runPipeline(opts: RunOptions): Promise<void> {
   const configPath = resolve(opts.config);
 
-  process.stderr.write(`[acpfx] Loading config: ${configPath}\n`);
+  // Logging helper — suppressed when UI is active
+  let hasUi = false;
+  const log = (msg: string) => { if (!hasUi) process.stderr.write(`[acpfx] ${msg}\n`); };
 
-  // Check if config has a UI node — if so, suppress verbose event logging
-  // since the UI renders to stderr and verbose logs would interleave
+  log(`Loading config: ${configPath}`);
+
   const { loadConfig } = await import("./config.js");
   const config = loadConfig(configPath);
-  const hasUi = Object.values(config.nodes).some(
+  hasUi = Object.values(config.nodes).some(
     (n) => n.use.includes("ui-cli") || n.use.includes("ui-web"),
   );
 
@@ -54,27 +56,27 @@ export async function runPipeline(opts: RunOptions): Promise<void> {
   let stopping = false;
   process.on("SIGINT", async () => {
     if (stopping) {
-      process.stderr.write("[acpfx] Force quit\n");
+      log("Force quit");
       process.exit(1);
     }
     stopping = true;
-    process.stderr.write("\n[acpfx] Shutting down...\n");
+    log("Shutting down...");
     await orch.stop();
     process.exit(0);
   });
 
   try {
-    process.stderr.write(`[acpfx] Starting pipeline...\n`);
+    log("Starting pipeline...");
     await orch.start();
-    process.stderr.write(`[acpfx] All nodes ready\n`);
+    log("All nodes ready");
 
     // Keep running until SIGINT or all nodes exit
     await new Promise<void>(() => {
       // Intentionally never resolves — we run until SIGINT
     });
   } catch (err) {
-    process.stderr.write(
-      `[acpfx] Fatal: ${err instanceof Error ? err.message : String(err)}\n`,
+    log(
+      `Fatal: ${err instanceof Error ? err.message : String(err)}`,
     );
     await orch.stop();
     process.exit(1);

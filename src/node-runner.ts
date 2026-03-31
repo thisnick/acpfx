@@ -24,6 +24,7 @@ export type NodeRunnerOptions = {
   use: string;
   settings?: Record<string, unknown>;
   env?: Record<string, string>;
+  quiet?: boolean; // suppress stderr forwarding (when UI is active)
   onEvent: (event: AnyEvent) => void;
   onError: (error: Error) => void;
   onExit: (code: number | null, signal: string | null) => void;
@@ -105,15 +106,15 @@ export class NodeRunner {
     if (this.use.includes("ui-cli") || this.use.includes("ui-web")) {
       // UI nodes: pipe raw bytes so Ink's ANSI escape sequences work
       this.proc.stderr!.pipe(process.stderr);
-    } else {
-      // Other nodes: prefix each line with node name
+    } else if (!this.options.quiet) {
+      // Other nodes: prefix each line with node name (unless quiet mode for UI)
       const stderrRl = createInterface({ input: this.proc.stderr! });
       stderrRl.on("line", (line) => {
-        // Suppress noisy CoreAudio buffer underflow warnings
         if (line.includes("buffer underflow") || line.includes("Didn't have any audio")) return;
         process.stderr.write(`[${this.name}] ${line}\n`);
       });
     }
+    // In quiet mode, stderr from non-UI nodes is discarded
 
     this.proc.on("error", (err) => {
       this.options.onError(err);

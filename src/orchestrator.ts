@@ -63,11 +63,17 @@ export class Orchestrator {
     for (const name of this.dag.order) {
       const dagNode = this.dag.nodes.get(name)!;
 
+      // Suppress non-UI node stderr when a UI node is present
+      const hasUi = Array.from(this.dag.nodes.values()).some(
+        (n) => n.use.includes("ui-cli") || n.use.includes("ui-web"),
+      );
+
       const runner = new NodeRunner({
         name,
         use: dagNode.use,
         settings: dagNode.settings,
         env: this.config.env,
+        quiet: hasUi && !dagNode.use.includes("ui-"),
         onEvent: (event) => this.handleNodeEvent(name, event),
         onError: (error) => this.handleNodeError(name, error),
         onExit: (code, signal) => this.handleNodeExit(name, code, signal),
