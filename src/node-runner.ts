@@ -125,13 +125,24 @@ export class NodeRunner {
 
   /** Send an event to this node's stdin. */
   send(event: AnyEvent): void {
-    if (!this.proc?.stdin?.writable) return;
+    if (!this.proc?.stdin?.writable) {
+      if (event.type === "audio.chunk") {
+        // Only log once per dropped burst
+        if (!this._loggedDrop) {
+          this._loggedDrop = true;
+          process.stderr.write(`[orchestrator] WARNING: dropping ${event.type} to ${this.name} (stdin not writable)\n`);
+        }
+      }
+      return;
+    }
+    this._loggedDrop = false;
     try {
       this.proc.stdin.write(serializeEvent(event) + "\n");
     } catch {
       // Node may have exited — ignore write errors
     }
   }
+  private _loggedDrop = false;
 
   /** Gracefully shut down: close stdin, then SIGTERM after timeout. */
   async stop(timeoutMs = 3000): Promise<void> {

@@ -30,8 +30,13 @@ export async function runPipeline(opts: RunOptions): Promise<void> {
     onEvent: hasUi
       ? undefined
       : (event: AnyEvent) => {
-          const { type, _from, ts, ...rest } = event;
+          const { type, _from, ts } = event;
+          // Skip noisy events
+          if (type === "audio.chunk" || type === "audio.level") return;
           const elapsed = ts ? `+${ts - startTime}ms` : "";
+          // Show relevant fields without huge data blobs
+          const { _from: _f, ts: _t, type: _ty, ...rest } = event;
+          delete (rest as Record<string, unknown>).data;
           process.stderr.write(
             `[${_from ?? "?"}] ${elapsed} ${type} ${JSON.stringify(rest)}\n`,
           );
