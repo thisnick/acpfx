@@ -1,19 +1,20 @@
 /**
  * bridge-acpx node — reads speech.pause events, submits to acpx via queue IPC,
  * streams agent.submit/agent.delta/agent.complete events.
- *
  * Handles control.interrupt by cancelling the active acpx prompt.
  *
- * Settings (via ACPFX_SETTINGS):
- *   agent: string         — agent name (e.g., "claude")
- *   model?: string         — model ID (e.g., "claude-haiku-4-5-20251001")
- *   approveAll?: boolean   — auto-approve all permission requests
- *   verbose?: boolean      — enable verbose logging
+ * Settings:
+ *   agent: string (required)  — agent name (claude, codex, pi, etc.)
+ *   session?: string          — named session (maps to acpx -s <name>)
+ *   args?: Record<string, string | boolean> — extra acpx CLI flags, passed through
+ *     e.g., { "model": "claude-sonnet-4-6", "approve-all": true, "ttl": "0" }
+ *     String values → --key value, boolean true → --key
+ *   verbose?: boolean
  */
 
 import { randomUUID } from "node:crypto";
+import { spawn, execSync, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
-import { spawn, type ChildProcess } from "node:child_process";
 import {
   AcpxIpcClient,
   resolveSessionId,
@@ -21,9 +22,8 @@ import {
 
 type Settings = {
   agent: string;
-  session?: string;   // named session (acpx -s <name>)
-  model?: string;
-  approveAll?: boolean;
+  session?: string;
+  args?: Record<string, string | boolean>;
   verbose?: boolean;
 };
 
@@ -36,6 +36,8 @@ if (!settings.agent) {
 
 const AGENT = settings.agent;
 const VERBOSE = settings.verbose ?? false;
+const ACPX_CMD = "npx";
+const ACPX_PKG = "acpx@latest";
 
 let ipcClient: AcpxIpcClient | null = null;
 let activeAbort: AbortController | null = null;
@@ -51,57 +53,64 @@ function log(msg: string): void {
   process.stderr.write(`[bridge-acpx] ${msg}\n`);
 }
 
+/** Build CLI args array from settings.args */
+function buildExtraArgs(): string[] {
+  const args: string[] = [];
+  if (!settings.args) return args;
+  for (const [key, value] of Object.entries(settings.args)) {
+    const flag = key.length === 1 ? `-${key}` : `--${key}`;
+    if (value === true) {
+      args.push(flag);
+    } else if (typeof value === "string") {
+      args.push(flag, value);
+    }
+  }
+  return args;
+}
+
 /**
  * Ensure an acpx session is running for the agent.
- * If no session exists, spawn one with a simple initial prompt.
+ * Runs a quick prompt to bootstrap session + queue owner if needed.
  */
 async function ensureSession(): Promise<string> {
-  // First, check if a session already exists
-  let sessionId = await resolveSessionId(AGENT);
+  // Check if a session already exists
+  let sessionId = await resolveSessionId(AGENT, settings.session);
   if (sessionId) {
     log(`Found existing session: ${sessionId}`);
     return sessionId;
   }
 
-  // No session — spawn acpx with the agent
-  log(`No active session for "${AGENT}", starting acpx...`);
+  // No session — spawn acpx to create one
+  log(`No active session for "${AGENT}"${settings.session ? ` (session: ${settings.session})` : ""}, starting...`);
 
-  const args: string[] = [];
-  if (settings.model) args.push("--model", settings.model);
-  if (settings.approveAll) args.push("--approve-all");
-  args.push(AGENT);
+  const args = ["-y", ACPX_PKG, ...buildExtraArgs(), AGENT];
   if (settings.session) args.push("-s", settings.session);
-  args.push("--format", "quiet");
-  args.push("hello"); // Initial prompt to establish session
+  args.push("--format", "quiet", "hello");
 
-  acpxProcess = spawn("acpx", args, {
+  acpxProcess = spawn(ACPX_CMD, args, {
     stdio: ["pipe", "pipe", "pipe"],
     env: process.env,
   });
 
   acpxProcess.stderr?.on("data", (data: Buffer) => {
-    if (VERBOSE) {
-      process.stderr.write(`[acpx] ${data.toString()}`);
-    }
+    if (VERBOSE) log(`[acpx] ${data.toString().trim()}`);
   });
 
-  // Wait for the session to appear (acpx needs time to start)
-  const maxWaitMs = 30000;
+  // Wait for session to appear
+  const maxWaitMs = 60000;
   const pollMs = 500;
   const startTime = Date.now();
 
   while (Date.now() - startTime < maxWaitMs) {
     await sleep(pollMs);
-    sessionId = await resolveSessionId(AGENT);
+    sessionId = await resolveSessionId(AGENT, settings.session);
     if (sessionId) {
       log(`Session started: ${sessionId}`);
       return sessionId;
     }
   }
 
-  throw new Error(
-    `Timed out waiting for acpx session for "${AGENT}" after ${maxWaitMs}ms`,
-  );
+  throw new Error(`Timed out waiting for acpx session for "${AGENT}"`);
 }
 
 async function handleSpeechPause(pendingText: string): Promise<void> {
@@ -111,7 +120,6 @@ async function handleSpeechPause(pendingText: string): Promise<void> {
   streaming = true;
   activeAbort = new AbortController();
 
-  // Emit agent.submit
   emit({
     type: "agent.submit",
     requestId,
@@ -126,7 +134,7 @@ async function handleSpeechPause(pendingText: string): Promise<void> {
       sessionId: ipcClient.sessionId,
       text: pendingText,
       signal: activeAbort.signal,
-      onTextDelta: (delta, _seq) => {
+      onTextDelta: (delta: string, _seq: number) => {
         if (interrupted) return;
         fullText += delta;
         emit({
@@ -136,7 +144,7 @@ async function handleSpeechPause(pendingText: string): Promise<void> {
           seq: seq++,
         });
       },
-      onComplete: (text) => {
+      onComplete: (text: string) => {
         if (!interrupted) {
           emit({
             type: "agent.complete",
@@ -147,8 +155,7 @@ async function handleSpeechPause(pendingText: string): Promise<void> {
         streaming = false;
         activeAbort = null;
       },
-      onError: (error) => {
-        log(`Prompt error: ${error.message}`);
+      onError: (error: Error) => {
         emit({
           type: "control.error",
           component: "bridge-acpx",
@@ -195,7 +202,6 @@ async function cancelCurrentPrompt(): Promise<void> {
 
 function cleanup(): void {
   if (acpxProcess && !acpxProcess.killed) {
-    acpxProcess.stdin?.end();
     acpxProcess.kill("SIGTERM");
   }
 }
@@ -210,13 +216,10 @@ async function main(): Promise<void> {
   const sessionId = await ensureSession();
   ipcClient = new AcpxIpcClient(sessionId, { verbose: VERBOSE });
 
-  // Emit lifecycle.ready
   emit({ type: "lifecycle.ready", component: "bridge-acpx" });
 
   const rl = createInterface({ input: process.stdin });
 
-  // Track whether we're "active" — streaming or TTS may still be playing.
-  // Active from agent.submit until next speech.pause resets it.
   let active = false;
   let interruptedForBargein = false;
 
@@ -226,8 +229,6 @@ async function main(): Promise<void> {
       const event = JSON.parse(line);
 
       if (event.type === "speech.partial" && active && !interruptedForBargein) {
-        // User started speaking while agent is active — interrupt immediately.
-        // Don't wait for speech.pause. Stop TTS + speaker + cancel ACP now.
         log("Barge-in detected (speech.partial while active) — interrupting");
         interruptedForBargein = true;
         emit({ type: "control.interrupt", reason: "user_speech" });
@@ -235,12 +236,10 @@ async function main(): Promise<void> {
           cancelCurrentPrompt();
         }
       } else if (event.type === "speech.pause") {
-        // Full utterance ready — submit to agent.
         interruptedForBargein = false;
         active = true;
         const text = event.pendingText ?? event.text ?? "";
         if (text) {
-          // Interrupt any remaining playback before submitting
           emit({ type: "control.interrupt", reason: "user_speech" });
           if (streaming) {
             cancelCurrentPrompt().then(() => handleSpeechPause(text));
@@ -272,6 +271,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log(`Fatal: ${err.message}`);
+  log(`Fatal: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 });

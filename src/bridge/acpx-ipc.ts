@@ -496,21 +496,21 @@ export class AcpxIpcClient {
  */
 export async function resolveSessionId(
   agentName: string,
+  sessionName?: string,
 ): Promise<string | undefined> {
   const indexPath = path.join(os.homedir(), ".acpx", "sessions", "index.json");
   try {
     const data = await fs.readFile(indexPath, "utf8");
     const raw = JSON.parse(data);
 
-    // Support both array format and {entries: [...]} format
     const entries: unknown[] = Array.isArray(raw) ? raw : Array.isArray(raw?.entries) ? raw.entries : [];
     if (entries.length === 0) return undefined;
 
-    // Find most recent open session matching the agent
     type IndexEntry = {
       acpxRecordId?: string;
       acpSessionId?: string;
       agentCommand?: string;
+      name?: string;
       closed?: boolean;
       lastUsedAt?: string;
     };
@@ -521,13 +521,14 @@ export async function resolveSessionId(
           entry.agentCommand &&
           entry.agentCommand.includes(agentName) &&
           !entry.closed &&
-          (entry.acpxRecordId || entry.acpSessionId),
+          (entry.acpxRecordId || entry.acpSessionId) &&
+          // If sessionName specified, match it; otherwise match unnamed sessions
+          (sessionName ? entry.name === sessionName : !entry.name || entry.name === ""),
       )
       .sort((a, b) =>
         (b.lastUsedAt ?? "").localeCompare(a.lastUsedAt ?? ""),
       );
 
-    // Queue owner uses acpxRecordId as the session key, not acpSessionId
     return matches[0]?.acpxRecordId ?? matches[0]?.acpSessionId;
   } catch {
     return undefined;
