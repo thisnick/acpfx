@@ -1,0 +1,12 @@
+nodes:
+  mic:
+    use: "@acpfx/mic-file"
+    settings:
+      path: ./eval/e2e/test1-output-padded.wav
+      realtime: false
+    outputs: [stt]
+  stt:
+    use: "@acpfx/stt-elevenlabs"
+    settings:
+      language: en
+    outputs: []

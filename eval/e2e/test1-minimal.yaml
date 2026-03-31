@@ -1,0 +1,24 @@
+nodes:
+  mic:
+    use: "@acpfx/mic-file"
+    settings:
+      path: ./eval/e2e/test1-input-padded.wav
+      realtime: true
+    outputs: [stt]
+  stt:
+    use: "@acpfx/stt-elevenlabs"
+    settings:
+      language: en
+    outputs: [bridge]
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    settings:
+      agent: claude
+      model: claude-haiku-4-5-20251001
+      approveAll: true
+    outputs: [tts]
+  tts:
+    use: "@acpfx/tts-elevenlabs"
+    settings:
+      voiceId: JBFqnCBsd6RMkjVDRZzb
+    outputs: []

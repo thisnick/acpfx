@@ -1,15 +1,23 @@
 /**
- * NDJSON streaming protocol event type definitions.
+ * Streaming Protocol v2 — Event type definitions for the DAG-based pipeline.
  *
- * All inter-component communication uses newline-delimited JSON.
- * Each line has a `type` field. Unknown types are forwarded unchanged.
+ * Every event has a `type` field ("category.event").
+ * The orchestrator stamps `ts` (wall-clock ms) and `_from` (source node name).
  */
 
-// --- Audio events ---
+// ---- Event Envelope ----
 
-export type AudioChunkEvent = {
+/** Fields added by the orchestrator to every routed event. */
+export type OrchestratorStamp = {
+  ts?: number;    // wall-clock ms since epoch, added by orchestrator
+  _from?: string; // source node name, added by orchestrator
+};
+
+// ---- Audio ----
+
+export type AudioChunkEvent = OrchestratorStamp & {
   type: "audio.chunk";
-  streamId: string;
+  trackId: string;
   format: string;
   sampleRate: number;
   channels: number;
@@ -17,118 +25,158 @@ export type AudioChunkEvent = {
   durationMs: number;
 };
 
-// --- Speech events ---
+export type AudioLevelEvent = OrchestratorStamp & {
+  type: "audio.level";
+  trackId: string;
+  rms: number;
+  peak: number;
+  dbfs: number;
+};
 
-export type SpeechPartialEvent = {
+// ---- Speech Recognition ----
+
+export type SpeechPartialEvent = OrchestratorStamp & {
   type: "speech.partial";
-  streamId: string;
+  trackId: string;
   text: string;
 };
 
-export type SpeechFinalEvent = {
+export type SpeechDeltaEvent = OrchestratorStamp & {
+  type: "speech.delta";
+  trackId: string;
+  text: string;
+  replaces?: string;
+};
+
+export type SpeechFinalEvent = OrchestratorStamp & {
   type: "speech.final";
-  streamId: string;
+  trackId: string;
+  text: string;
+  confidence?: number;
+};
+
+export type SpeechPauseEvent = OrchestratorStamp & {
+  type: "speech.pause";
+  trackId: string;
+  pendingText: string;
+  silenceMs: number;
+};
+
+// ---- Agent/LLM ----
+
+export type AgentSubmitEvent = OrchestratorStamp & {
+  type: "agent.submit";
+  requestId: string;
   text: string;
 };
 
-export type SpeechPauseEvent = {
-  type: "speech.pause";
-  streamId: string;
-  silenceMs: number;
-  pendingText: string;
-};
-
-export type SpeechResumeEvent = {
-  type: "speech.resume";
-  streamId: string;
-};
-
-// --- Text events ---
-
-export type TextDeltaEvent = {
-  type: "text.delta";
+export type AgentDeltaEvent = OrchestratorStamp & {
+  type: "agent.delta";
   requestId: string;
   delta: string;
   seq: number;
 };
 
-export type TextCompleteEvent = {
-  type: "text.complete";
+export type AgentCompleteEvent = OrchestratorStamp & {
+  type: "agent.complete";
   requestId: string;
   text: string;
+  tokenUsage?: { input: number; output: number };
 };
 
-// --- Control events ---
+// ---- Control ----
 
-export type ControlInterruptEvent = {
+export type ControlInterruptEvent = OrchestratorStamp & {
   type: "control.interrupt";
-  requestId: string;
   reason: string;
 };
 
-export type ControlStateEvent = {
+export type ControlStateEvent = OrchestratorStamp & {
   type: "control.state";
-  state: "listening" | "processing" | "speaking";
+  component: string;
+  state: string;
 };
 
-export type ControlErrorEvent = {
+export type ControlErrorEvent = OrchestratorStamp & {
   type: "control.error";
+  component: string;
   message: string;
-  source?: string;
+  fatal: boolean;
 };
 
-// --- Union types ---
+// ---- Lifecycle ----
 
-export type AudioEvent = AudioChunkEvent;
+export type LifecycleReadyEvent = OrchestratorStamp & {
+  type: "lifecycle.ready";
+  component: string;
+};
+
+export type LifecycleDoneEvent = OrchestratorStamp & {
+  type: "lifecycle.done";
+  component: string;
+};
+
+// ---- Union types ----
+
+export type AudioEvent = AudioChunkEvent | AudioLevelEvent;
 
 export type SpeechEvent =
   | SpeechPartialEvent
+  | SpeechDeltaEvent
   | SpeechFinalEvent
-  | SpeechPauseEvent
-  | SpeechResumeEvent;
+  | SpeechPauseEvent;
 
-export type TextEvent = TextDeltaEvent | TextCompleteEvent;
+export type AgentEvent =
+  | AgentSubmitEvent
+  | AgentDeltaEvent
+  | AgentCompleteEvent;
 
 export type ControlEvent =
   | ControlInterruptEvent
   | ControlStateEvent
   | ControlErrorEvent;
 
+export type LifecycleEvent = LifecycleReadyEvent | LifecycleDoneEvent;
+
 export type PipelineEvent =
   | AudioEvent
   | SpeechEvent
-  | TextEvent
-  | ControlEvent;
+  | AgentEvent
+  | ControlEvent
+  | LifecycleEvent;
 
-/**
- * An unknown event is any JSON object with a `type` field that doesn't
- * match a known event type. These are forwarded unchanged.
- */
-export type UnknownEvent = {
+/** An event with a `type` field that doesn't match a known type. Forwarded unchanged. */
+export type UnknownEvent = OrchestratorStamp & {
   type: string;
   [key: string]: unknown;
 };
 
 export type AnyEvent = PipelineEvent | UnknownEvent;
 
-// --- Type guards ---
+// ---- Type discrimination ----
 
 const KNOWN_TYPES = new Set([
   "audio.chunk",
+  "audio.level",
   "speech.partial",
+  "speech.delta",
   "speech.final",
   "speech.pause",
-  "speech.resume",
-  "text.delta",
-  "text.complete",
+  "agent.submit",
+  "agent.delta",
+  "agent.complete",
   "control.interrupt",
   "control.state",
   "control.error",
+  "lifecycle.ready",
+  "lifecycle.done",
 ]);
 
 export function isKnownEventType(type: string): boolean {
   return KNOWN_TYPES.has(type);
 }
+
+// ---- Serialization ----
 
 export function parseEvent(json: string): AnyEvent {
   const obj = JSON.parse(json);
@@ -140,4 +188,19 @@ export function parseEvent(json: string): AnyEvent {
 
 export function serializeEvent(event: AnyEvent): string {
   return JSON.stringify(event);
+}
+
+// ---- Helpers ----
+
+/** Create an event with the given type and payload. */
+export function createEvent<T extends AnyEvent>(event: T): T {
+  return event;
+}
+
+/** Stamp an event with orchestrator metadata. */
+export function stampEvent<T extends AnyEvent>(
+  event: T,
+  from: string,
+): T & Required<OrchestratorStamp> {
+  return { ...event, ts: Date.now(), _from: from };
 }

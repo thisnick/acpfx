@@ -1,0 +1,42 @@
+{"ts":170,"type":"speech.resume"}
+{"ts":170,"type":"audio.chunk"}
+{"ts":170,"type":"audio.chunk"}
+{"ts":219,"type":"audio.chunk"}
+{"ts":323,"type":"audio.chunk"}
+{"ts":422,"type":"audio.chunk"}
+{"ts":523,"type":"audio.chunk"}
+{"ts":625,"type":"audio.chunk"}
+{"ts":725,"type":"audio.chunk"}
+{"ts":825,"type":"audio.chunk"}
+{"ts":930,"type":"audio.chunk"}
+{"ts":1030,"type":"audio.chunk"}
+{"ts":1131,"type":"audio.chunk"}
+{"ts":1232,"type":"audio.chunk"}
+{"ts":1333,"type":"audio.chunk"}
+{"ts":1434,"type":"audio.chunk"}
+{"ts":1536,"type":"audio.chunk"}
+{"ts":1638,"type":"audio.chunk"}
+{"ts":1740,"type":"audio.chunk"}
+{"ts":1839,"type":"audio.chunk"}
+{"ts":1942,"type":"audio.chunk"}
+{"ts":2043,"type":"audio.chunk"}
+{"ts":2079,"type":"speech.partial","text":"Write me an essay"}
+{"ts":2145,"type":"audio.chunk"}
+{"ts":2178,"type":"speech.partial","text":"Write me an essay about why people should"}
+{"ts":2247,"type":"audio.chunk"}
+{"ts":2348,"type":"audio.chunk"}
+{"ts":2449,"type":"audio.chunk"}
+{"ts":2551,"type":"audio.chunk"}
+{"ts":2653,"type":"audio.chunk"}
+{"ts":2752,"type":"audio.chunk"}
+{"ts":2855,"type":"audio.chunk"}
+{"ts":2956,"type":"audio.chunk"}
+{"ts":3057,"type":"audio.chunk"}
+{"ts":3083,"type":"speech.partial","text":"Write me an essay about why people should not fear the advent"}
+{"ts":3158,"type":"audio.chunk"}
+{"ts":3257,"type":"audio.chunk"}
+{"ts":3358,"type":"audio.chunk"}
+{"ts":3461,"type":"audio.chunk"}
+{"ts":3561,"type":"audio.chunk"}
+{"ts":3662,"type":"audio.chunk"}
+{"ts":3764,"type":"audio.chunk"}

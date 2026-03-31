@@ -1,0 +1,34 @@
+nodes:
+  mic:
+    use: "@acpfx/mic-file"
+    settings:
+      path: ./eval/e2e/test2-input.wav
+      realtime: true
+    outputs: [stt]
+  stt:
+    use: "@acpfx/stt-elevenlabs"
+    settings:
+      language: en
+    outputs: [bridge, recorder]
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    settings:
+      agent: claude
+      model: claude-haiku-4-5-20251001
+      approveAll: true
+    outputs: [tts, recorder]
+  tts:
+    use: "@acpfx/tts-elevenlabs"
+    settings:
+      voiceId: JBFqnCBsd6RMkjVDRZzb
+    outputs: [play, recorder]
+  play:
+    use: "@acpfx/play-file"
+    settings:
+      path: ./eval/e2e/test2-output.wav
+    outputs: []
+  recorder:
+    use: "@acpfx/recorder"
+    settings:
+      outputDir: ./eval/e2e/test2-recordings
+    outputs: []

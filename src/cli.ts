@@ -1,94 +1,66 @@
-#!/usr/bin/env node
+/**
+ * CLI handler for `acpfx run --config <path>`
+ *
+ * Loads a YAML config, starts the orchestrator, and handles SIGINT for clean shutdown.
+ */
 
-import { Command } from "commander";
+import { resolve } from "node:path";
+import { Orchestrator } from "./orchestrator.js";
+import { serializeEvent, type AnyEvent } from "./protocol.js";
 
-const program = new Command();
+export type RunOptions = {
+  config: string;
+  headless?: boolean;
+};
 
-program
-  .name("acpfx")
-  .description("CLI-composable voice pipeline for ACP agents")
-  .version("0.1.0");
+export async function runPipeline(opts: RunOptions): Promise<void> {
+  const configPath = resolve(opts.config);
 
-program
-  .command("tap")
-  .description("Debug inspector: logs all events to stderr, passes through to stdout")
-  .option("--json", "Output raw JSON to stderr instead of formatted summary")
-  .action(async (opts) => {
-    const { runTap } = await import("./commands/tap.js");
-    await runTap(opts);
+  process.stderr.write(`[acpfx] Loading config: ${configPath}\n`);
+
+  const orch = Orchestrator.fromFile(configPath, {
+    onEvent: (event: AnyEvent) => {
+      // Log all events to stderr in a compact format
+      const { type, _from, ts, ...rest } = event;
+      const elapsed = ts ? `+${ts - startTime}ms` : "";
+      process.stderr.write(
+        `[${_from ?? "?"}] ${elapsed} ${type} ${JSON.stringify(rest)}\n`,
+      );
+    },
+    onError: (error: Error) => {
+      process.stderr.write(`[acpfx] ERROR: ${error.message}\n`);
+    },
   });
 
-program
-  .command("bridge")
-  .description("Orchestrator: connects speech events to an ACP agent via acpx")
-  .argument("<agent>", "Agent name (e.g., claude)")
-  .option("--raw", "Raw mode: read speech events from stdin, write text events to stdout")
-  .option("--input <pipeline>", "Custom input pipeline command (default: acpfx mic | acpfx stt | acpfx vad)")
-  .option("--output <pipeline>", "Custom output pipeline command (default: acpfx tts | acpfx play)")
-  .option("--model <id>", "Agent model ID (passed to acpx --model)")
-  .option("--approve-all", "Auto-approve all agent permission requests")
-  .option("--acpx-args <args>", "Additional args to pass to acpx session setup")
-  .option("--verbose", "Enable verbose logging to stderr")
-  .action(async (agent: string, opts) => {
-    const { runBridge } = await import("./commands/bridge.js");
-    await runBridge(agent, opts);
+  const startTime = Date.now();
+
+  // Handle SIGINT for clean shutdown
+  let stopping = false;
+  process.on("SIGINT", async () => {
+    if (stopping) {
+      process.stderr.write("[acpfx] Force quit\n");
+      process.exit(1);
+    }
+    stopping = true;
+    process.stderr.write("\n[acpfx] Shutting down...\n");
+    await orch.stop();
+    process.exit(0);
   });
 
-program
-  .command("tts")
-  .description("Text-to-speech: reads text events, emits audio.chunk events")
-  .option("--provider <name>", "TTS provider (elevenlabs, say)", "elevenlabs")
-  .option("--api-key <key>", "API key (or set ELEVENLABS_API_KEY env var)")
-  .option("--voice-id <id>", "ElevenLabs voice ID")
-  .option("--model <id>", "ElevenLabs model ID")
-  .option("--voice <name>", "macOS say voice name")
-  .action(async (opts) => {
-    const { runTts } = await import("./commands/tts.js");
-    await runTts(opts);
-  });
+  try {
+    process.stderr.write(`[acpfx] Starting pipeline...\n`);
+    await orch.start();
+    process.stderr.write(`[acpfx] All nodes ready\n`);
 
-program
-  .command("stt")
-  .description("Speech-to-text: reads audio.chunk events, emits speech.final events")
-  .option("--provider <name>", "STT provider (elevenlabs, openai)", "elevenlabs")
-  .option("--api-key <key>", "API key (or set OPENAI_API_KEY env var)")
-  .option("--language <lang>", "Language hint (e.g., en)")
-  .option("--chunk-ms <ms>", "Audio accumulation window in ms", "3000")
-  .action(async (opts) => {
-    const { runStt } = await import("./commands/stt.js");
-    await runStt(opts);
-  });
-
-program
-  .command("mic")
-  .description("Audio capture: reads from microphone or file, emits audio.chunk events")
-  .option("--provider <name>", "Audio provider (sox, file)", "sox")
-  .option("--path <file>", "WAV file path (required for file provider)")
-  .option("--chunk-ms <ms>", "Chunk duration in ms", "100")
-  .option("--no-pace", "Disable real-time pacing for file provider")
-  .action(async (opts) => {
-    const { runMic } = await import("./commands/mic.js");
-    await runMic(opts);
-  });
-
-program
-  .command("play")
-  .description("Audio playback: reads audio.chunk events, plays to speaker or file")
-  .option("--provider <name>", "Audio provider (sox, file)", "sox")
-  .option("--path <file>", "WAV file path (required for file provider)")
-  .action(async (opts) => {
-    const { runPlay } = await import("./commands/play.js");
-    await runPlay(opts);
-  });
-
-program
-  .command("vad")
-  .description("Voice activity detection: emits speech.resume/speech.pause events")
-  .option("--pause-ms <ms>", "Silence duration before emitting speech.pause", "600")
-  .option("--energy-threshold <n>", "RMS energy threshold for speech detection", "200")
-  .action(async (opts) => {
-    const { runVad } = await import("./commands/vad.js");
-    await runVad(opts);
-  });
-
-program.parse();
+    // Keep running until SIGINT or all nodes exit
+    await new Promise<void>(() => {
+      // Intentionally never resolves — we run until SIGINT
+    });
+  } catch (err) {
+    process.stderr.write(
+      `[acpfx] Fatal: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    await orch.stop();
+    process.exit(1);
+  }
+}

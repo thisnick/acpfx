@@ -1,10 +1,10 @@
 {
   "name": "acpfx",
-  "version": "0.1.0",
-  "description": "CLI-composable voice pipeline for ACP agents",
+  "version": "0.2.0",
+  "description": "Observable DAG-based voice pipeline for ACP agents",
   "type": "module",
   "bin": {
-    "acpfx": "dist/cli.js"
+    "acpfx": "dist/main.js"
   },
   "files": [
     "dist"
@@ -13,18 +13,27 @@
     "build": "tsc",
     "check": "tsc --noEmit",
     "test": "node --test dist/test/**/*.test.js",
-    "e2e": "node dist/scripts/e2e-conversation.js",
-    "e2e:haiku": "ACPFX_MODEL=claude-haiku-4-5-20251001 node dist/scripts/e2e-conversation.js",
-    "e2e:record": "node dist/scripts/e2e-conversation.js"
+    "start": "node dist/main.js run",
+    "start:headless": "node dist/main.js run --headless"
   },
-  "keywords": ["acp", "voice", "pipeline", "cli"],
+  "keywords": [
+    "acp",
+    "voice",
+    "pipeline",
+    "cli"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "commander": "^13.0.0"
+    "commander": "^13.0.0",
+    "ink": "^6.8.0",
+    "react": "^19.2.4",
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.14",
+    "ink-testing-library": "^4.0.0",
     "typescript": "^5.7.0"
   },
   "packageManager": "pnpm@10.29.3"
