@@ -13,7 +13,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { spawn, execSync, type ChildProcess } from "node:child_process";
+import { execSync } from "node:child_process";
 import { createInterface } from "node:readline";
 import {
   AcpxIpcClient,
@@ -41,7 +41,6 @@ const ACPX_PKG = "acpx@latest";
 
 let ipcClient: AcpxIpcClient | null = null;
 let activeAbort: AbortController | null = null;
-let acpxProcess: ChildProcess | null = null;
 let interrupted = false;
 let streaming = false;
 
@@ -73,44 +72,32 @@ function buildExtraArgs(): string[] {
  * Runs a quick prompt to bootstrap session + queue owner if needed.
  */
 async function ensureSession(): Promise<string> {
-  // Check if a session already exists
-  let sessionId = await resolveSessionId(AGENT, settings.session);
-  if (sessionId) {
-    log(`Found existing session: ${sessionId}`);
-    return sessionId;
-  }
-
-  // No session — spawn acpx to create one
-  log(`No active session for "${AGENT}"${settings.session ? ` (session: ${settings.session})` : ""}, starting...`);
+  // Always run a quick acpx prompt to ensure session + queue owner are alive.
+  // acpx handles reconnection internally if the agent needs it.
+  log(`Ensuring session for "${AGENT}"${settings.session ? ` (session: ${settings.session})` : ""}...`);
 
   const args = ["-y", ACPX_PKG, ...buildExtraArgs(), AGENT];
   if (settings.session) args.push("-s", settings.session);
-  args.push("--format", "quiet", "hello");
+  args.push("--format", "quiet", "ping");
 
-  acpxProcess = spawn(ACPX_CMD, args, {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: process.env,
-  });
-
-  acpxProcess.stderr?.on("data", (data: Buffer) => {
-    if (VERBOSE) log(`[acpx] ${data.toString().trim()}`);
-  });
-
-  // Wait for session to appear
-  const maxWaitMs = 60000;
-  const pollMs = 500;
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitMs) {
-    await sleep(pollMs);
-    sessionId = await resolveSessionId(AGENT, settings.session);
-    if (sessionId) {
-      log(`Session started: ${sessionId}`);
-      return sessionId;
-    }
+  try {
+    execSync([ACPX_CMD, ...args].join(" "), {
+      stdio: ["ignore", "ignore", "pipe"],
+      env: process.env,
+      timeout: 60000,
+    });
+  } catch (err) {
+    log(`Warning: acpx warm-up failed: ${err instanceof Error ? err.message : err}`);
   }
 
-  throw new Error(`Timed out waiting for acpx session for "${AGENT}"`);
+  // Now resolve the session ID
+  const sessionId = await resolveSessionId(AGENT, settings.session);
+  if (sessionId) {
+    log(`Session ready: ${sessionId}`);
+    return sessionId;
+  }
+
+  throw new Error(`Could not find acpx session for "${AGENT}" after warm-up`);
 }
 
 async function handleSpeechPause(pendingText: string): Promise<void> {
@@ -200,11 +187,6 @@ async function cancelCurrentPrompt(): Promise<void> {
   streaming = false;
 }
 
-function cleanup(): void {
-  if (acpxProcess && !acpxProcess.killed) {
-    acpxProcess.kill("SIGTERM");
-  }
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -259,13 +241,13 @@ async function main(): Promise<void> {
   });
 
   rl.on("close", () => {
-    cleanup();
+
     emit({ type: "lifecycle.done", component: "bridge-acpx" });
     process.exit(0);
   });
 
   process.on("SIGTERM", () => {
-    cleanup();
+
     process.exit(0);
   });
 }
