@@ -103,8 +103,13 @@ async function ensureSession(): Promise<string> {
 
 async function handleSpeechPause(pendingText: string): Promise<void> {
   if (!ipcClient || interrupted) return;
+
+  // Always interrupt downstream (TTS/speaker may still be playing even if
+  // LLM finished). Then cancel LLM if still streaming.
+  log("New speech — interrupting downstream");
+  emit({ type: "control.interrupt", reason: "user_speech" });
+
   if (streaming) {
-    // Already streaming — cancel first, then resubmit
     await cancelCurrentPrompt();
   }
 
@@ -192,10 +197,6 @@ async function cancelCurrentPrompt(): Promise<void> {
   }
 
   streaming = false;
-
-  // Tell downstream nodes (TTS, speaker) to stop immediately
-  log("Emitting control.interrupt downstream");
-  emit({ type: "control.interrupt", reason: "user_speech" });
 
   // Emit control.interrupt so downstream nodes (TTS, play) flush their buffers
   emit({
