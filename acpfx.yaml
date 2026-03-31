@@ -16,9 +16,9 @@ nodes:
     use: "@acpfx/bridge-acpx"
     settings:
       agent: claude
-      session: voice
+      session: voice              # named session
       args:
-        approve-all: true
+        approve-all: true         # extra acpx flags passed through
     outputs: [tts, ui, recorder]
 
   tts:

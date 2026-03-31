@@ -1,0 +1,189 @@
+{
+  "lockfile_version": "1",
+  "packages": {
+    "github:NixOS/nixpkgs/nixpkgs-unstable": {
+      "last_modified": "2026-03-30T07:26:21Z",
+      "resolved": "github:NixOS/nixpkgs/15c6719d8c604779cf59e03c245ea61d3d7ab69b?lastModified=1774855581&narHash=sha256-YkreHeMgTCYvJ5fESV0YyqQK49bHGe2B51tH6claUh4%3D"
+    },
+    "sox@latest": {
+      "last_modified": "2026-03-23T05:26:49Z",
+      "resolved": "github:NixOS/nixpkgs/4724d5647207377bede08da3212f809cbd94a648#sox",
+      "source": "devbox-search",
+      "version": "2021-05-09",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/bw87iv9b29fnji6487ngx9c24m7nb90i-sox-unstable-2021-05-09",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/49jm20sxiz9i2c4py1xj6ydnman4xyjl-sox-unstable-2021-05-09-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/lb5v09rzh5qbsb63i9g3wijh00nc9z1y-sox-unstable-2021-05-09-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/r0i4fi49n27nyyqy8fan3kzg8400lsfm-sox-unstable-2021-05-09-lib"
+            }
+          ],
+          "store_path": "/nix/store/bw87iv9b29fnji6487ngx9c24m7nb90i-sox-unstable-2021-05-09"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/a7g3b6kyjwikqq4x7zbjnsbkinrkphcs-sox-unstable-2021-05-09",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/hy0r261n4855l3yc2wylfyky4az5cn1p-sox-unstable-2021-05-09-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/357qzwi170la271xyf4h6b37mx1lv3pj-sox-unstable-2021-05-09-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/wis7nxsk5f76zfmxvsr1k54l0kzcq27i-sox-unstable-2021-05-09-lib"
+            }
+          ],
+          "store_path": "/nix/store/a7g3b6kyjwikqq4x7zbjnsbkinrkphcs-sox-unstable-2021-05-09"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/0xpimz4l1b8lg2iyhvigk280fxb6qbdx-sox-unstable-2021-05-09",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/56l19vgq2bpqmbr4p8f5wx8d8c9nj9s3-sox-unstable-2021-05-09-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/nc96sxp37splk4cnc4drvy3fajc4s3p7-sox-unstable-2021-05-09-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/mwg30vwbb8kqqmn0caw1z019ifan833c-sox-unstable-2021-05-09-lib"
+            }
+          ],
+          "store_path": "/nix/store/0xpimz4l1b8lg2iyhvigk280fxb6qbdx-sox-unstable-2021-05-09"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/h0bs7xnbpwfbwp26bx2824hjsm0k60x2-sox-unstable-2021-05-09",
+              "default": true
+            },
+            {
+              "name": "man",
+              "path": "/nix/store/avi1v6db9vdb2cyksqdn99295dn1a4b2-sox-unstable-2021-05-09-man",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/3xviq8b8fmiilfyvi71wpida79lfxgy1-sox-unstable-2021-05-09-dev"
+            },
+            {
+              "name": "lib",
+              "path": "/nix/store/kdfxyngq84c0rbqd40jhgv5j4dmwv6l0-sox-unstable-2021-05-09-lib"
+            }
+          ],
+          "store_path": "/nix/store/h0bs7xnbpwfbwp26bx2824hjsm0k60x2-sox-unstable-2021-05-09"
+        }
+      }
+    },
+    "speexdsp@latest": {
+      "last_modified": "2026-03-23T05:26:49Z",
+      "resolved": "github:NixOS/nixpkgs/4724d5647207377bede08da3212f809cbd94a648#speexdsp",
+      "source": "devbox-search",
+      "version": "1.2.1",
+      "systems": {
+        "aarch64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/z52ax26w2a6wl37p0jcd891gr0nc00qw-speexdsp-1.2.1",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/0dk3hnaw26r07f7397dhmsr37ifvzzw8-speexdsp-1.2.1-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/g2a3w4dy6jkhvmz64pbp1inrdmgms7rp-speexdsp-1.2.1-doc"
+            }
+          ],
+          "store_path": "/nix/store/z52ax26w2a6wl37p0jcd891gr0nc00qw-speexdsp-1.2.1"
+        },
+        "aarch64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/zxl776r8rs57k0mvdjli5rvyvan0slfs-speexdsp-1.2.1",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/shpjdpbpd5qy71q2l5ylkwbq1zz91qvy-speexdsp-1.2.1-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/5f04gvxq09nl13ij9lm8cj1szpwdy4b3-speexdsp-1.2.1-doc"
+            }
+          ],
+          "store_path": "/nix/store/zxl776r8rs57k0mvdjli5rvyvan0slfs-speexdsp-1.2.1"
+        },
+        "x86_64-darwin": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/c2wgvyz81rrxj4k9xj3ibf7vx0w3dcaa-speexdsp-1.2.1",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/slik7ngl6jxl83ksswr49d7g38ykm1yv-speexdsp-1.2.1-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/rg7fc23xgdknh5hg6ba46map37qnnzvg-speexdsp-1.2.1-doc"
+            }
+          ],
+          "store_path": "/nix/store/c2wgvyz81rrxj4k9xj3ibf7vx0w3dcaa-speexdsp-1.2.1"
+        },
+        "x86_64-linux": {
+          "outputs": [
+            {
+              "name": "out",
+              "path": "/nix/store/1m7k715d768nsidynlrylh4hxnm8gpjm-speexdsp-1.2.1",
+              "default": true
+            },
+            {
+              "name": "dev",
+              "path": "/nix/store/b4pm1g3nv8g9wx1xg9fdn74f72fihzrd-speexdsp-1.2.1-dev"
+            },
+            {
+              "name": "doc",
+              "path": "/nix/store/kccghy73m8p8rpz0bgdd4nn8qwhdg78x-speexdsp-1.2.1-doc"
+            }
+          ],
+          "store_path": "/nix/store/1m7k715d768nsidynlrylh4hxnm8gpjm-speexdsp-1.2.1"
+        }
+      }
+    }
+  }
+}

@@ -63,6 +63,7 @@ function InputSection({
   sttText: string;
   sttState: "partial" | "final" | "idle";
 }) {
+  // Level meter: 20 chars, scale RMS 0-32768
   const level = Math.min(20, Math.round((rms / 32768) * 20));
   const filled = "=".repeat(level);
   const empty = "-".repeat(20 - level);

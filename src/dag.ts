@@ -1,9 +1,10 @@
 /**
- * Graph construction from a PipelineConfig.
+ * DAG construction and validation from a PipelineConfig.
  *
  * - Builds an adjacency list from node outputs
- * - Produces a spawn order (best-effort topological, tolerates cycles)
- * - Computes downstream sets for interrupt propagation (with cycle protection)
+ * - Detects cycles (rejects invalid configs)
+ * - Produces topological sort order
+ * - Computes downstream sets for interrupt propagation
  */
 
 import { PipelineConfig } from "./config.js";
@@ -25,13 +26,13 @@ export type DagNode = {
 export type Dag = {
   /** All nodes keyed by name. */
   nodes: Map<string, DagNode>;
-  /** Spawn order (best-effort topological — sources first, cycles tolerated). */
+  /** Topological order (sources first). */
   order: string[];
-  /** For a given node, all nodes reachable downstream (transitive, cycle-safe). */
+  /** For a given node, all nodes downstream (transitive). Used for interrupt propagation. */
   downstream: Map<string, Set<string>>;
 };
 
-/** Build a graph from a pipeline config. Cycles are allowed. */
+/** Build and validate a DAG from a pipeline config. */
 export function buildDag(config: PipelineConfig): Dag {
   const nodes = new Map<string, DagNode>();
 
@@ -44,7 +45,7 @@ export function buildDag(config: PipelineConfig): Dag {
     });
   }
 
-  // Validate all output references exist
+  // Validate all output references exist (config.ts already does this, but belt-and-suspenders)
   for (const node of nodes.values()) {
     for (const out of node.outputs) {
       if (!nodes.has(out)) {
@@ -55,18 +56,16 @@ export function buildDag(config: PipelineConfig): Dag {
     }
   }
 
-  const order = spawnOrder(nodes);
+  const order = topologicalSort(nodes);
   const downstream = computeDownstream(nodes);
 
   return { nodes, order, downstream };
 }
 
-/**
- * Best-effort topological sort. Processes zero-in-degree nodes first (Kahn's),
- * then appends any remaining nodes (in a cycle) in alphabetical order.
- * This gives a reasonable spawn order even with cycles.
- */
-function spawnOrder(nodes: Map<string, DagNode>): string[] {
+// ---- Topological sort with cycle detection (Kahn's algorithm) ----
+
+function topologicalSort(nodes: Map<string, DagNode>): string[] {
+  // Compute in-degrees
   const inDegree = new Map<string, number>();
   for (const name of nodes.keys()) {
     inDegree.set(name, 0);
@@ -77,10 +76,12 @@ function spawnOrder(nodes: Map<string, DagNode>): string[] {
     }
   }
 
+  // Start with zero in-degree nodes
   const queue: string[] = [];
   for (const [name, deg] of inDegree) {
     if (deg === 0) queue.push(name);
   }
+  // Sort for deterministic order
   queue.sort();
 
   const result: string[] = [];
@@ -92,6 +93,7 @@ function spawnOrder(nodes: Map<string, DagNode>): string[] {
       const newDeg = (inDegree.get(out) ?? 1) - 1;
       inDegree.set(out, newDeg);
       if (newDeg === 0) {
+        // Insert sorted for deterministic order
         const idx = queue.findIndex((q) => q > out);
         if (idx === -1) queue.push(out);
         else queue.splice(idx, 0, out);
@@ -99,21 +101,19 @@ function spawnOrder(nodes: Map<string, DagNode>): string[] {
     }
   }
 
-  // Append any remaining nodes involved in cycles
-  if (result.length < nodes.size) {
-    const remaining = [...nodes.keys()]
-      .filter((n) => !result.includes(n))
-      .sort();
-    result.push(...remaining);
+  if (result.length !== nodes.size) {
+    // Find a cycle for a helpful error message
+    const remaining = [...nodes.keys()].filter((n) => !result.includes(n));
+    throw new DagError(
+      `DAG contains a cycle involving nodes: ${remaining.join(", ")}`,
+    );
   }
 
   return result;
 }
 
-/**
- * Compute downstream sets (transitive closure). Handles cycles by tracking
- * visited nodes — won't infinite loop.
- */
+// ---- Downstream computation (transitive closure) ----
+
 function computeDownstream(nodes: Map<string, DagNode>): Map<string, Set<string>> {
   const downstream = new Map<string, Set<string>>();
 
