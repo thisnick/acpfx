@@ -1,6 +1,6 @@
 /**
  * play-sox node — live speaker output via sox `play` command.
- * Reads audio.chunk events from stdin, pipes PCM to sox.
+ * Reads audio.chunk events from stdin, paces PCM writes at real-time rate.
  *
  * Settings (via ACPFX_SETTINGS):
  *   sampleRate?: number  — sample rate (default: 16000)
@@ -20,7 +20,11 @@ const SAMPLE_RATE = settings.sampleRate ?? 16000;
 const CHANNELS = settings.channels ?? 1;
 
 let playProc: ChildProcess | null = null;
-let interrupted = false;
+
+// Audio queue: PCM buffers waiting to be written to sox at real-time rate
+const pcmQueue: Buffer[] = [];
+let playInterval: ReturnType<typeof setInterval> | null = null;
+let stdinClosed = false;
 
 function emit(event: Record<string, unknown>): void {
   process.stdout.write(JSON.stringify(event) + "\n");
@@ -28,12 +32,6 @@ function emit(event: Record<string, unknown>): void {
 
 function log(msg: string): void {
   process.stderr.write(`[play-sox] ${msg}\n`);
-}
-
-function cleanup(): void {
-  if (playProc && !playProc.killed) {
-    playProc.kill("SIGTERM");
-  }
 }
 
 function startPlay(): ChildProcess {
@@ -56,19 +54,51 @@ function startPlay(): ChildProcess {
 
   proc.on("error", (err) => {
     log(`play error: ${err.message}`);
-    emit({
-      type: "control.error",
-      component: "play-sox",
-      message: `sox play failed: ${err.message}`,
-      fatal: true,
-    });
-    process.exit(1);
   });
 
-  // Suppress EPIPE if play exits while we're still writing
+  // Suppress EPIPE
   proc.stdin!.on("error", () => {});
 
   return proc;
+}
+
+function stopPlay(): void {
+  if (playInterval) {
+    clearInterval(playInterval);
+    playInterval = null;
+  }
+  if (playProc && !playProc.killed) {
+    playProc.kill("SIGTERM");
+  }
+  playProc = null;
+  pcmQueue.length = 0;
+}
+
+// Write one chunk from the queue to sox every ~100ms (real-time pacing for 100ms chunks)
+function startDraining(): void {
+  if (playInterval) return;
+
+  playInterval = setInterval(() => {
+    if (pcmQueue.length > 0 && playProc && !playProc.killed) {
+      const chunk = pcmQueue.shift()!;
+      playProc.stdin!.write(chunk);
+    } else if (pcmQueue.length === 0 && stdinClosed) {
+      // Queue drained and no more input coming — close sox
+      clearInterval(playInterval!);
+      playInterval = null;
+      if (playProc && !playProc.killed) {
+        playProc.stdin!.end();
+        playProc.on("close", () => {
+          log("Playback complete");
+          emit({ type: "lifecycle.done", component: "play-sox" });
+          process.exit(0);
+        });
+      } else {
+        emit({ type: "lifecycle.done", component: "play-sox" });
+        process.exit(0);
+      }
+    }
+  }, 100); // 100ms interval matches 100ms audio chunks
 }
 
 // Handle events from stdin
@@ -79,46 +109,39 @@ rl.on("line", (line) => {
     const event = JSON.parse(line);
 
     if (event.type === "control.interrupt") {
-      // Kill current playback immediately (silence)
-      cleanup();
-      playProc = null;
-      // Don't set interrupted=true permanently — allow new audio after interrupt
+      stopPlay();
       return;
     }
 
     if (event.type === "audio.chunk") {
-      // Start or restart sox play on demand
       if (!playProc || playProc.killed) {
+        log("Starting sox play");
         playProc = startPlay();
+        playProc.on("close", (code) => {
+          log(`sox play exited with code ${code}`);
+        });
       }
       const pcm = Buffer.from(event.data, "base64");
-      try {
-        playProc.stdin!.write(pcm);
-      } catch {
-        // play process may have exited — restart on next chunk
-        playProc = null;
-      }
+      pcmQueue.push(pcm);
+      startDraining();
     }
   } catch {}
 });
 
 rl.on("close", () => {
-  if (playProc && !playProc.killed) {
-    playProc.stdin!.end();
-    playProc.on("close", () => {
-      emit({ type: "lifecycle.done", component: "play-sox" });
-      process.exit(0);
-    });
-  } else {
+  stdinClosed = true;
+  // If nothing is queued or playing, exit immediately
+  if (pcmQueue.length === 0 && !playProc) {
     emit({ type: "lifecycle.done", component: "play-sox" });
     process.exit(0);
   }
+  // Otherwise the drain interval will handle cleanup
 });
 
 process.on("SIGTERM", () => {
-  cleanup();
+  stopPlay();
   process.exit(0);
 });
 
-// Emit lifecycle.ready immediately — we start sox lazily on first chunk
+// Emit lifecycle.ready immediately — sox starts lazily on first chunk
 emit({ type: "lifecycle.ready", component: "play-sox" });
