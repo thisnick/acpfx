@@ -466,7 +466,7 @@ async function main(): Promise<void> {
   globalStartTime = Date.now();
   await loadEnv();
 
-  const inputText = process.argv.slice(2).join(" ") || "What is the fibonacci sequence and why is it important?";
+  const inputText = process.argv[2] || "What is the fibonacci sequence and why is it important?";
 
   // Ensure output directory exists
   await fs.mkdir(OUTPUT_DIR, { recursive: true });
