@@ -16,7 +16,6 @@ nodes:
     use: "@acpfx/bridge-acpx"
     settings:
       agent: claude
-      model: claude-haiku-4-5-20251001
       approveAll: true
     outputs: [tts, ui, recorder]
 
