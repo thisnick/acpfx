@@ -63,6 +63,7 @@ function enterPlaybackMode(): void {
   if (!playbackActive) {
     playbackActive = true;
     log("Playback detected — gating mic audio");
+    emit({ type: "control.state", component: "echo-gate", state: "gating" });
   }
   // Reset timeout
   if (playbackTimer) clearTimeout(playbackTimer);
@@ -75,6 +76,7 @@ function exitPlaybackMode(): void {
   if (playbackActive) {
     playbackActive = false;
     log("Playback ended — resuming mic audio");
+    emit({ type: "control.state", component: "echo-gate", state: "passthrough" });
   }
   if (playbackTimer) {
     clearTimeout(playbackTimer);
@@ -102,9 +104,16 @@ rl.on("line", (line) => {
       if (playbackActive) {
         // Check for barge-in: is mic energy significantly above threshold?
         const rms = computeRms(event.data);
+        // Emit gated audio level so UI can show what echo-gate sees
+        emit({
+          type: "audio.level",
+          trackId: "echo-gate",
+          rms: Math.round(rms),
+          peak: 0,
+          dbfs: rms > 0 ? Math.round(20 * Math.log10(rms / 32768) * 10) / 10 : -Infinity,
+        });
         if (rms > BARGE_IN_THRESHOLD) {
           log(`Barge-in detected (RMS=${Math.round(rms)} > ${BARGE_IN_THRESHOLD})`);
-          // Emit interrupt to stop playback
           emit({ type: "control.interrupt", reason: "user_speech" });
           exitPlaybackMode();
           // Forward this chunk — STT should start processing

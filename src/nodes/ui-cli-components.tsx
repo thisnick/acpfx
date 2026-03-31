@@ -57,11 +57,15 @@ function InputSection({
   dbfs,
   sttText,
   sttState,
+  echoGateState,
+  echoGateRms,
 }: {
   rms: number;
   dbfs: number;
   sttText: string;
   sttState: "partial" | "final" | "idle";
+  echoGateState: "passthrough" | "gating";
+  echoGateRms: number;
 }) {
   // Level meter: 20 chars, scale RMS 0-32768
   const level = Math.min(20, Math.round((rms / 32768) * 20));
@@ -69,11 +73,22 @@ function InputSection({
   const empty = "-".repeat(20 - level);
   const meter = `[${filled}${empty}]`;
 
+  // Echo gate meter (during gating, shows mic level vs threshold)
+  const gateLevel = Math.min(20, Math.round((echoGateRms / 3000) * 20));
+  const gateFilled = "=".repeat(gateLevel);
+  const gateEmpty = "-".repeat(20 - gateLevel);
+  const gateMeter = `[${gateFilled}${gateEmpty}]`;
+
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="green" paddingX={1}>
       <Text bold color="green"> Input </Text>
       <Text>
         Mic: {meter} {dbfs === -Infinity ? "-inf" : dbfs.toFixed(1)} dBFS
+      </Text>
+      <Text>
+        Gate: {echoGateState === "gating"
+          ? <Text color="yellow">{gateMeter} GATING (RMS {echoGateRms})</Text>
+          : <Text color="green">passthrough</Text>}
       </Text>
       <Text>
         STT: &quot;{sttText}&quot;
@@ -183,6 +198,8 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
   const [dbfs, setDbfs] = useState(-Infinity);
   const [sttText, setSttText] = useState("");
   const [sttState, setSttState] = useState<"partial" | "final" | "idle">("idle");
+  const [echoGateState, setEchoGateState] = useState<"passthrough" | "gating">("passthrough");
+  const [echoGateRms, setEchoGateRms] = useState(0);
 
   // Agent
   const [agentStatus, setAgentStatus] = useState<"idle" | "waiting" | "streaming" | "complete">("idle");
@@ -233,10 +250,24 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
             break;
           }
 
-          case "audio.level":
-            setRms((event as any).rms ?? 0);
-            setDbfs((event as any).dbfs ?? -Infinity);
+          case "audio.level": {
+            const trackId = (event as any).trackId ?? "";
+            if (trackId === "echo-gate") {
+              setEchoGateRms((event as any).rms ?? 0);
+            } else {
+              setRms((event as any).rms ?? 0);
+              setDbfs((event as any).dbfs ?? -Infinity);
+            }
             break;
+          }
+
+          case "control.state": {
+            const comp = (event as any).component ?? "";
+            if (comp === "echo-gate") {
+              setEchoGateState((event as any).state === "gating" ? "gating" : "passthrough");
+            }
+            break;
+          }
 
           case "speech.partial":
             setSttText((event as any).text ?? "");
@@ -334,7 +365,7 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
   return (
     <Box flexDirection="column">
       <PipelineStatus state={pipelineState} nodes={nodes} error={error} />
-      <InputSection rms={rms} dbfs={dbfs} sttText={sttText} sttState={sttState} />
+      <InputSection rms={rms} dbfs={dbfs} sttText={sttText} sttState={sttState} echoGateState={echoGateState} echoGateRms={echoGateRms} />
       <AgentSection
         status={agentStatus}
         text={agentText}

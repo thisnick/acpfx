@@ -10,7 +10,7 @@ nodes:
     use: "@acpfx/echo-gate"
     settings:
       bargeInThreshold: 1500
-    outputs: [stt]
+    outputs: [stt, ui]
 
   stt:
     use: "@acpfx/stt-elevenlabs"
