@@ -9,3 +9,5 @@ tmp-test-*/
 eval/e2e/
 *.wav
 *.mp3
+aec-debug/
+debug.log

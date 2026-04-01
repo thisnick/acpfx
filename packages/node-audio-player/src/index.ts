@@ -153,9 +153,25 @@ function writePcmToSpeaker(mono: Buffer): void {
   }
 }
 
-// ---- Emit what we play (for recording) ----
+// ---- Emit what we play at real-time rate (for AEC reference + recording) ----
+
+type PendingEmit = { pcm: Buffer; kind: "speech" | "sfx" };
+const emitQueue: PendingEmit[] = [];
+let emitTimer: ReturnType<typeof setTimeout> | null = null;
 
 function emitPlayedChunk(pcm: Buffer, kind: "speech" | "sfx"): void {
+  emitQueue.push({ pcm, kind });
+  if (!emitTimer) {
+    drainEmitQueue();
+  }
+}
+
+function drainEmitQueue(): void {
+  if (emitQueue.length === 0) {
+    emitTimer = null;
+    return;
+  }
+  const { pcm, kind } = emitQueue.shift()!;
   const durationMs = Math.round((pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000);
   emit({
     type: "audio.chunk",
@@ -167,6 +183,16 @@ function emitPlayedChunk(pcm: Buffer, kind: "speech" | "sfx"): void {
     durationMs,
     kind,
   });
+  // Schedule next emit at real-time rate
+  emitTimer = setTimeout(drainEmitQueue, durationMs);
+}
+
+function clearEmitQueue(): void {
+  emitQueue.length = 0;
+  if (emitTimer) {
+    clearTimeout(emitTimer);
+    emitTimer = null;
+  }
 }
 
 // ---- SFX loop ----
@@ -232,6 +258,7 @@ function cancelSfxDelay(): void {
 /** Stop SFX and flush the speaker buffer. */
 function flushSfxForSpeech(): void {
   stopSfxLoop();
+  clearEmitQueue();
   destroySpeaker();
 }
 
@@ -318,6 +345,7 @@ function handleEvent(event: Record<string, unknown>): void {
     agentState = "idle";
     cancelSfxDelay();
     stopSfxLoop();
+    clearEmitQueue();
     destroySpeaker();
     playingKind = null;
     return;
