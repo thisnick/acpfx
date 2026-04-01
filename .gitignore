@@ -12,3 +12,7 @@ eval/e2e/
 aec-debug/
 debug.log
 tests/aec-offline/target/
+mic-debug/
+packages/node-mic-aec/target/
+packages/node-mic-aec/bin/
+packages/sys-voice/target/

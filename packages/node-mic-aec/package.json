@@ -1,0 +1,10 @@
+{
+  "name": "@acpfx/mic-aec",
+  "version": "0.1.0",
+  "bin": {
+    "acpfx-mic-aec": "./bin/mic-aec"
+  },
+  "scripts": {
+    "build:native": "cargo build --release && mkdir -p bin && cp target/release/mic-aec bin/"
+  }
+}

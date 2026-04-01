@@ -24,6 +24,7 @@ type Settings = {
   thinkingClip?: string;
   toolClip?: string;
   sfxVolume?: number;
+  noLocalPlayback?: boolean;  // true = don't play through local speaker (mic-aec handles playback)
 };
 
 const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
@@ -31,6 +32,7 @@ const SPEECH_SOURCE = settings.speechSource ?? "tts";
 const SAMPLE_RATE = settings.sampleRate ?? 16000;
 const SFX_VOLUME = settings.sfxVolume ?? 0.3;
 const BYTES_PER_SAMPLE = 2;
+const NO_LOCAL_PLAYBACK = settings.noLocalPlayback ?? false;
 
 // ---- Audio helpers ----
 
@@ -144,6 +146,7 @@ function destroySpeaker(): void {
 // ---- Write audio to speaker ----
 
 function writePcmToSpeaker(mono: Buffer): void {
+  if (NO_LOCAL_PLAYBACK) return; // mic-aec handles playback
   ensureSpeaker();
   const stereo = monoToStereo(mono);
   try {
@@ -160,6 +163,21 @@ const emitQueue: PendingEmit[] = [];
 let emitTimer: ReturnType<typeof setTimeout> | null = null;
 
 function emitPlayedChunk(pcm: Buffer, kind: "speech" | "sfx"): void {
+  if (NO_LOCAL_PLAYBACK) {
+    // No pacing needed — downstream (mic-aec) handles playback timing
+    const durationMs = Math.round((pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000);
+    emit({
+      type: "audio.chunk",
+      trackId: "player",
+      format: "pcm_s16le",
+      sampleRate: SAMPLE_RATE,
+      channels: 1,
+      data: pcm.toString("base64"),
+      durationMs,
+      kind,
+    });
+    return;
+  }
   emitQueue.push({ pcm, kind });
   if (!emitTimer) {
     drainEmitQueue();
@@ -274,7 +292,6 @@ function handleEvent(event: Record<string, unknown>): void {
       log(`Ignoring audio.chunk from "${from}" (expected "${SPEECH_SOURCE}")`);
       return;
     }
-
     // Cancel pending thinking delay — speech arrived first
     cancelSfxDelay();
 
@@ -340,7 +357,7 @@ function handleEvent(event: Record<string, unknown>): void {
     return;
   }
 
-  // Interrupt — stop everything
+  // Interrupt — stop everything (orchestrator propagates to downstream nodes)
   if (type === "control.interrupt") {
     agentState = "idle";
     cancelSfxDelay();
@@ -348,6 +365,7 @@ function handleEvent(event: Record<string, unknown>): void {
     clearEmitQueue();
     destroySpeaker();
     playingKind = null;
+    // Don't re-emit — orchestrator already sends interrupt to all downstream
     return;
   }
 }
