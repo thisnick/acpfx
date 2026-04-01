@@ -194,16 +194,16 @@ function handleServerMessage(msg: Record<string, unknown>): void {
         text: transcript,
       });
 
-      // Safety: if partial never gets finalized, commit after timeout
+      // If partial hasn't been finalized after timeout, send Finalize to Deepgram.
+      // Background noise / AEC residual prevents VAD from detecting silence,
+      // so speech_final never fires. Finalize forces Deepgram to commit.
       if (partialStaleTimer) clearTimeout(partialStaleTimer);
       partialStaleTimer = setTimeout(() => {
-        if (lastPartialText && !interrupted) {
-          log(`Stale partial: committing "${lastPartialText.slice(0, 50)}"`);
-          pendingText = lastPartialText;
-          emit({ type: "speech.final", trackId: TRACK_ID, text: lastPartialText });
-          emit({ type: "speech.pause", trackId: TRACK_ID, pendingText: lastPartialText, silenceMs: PARTIAL_STALE_MS });
-          pendingText = "";
-          lastPartialText = "";
+        if (lastPartialText && !interrupted && ws && connected) {
+          log(`Stale partial: sending Finalize to Deepgram`);
+          try {
+            ws.send(JSON.stringify({ type: "Finalize" }));
+          } catch {}
         }
         partialStaleTimer = null;
       }, PARTIAL_STALE_MS);

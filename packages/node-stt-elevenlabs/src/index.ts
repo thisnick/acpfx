@@ -44,6 +44,8 @@ let reconnecting = false;
 let interrupted = false;
 let lastPartialText = "";
 let accumulatedText = "";
+let partialStaleTimer: ReturnType<typeof setTimeout> | null = null;
+const PARTIAL_STALE_MS = 3000;
 
 function emit(event: Record<string, unknown>): void {
   process.stdout.write(JSON.stringify(event) + "\n");
@@ -148,12 +150,31 @@ function handleServerMessage(msg: Record<string, unknown>): void {
       });
     }
     lastPartialText = text;
+
+    // If partial never gets committed, force a commit after timeout.
+    // Continuous audio stream means the API may never see "end of speech."
+    if (partialStaleTimer) clearTimeout(partialStaleTimer);
+    partialStaleTimer = setTimeout(() => {
+      if (lastPartialText && !interrupted && ws && connected) {
+        log(`Stale partial: forcing commit`);
+        ws.send(JSON.stringify({
+          message_type: "input_audio_chunk",
+          audio_base_64: "",
+          commit: true,
+          sample_rate: 16000,
+        }));
+      }
+      partialStaleTimer = null;
+    }, PARTIAL_STALE_MS);
   } else if (
     msgType === "committed_transcript" ||
     msgType === "committed_transcript_with_timestamps"
   ) {
     const text = (msg.text as string) ?? "";
     if (!text) return;
+    // Clear stale timer — proper commit arrived
+    if (partialStaleTimer) { clearTimeout(partialStaleTimer); partialStaleTimer = null; }
+    lastPartialText = "";
 
     // Emit speech.final
     emit({
