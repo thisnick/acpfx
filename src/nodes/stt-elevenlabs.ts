@@ -21,6 +21,9 @@ type Settings = {
   language?: string;
   apiKey?: string;
   pauseMs?: number;
+  vadThreshold?: number;         // 0-1, default 0.5 (higher = less sensitive)
+  minSpeechDurationMs?: number;  // default 250 (ignore short noise bursts)
+  minSilenceDurationMs?: number; // default 100
 };
 
 const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
@@ -50,14 +53,20 @@ function log(msg: string): void {
 }
 
 async function connectWebSocket(): Promise<void> {
-  const vadSecs = (settings.pauseMs ?? 600) / 1000;
+  const vadSilenceSecs = (settings.pauseMs ?? 600) / 1000;
+  const vadThreshold = settings.vadThreshold ?? 0.5;
+  const minSpeechMs = settings.minSpeechDurationMs ?? 250;
+  const minSilenceMs = settings.minSilenceDurationMs ?? 100;
   const url =
     `${WS_URL}?model_id=${MODEL}` +
     `&language_code=${encodeURIComponent(LANGUAGE)}` +
     `&sample_rate=16000` +
     `&encoding=pcm_s16le` +
     `&commit_strategy=vad` +
-    `&vad_silence_threshold_secs=${vadSecs}`;
+    `&vad_silence_threshold_secs=${vadSilenceSecs}` +
+    `&vad_threshold=${vadThreshold}` +
+    `&min_speech_duration_ms=${minSpeechMs}` +
+    `&min_silence_duration_ms=${minSilenceMs}`;
 
   ws = new WebSocket(url, {
     headers: { "xi-api-key": API_KEY },

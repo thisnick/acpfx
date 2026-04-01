@@ -24,8 +24,10 @@ nodes:
     use: "@acpfx/tts-elevenlabs"
     settings:
       voiceId: JBFqnCBsd6RMkjVDRZzb
-    outputs: [speaker]
+    outputs: [player]
 
-  speaker:
-    use: "@acpfx/play-sox"
+  player:
+    use: "@acpfx/audio-player"
+    settings:
+      speechSource: tts
     outputs: []

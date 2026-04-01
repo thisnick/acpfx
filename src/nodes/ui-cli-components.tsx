@@ -105,8 +105,23 @@ function AgentSection({
           ? `Streaming... (${(elapsed / 1000).toFixed(1)}s)`
           : "Complete";
 
-  // Show last ~200 chars of agent text
-  const displayText = text.length > 200 ? "..." + text.slice(-200) : text;
+  // Show last 5 lines of agent text (split at ~100 char width or newlines)
+  const wrapText = (s: string, width = 100): string[] => {
+    const lines: string[] = [];
+    for (const raw of s.split("\n")) {
+      if (raw.length <= width) {
+        lines.push(raw);
+      } else {
+        for (let i = 0; i < raw.length; i += width) {
+          lines.push(raw.slice(i, i + width));
+        }
+      }
+    }
+    return lines;
+  };
+  const allLines = wrapText(text);
+  const displayLines = allLines.length > 5 ? allLines.slice(-5) : allLines;
+  const displayText = (allLines.length > 5 ? "...\n" : "") + displayLines.join("\n");
 
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1}>
@@ -124,9 +139,11 @@ function AgentSection({
 function OutputSection({
   chunksReceived,
   durationMs,
+  playerStatus,
 }: {
   chunksReceived: number;
   durationMs: number;
+  playerStatus: { playing: string | null; agentState: string; sfxActive: boolean } | null;
 }) {
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="yellow" paddingX={1}>
@@ -134,6 +151,11 @@ function OutputSection({
       <Text>
         TTS: {chunksReceived} chunks ({(durationMs / 1000).toFixed(1)}s audio)
       </Text>
+      {playerStatus && (
+        <Text>
+          Player: playing={playerStatus.playing ?? "none"} agent={playerStatus.agentState} sfx={playerStatus.sfxActive ? "on" : "off"}
+        </Text>
+      )}
     </Box>
   );
 }
@@ -195,6 +217,7 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
   // Output
   const [ttsChunks, setTtsChunks] = useState(0);
   const [ttsDurationMs, setTtsDurationMs] = useState(0);
+  const [playerStatus, setPlayerStatus] = useState<{ playing: string | null; agentState: string; sfxActive: boolean } | null>(null);
 
   // Latency
   const [sttMs, setSttMs] = useState<number | null>(null);
@@ -292,6 +315,22 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
             break;
           }
 
+          case "agent.thinking":
+            setAgentStatus("streaming");
+            setPipelineState("Processing");
+            setAgentText((prev) => prev + " [thinking...]");
+            break;
+
+          case "agent.tool_start":
+            setAgentStatus("streaming");
+            setPipelineState("Processing");
+            setAgentText((prev) => prev + ` [tool: ${(event as any).title ?? (event as any).toolCallId ?? "?"}]`);
+            break;
+
+          case "agent.tool_done":
+            setAgentText((prev) => prev + ` [done: ${(event as any).status ?? "?"}]`);
+            break;
+
           case "agent.complete":
             setAgentStatus("complete");
             break;
@@ -319,6 +358,14 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
             }, 500);
             break;
 
+          case "player.status":
+            setPlayerStatus({
+              playing: (event as any).playing ?? null,
+              agentState: (event as any).agentState ?? "idle",
+              sfxActive: (event as any).sfxActive ?? false,
+            });
+            break;
+
           case "control.error":
             setError((event as any).message ?? "Unknown error");
             break;
@@ -342,7 +389,7 @@ export function Dashboard({ eventStream }: { eventStream: AsyncIterable<Record<s
         ttft={ttft}
         elapsed={agentElapsed}
       />
-      <OutputSection chunksReceived={ttsChunks} durationMs={ttsDurationMs} />
+      <OutputSection chunksReceived={ttsChunks} durationMs={ttsDurationMs} playerStatus={playerStatus} />
       <LatencyBar sttMs={sttMs} vadMs={vadMs} agentMs={agentMs} ttsMs={ttsMs} />
     </Box>
   );

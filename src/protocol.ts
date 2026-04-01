@@ -23,6 +23,7 @@ export type AudioChunkEvent = OrchestratorStamp & {
   channels: number;
   data: string; // base64-encoded PCM
   durationMs: number;
+  kind?: "speech" | "sfx"; // set by audio-player to tag what was played
 };
 
 export type AudioLevelEvent = OrchestratorStamp & {
@@ -84,6 +85,25 @@ export type AgentCompleteEvent = OrchestratorStamp & {
   tokenUsage?: { input: number; output: number };
 };
 
+export type AgentThinkingEvent = OrchestratorStamp & {
+  type: "agent.thinking";
+  requestId: string;
+};
+
+export type AgentToolStartEvent = OrchestratorStamp & {
+  type: "agent.tool_start";
+  requestId: string;
+  toolCallId: string;
+  title?: string;
+};
+
+export type AgentToolDoneEvent = OrchestratorStamp & {
+  type: "agent.tool_done";
+  requestId: string;
+  toolCallId: string;
+  status: string;
+};
+
 // ---- Control ----
 
 export type ControlInterruptEvent = OrchestratorStamp & {
@@ -138,7 +158,10 @@ export type SpeechEvent =
 export type AgentEvent =
   | AgentSubmitEvent
   | AgentDeltaEvent
-  | AgentCompleteEvent;
+  | AgentCompleteEvent
+  | AgentThinkingEvent
+  | AgentToolStartEvent
+  | AgentToolDoneEvent;
 
 export type ControlEvent =
   | ControlInterruptEvent
@@ -176,6 +199,9 @@ const KNOWN_TYPES = new Set([
   "agent.submit",
   "agent.delta",
   "agent.complete",
+  "agent.thinking",
+  "agent.tool_start",
+  "agent.tool_done",
   "control.interrupt",
   "control.state",
   "control.error",

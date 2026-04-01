@@ -15,7 +15,7 @@ nodes:
   bridge:
     use: "@acpfx/bridge-acpx"
     settings:
-      agent: claude
+      agent: codex
       session: voice              # named session
       args:
         approve-all: true         # extra acpx flags passed through

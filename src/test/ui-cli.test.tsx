@@ -107,7 +107,7 @@ describe("ui-cli components", () => {
 
   it("OutputSection renders TTS progress", () => {
     const { lastFrame } = render(
-      <OutputSection chunksReceived={15} durationMs={3200} />,
+      <OutputSection chunksReceived={15} durationMs={3200} playerStatus={null} />,
     );
     const frame = lastFrame()!;
     assert.ok(frame.includes("15 chunks"), "Should show chunk count");

@@ -1,45 +1,46 @@
 /**
- * tts-elevenlabs node — reads agent.delta events, streams text to ElevenLabs
- * WebSocket TTS, emits audio.chunk events as audio arrives.
+ * tts-deepgram node — Deepgram Aura streaming TTS via WebSocket.
  *
- * True streaming: sends each delta token to the WebSocket as it arrives,
- * so audio generation starts before the full response is complete.
+ * Reads agent.delta events, streams text tokens to Deepgram WebSocket,
+ * emits audio.chunk events as audio arrives.
+ *
+ * True streaming: sends each delta token as it arrives via {"type":"Speak","text":"..."}.
+ * Explicit segment control:
+ *   - Flush on agent.tool_start (finalize current segment)
+ *   - Clear on control.interrupt (discard buffered text)
  *
  * Settings (via ACPFX_SETTINGS):
- *   voiceId?: string    — ElevenLabs voice ID (default: Rachel)
- *   model?: string       — TTS model (default: eleven_turbo_v2_5)
- *   apiKey?: string      — API key (falls back to ELEVENLABS_API_KEY env)
+ *   voice?: string      — Deepgram voice model (default: aura-2-apollo-en)
+ *   apiKey?: string      — API key (falls back to DEEPGRAM_API_KEY env)
+ *   sampleRate?: number  — output sample rate (default: 16000)
  */
 
 import { createInterface } from "node:readline";
 
-const WS_BASE_URL = "wss://api.elevenlabs.io/v1/text-to-speech";
-const DEFAULT_MODEL = "eleven_turbo_v2_5";
-const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel
-const OUTPUT_FORMAT = "pcm_16000";
-const SAMPLE_RATE = 16000;
+const WS_URL = "wss://api.deepgram.com/v1/speak";
+const DEFAULT_VOICE = "aura-2-apollo-en";
+const TRACK_ID = "tts";
+
+type Settings = {
+  voice?: string;
+  apiKey?: string;
+  sampleRate?: number;
+};
+
+const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
+const API_KEY = settings.apiKey ?? process.env.DEEPGRAM_API_KEY ?? "";
+const VOICE = settings.voice ?? DEFAULT_VOICE;
+const SAMPLE_RATE = settings.sampleRate ?? 16000;
 const CHANNELS = 1;
 const BYTES_PER_SAMPLE = 2;
 const CHUNK_DURATION_MS = 100;
 const CHUNK_SIZE = Math.floor(
   (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE * CHUNK_DURATION_MS) / 1000,
 );
-const TRACK_ID = "tts";
-
-type Settings = {
-  voiceId?: string;
-  model?: string;
-  apiKey?: string;
-};
-
-const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
-const API_KEY = settings.apiKey ?? process.env.ELEVENLABS_API_KEY ?? "";
-const VOICE_ID = settings.voiceId ?? DEFAULT_VOICE_ID;
-const MODEL = settings.model ?? DEFAULT_MODEL;
 
 if (!API_KEY) {
   process.stderr.write(
-    "[tts-elevenlabs] ERROR: No API key. Set ELEVENLABS_API_KEY or settings.apiKey\n",
+    "[tts-deepgram] ERROR: No API key. Set DEEPGRAM_API_KEY or settings.apiKey\n",
   );
   process.exit(1);
 }
@@ -55,26 +56,25 @@ function emit(event: Record<string, unknown>): void {
 }
 
 function log(msg: string): void {
-  process.stderr.write(`[tts-elevenlabs] ${msg}\n`);
+  process.stderr.write(`[tts-deepgram] ${msg}\n`);
 }
 
 async function openWebSocket(): Promise<void> {
   if (ws && connected) return;
 
   const url =
-    `${WS_BASE_URL}/${VOICE_ID}/stream-input` +
-    `?model_id=${encodeURIComponent(MODEL)}` +
-    `&output_format=${OUTPUT_FORMAT}` +
-    `&xi_api_key=${encodeURIComponent(API_KEY)}`;
+    `${WS_URL}?model=${encodeURIComponent(VOICE)}` +
+    `&encoding=linear16` +
+    `&sample_rate=${SAMPLE_RATE}`;
 
-  ws = new WebSocket(url);
+  ws = new WebSocket(url, ["token", API_KEY]);
 
   await new Promise<void>((resolve, reject) => {
     ws!.addEventListener(
       "open",
       () => {
         connected = true;
-        log("Connected to ElevenLabs TTS");
+        log("Connected to Deepgram TTS");
         resolve();
       },
       { once: true },
@@ -86,66 +86,65 @@ async function openWebSocket(): Promise<void> {
     );
   });
 
-  // Send BOS (beginning of stream) with voice settings
-  ws.send(
-    JSON.stringify({
-      text: " ",
-      xi_api_key: API_KEY,
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
-      },
-      generation_config: {
-        chunk_length_schedule: [50],
-      },
-    }),
-  );
-
   ws.addEventListener("message", (event: MessageEvent) => {
     if (interrupted) return;
-    try {
-      const data =
-        typeof event.data === "string"
-          ? event.data
-          : Buffer.from(event.data as ArrayBuffer).toString("utf-8");
-      const msg = JSON.parse(data);
 
-      if (msg.audio) {
-        const rawPcm = Buffer.from(msg.audio, "base64");
-        pcmBuffer = Buffer.concat([pcmBuffer, rawPcm]);
+    const data = event.data;
 
-        // Emit fixed-size audio chunks
-        while (pcmBuffer.length >= CHUNK_SIZE) {
-          const chunk = pcmBuffer.subarray(0, CHUNK_SIZE);
-          pcmBuffer = pcmBuffer.subarray(CHUNK_SIZE);
-          emitAudioChunk(chunk);
+    // Handle Blob (browser-style WebSocket returns Blobs for binary)
+    if (typeof data === "object" && data !== null && typeof (data as any).arrayBuffer === "function") {
+      (data as Blob).arrayBuffer().then((ab) => {
+        if (interrupted) return;
+        handleAudioData(Buffer.from(ab));
+      });
+      return;
+    }
+
+    // Handle ArrayBuffer / Buffer
+    if (data instanceof ArrayBuffer || Buffer.isBuffer(data)) {
+      handleAudioData(Buffer.from(data as ArrayBuffer));
+      return;
+    }
+
+    // Text frame — metadata/control message
+    if (typeof data === "string") {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === "Flushed") {
+          if (pcmBuffer.length > 0) {
+            emitAudioChunk(pcmBuffer);
+            pcmBuffer = Buffer.alloc(0);
+          }
+        } else if (msg.type === "Warning") {
+          log(`Deepgram warning: ${msg.description ?? msg.code ?? "unknown"}`);
         }
+      } catch {
+        // ignore
       }
-
-      if (msg.isFinal) {
-        // Flush remaining buffer
-        if (pcmBuffer.length > 0) {
-          emitAudioChunk(pcmBuffer);
-          pcmBuffer = Buffer.alloc(0);
-        }
-      }
-    } catch {
-      // ignore parse errors
     }
   });
+
+  function handleAudioData(rawPcm: Buffer): void {
+    pcmBuffer = Buffer.concat([pcmBuffer, rawPcm]);
+    while (pcmBuffer.length >= CHUNK_SIZE) {
+      const chunk = pcmBuffer.subarray(0, CHUNK_SIZE);
+      pcmBuffer = pcmBuffer.subarray(CHUNK_SIZE);
+      emitAudioChunk(chunk);
+    }
+  }
 
   ws.addEventListener("error", (event: Event) => {
     log(`WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`);
     emit({
       type: "control.error",
-      component: "tts-elevenlabs",
+      component: "tts-deepgram",
       message: "TTS WebSocket error",
       fatal: false,
     });
   });
 
   ws.addEventListener("close", (event: CloseEvent) => {
-    log(`WebSocket closed (code=${event.code}, reason=${event.reason || "none"})`);
+    log(`WebSocket closed (code=${event.code})`);
     connected = false;
   });
 }
@@ -167,32 +166,35 @@ function emitAudioChunk(pcm: Buffer): void {
 
 /**
  * Strip markdown characters from streaming tokens.
- * Tokens arrive fragmented, so we strip character-by-character
- * and track state for URLs and code blocks.
+ * Since tokens arrive fragmented (e.g., "**" then "bold" then "**"),
+ * we can't use pattern-based regex. Instead, just remove markdown
+ * syntax characters and track URL state to skip link targets.
  */
 let inUrl = false;
 let inCodeBlock = false;
 
 function stripMarkdown(text: string): string {
+  // Track code block state across tokens
   if (text.includes("```")) {
     inCodeBlock = !inCodeBlock;
     return "";
   }
   if (inCodeBlock) return "";
 
+  // Track markdown link URL: after "](" skip until ")"
   let result = "";
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (inUrl) {
       if (ch === ")") inUrl = false;
-      continue;
+      continue; // skip URL characters
     }
     if (ch === "]" && i + 1 < text.length && text[i + 1] === "(") {
       inUrl = true;
-      i++;
+      i++; // skip the "("
       continue;
     }
-    if (ch === "[" || ch === "]") continue;
+    if (ch === "[" || ch === "]") continue; // link brackets
     if (ch === "*" || ch === "~" || ch === "`") continue;
     if (ch === "#" && (i === 0 || text[i - 1] === "\n")) continue;
     result += ch;
@@ -207,15 +209,19 @@ function sendText(text: string): void {
   }
   const clean = stripMarkdown(text);
   if (!clean) return;
-  ws.send(JSON.stringify({ text: clean }));
+  ws.send(JSON.stringify({ type: "Speak", text: clean }));
 }
 
-function endStream(): void {
+function flushStream(): void {
   if (!ws || !connected) return;
-  // Send empty text to signal EOS (end of stream)
-  log("Sending EOS");
-  ws.send(JSON.stringify({ text: "" }));
-  // Don't close the WebSocket — let ElevenLabs close it after isFinal
+  log("Sending Flush");
+  ws.send(JSON.stringify({ type: "Flush" }));
+}
+
+function clearStream(): void {
+  if (!ws || !connected) return;
+  log("Sending Clear");
+  ws.send(JSON.stringify({ type: "Clear" }));
 }
 
 function closeWebSocket(): void {
@@ -223,6 +229,7 @@ function closeWebSocket(): void {
   pcmBuffer = Buffer.alloc(0);
   if (ws) {
     try {
+      ws.send(JSON.stringify({ type: "Close" }));
       ws.close();
     } catch {
       // ignore
@@ -236,12 +243,10 @@ function closeWebSocket(): void {
 async function main(): Promise<void> {
   await openWebSocket();
 
-  // Emit lifecycle.ready after WS connected
-  emit({ type: "lifecycle.ready", component: "tts-elevenlabs" });
+  emit({ type: "lifecycle.ready", component: "tts-deepgram" });
 
   const rl = createInterface({ input: process.stdin });
 
-  // Queue events and process sequentially to avoid async races
   const eventQueue: string[] = [];
   let processing = false;
 
@@ -262,17 +267,12 @@ async function main(): Promise<void> {
     processing = false;
   }
 
-  let afterTool = false;
-
   async function handleEvent(event: Record<string, unknown>): Promise<void> {
     if (event.type === "agent.delta") {
       if (event.delta) {
-        // Reconnect if WebSocket is down, we were interrupted, or we're
-        // starting a new segment after a tool call.
-        if (interrupted || !connected || afterTool) {
-          log(`Opening TTS stream (interrupted=${interrupted}, connected=${connected}, afterTool=${afterTool})`);
+        if (interrupted || !connected) {
+          log(`Reconnecting (interrupted=${interrupted}, connected=${connected})`);
           interrupted = false;
-          afterTool = false;
           closeWebSocket();
           await openWebSocket();
         }
@@ -280,25 +280,19 @@ async function main(): Promise<void> {
         sendText(event.delta as string);
       }
     } else if (event.type === "agent.tool_start" && !interrupted) {
-      // Tool call started — close the WebSocket to force ElevenLabs to
-      // finalize audio for the text sent so far. EOS alone may not work
-      // if the text was mid-sentence.
+      // Tool call started — flush current segment
       if (connected) {
-        log("Tool started — closing TTS stream for segment break");
-        endStream();
-        // Give ElevenLabs a moment to send final audio, then force close
-        setTimeout(() => {
-          closeWebSocket();
-        }, 500);
-        afterTool = true;
+        log("Tool started — flushing TTS segment");
+        flushStream();
       }
     } else if (event.type === "agent.complete" && !interrupted) {
-      // Agent is done — signal end of text stream so TTS can finalize
-      endStream();
+      // Agent done — flush remaining text
+      flushStream();
       currentRequestId = null;
     } else if (event.type === "control.interrupt") {
       interrupted = true;
-      afterTool = false;
+      // Clear discards buffered text immediately
+      clearStream();
       closeWebSocket();
       currentRequestId = null;
     }
@@ -312,7 +306,7 @@ async function main(): Promise<void> {
 
   rl.on("close", () => {
     closeWebSocket();
-    emit({ type: "lifecycle.done", component: "tts-elevenlabs" });
+    emit({ type: "lifecycle.done", component: "tts-deepgram" });
     process.exit(0);
   });
 

@@ -17,6 +17,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn, execSync, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
+import { appendFileSync, writeFileSync } from "node:fs";
 
 type Settings = {
   agent: string;
@@ -116,6 +117,8 @@ function handleSpeechPause(pendingText: string): void {
   let fullText = "";
   let buffer = "";
 
+  let emittedThinking = false;
+
   const processLine = (line: string) => {
     let msg: Record<string, unknown>;
     try {
@@ -124,17 +127,62 @@ function handleSpeechPause(pendingText: string): void {
       return;
     }
 
-    // Look for streaming text deltas: session/update with agent_message_chunk
+    // Handle session/update events
     if (msg.method === "session/update") {
       const params = msg.params as Record<string, unknown> | undefined;
       const update = params?.update as Record<string, unknown> | undefined;
-      if (update?.sessionUpdate === "agent_message_chunk") {
+      if (!update) return;
+
+      const sessionUpdate = update.sessionUpdate as string;
+      // Log all non-chunk session updates to debug event flow
+      if (sessionUpdate !== "agent_message_chunk" && sessionUpdate !== "usage_update" && sessionUpdate !== "available_commands_update") {
+        log(`ACP: ${sessionUpdate} ${JSON.stringify(update).slice(0, 200)}`);
+      }
+
+      // Thinking chunks
+      if (sessionUpdate === "agent_thought_chunk") {
+        if (!emittedThinking) {
+          emittedThinking = true;
+          emit({ type: "agent.thinking", requestId });
+        }
+        return;
+      }
+
+      // Tool call started — tool_call event means a new tool invocation
+      if (sessionUpdate === "tool_call") {
+        emit({
+          type: "agent.tool_start",
+          requestId,
+          toolCallId: (update.toolCallId as string) ?? "",
+          title: (update.title as string) ?? undefined,
+        });
+        return;
+      }
+
+      // Tool call completed/failed
+      if (sessionUpdate === "tool_call_update") {
+        const status = update.status as string | undefined;
+        if (status === "completed" || status === "failed") {
+          emit({
+            type: "agent.tool_done",
+            requestId,
+            toolCallId: (update.toolCallId as string) ?? "",
+            status,
+          });
+        }
+        return;
+      }
+
+      // Text generation
+      if (sessionUpdate === "agent_message_chunk") {
         const content = update.content as Record<string, unknown> | undefined;
         if (content?.type === "text" && typeof content.text === "string" && content.text) {
           fullText += content.text;
           emit({ type: "agent.delta", requestId, delta: content.text, seq: seq++ });
         }
+        return;
       }
+
       return;
     }
 
@@ -149,8 +197,10 @@ function handleSpeechPause(pendingText: string): void {
     }
   };
 
+  writeFileSync("/tmp/acpfx-bridge-raw.log", "");
   child.stdout!.setEncoding("utf8");
   child.stdout!.on("data", (chunk: string) => {
+    appendFileSync("/tmp/acpfx-bridge-raw.log", chunk);
     buffer += chunk;
     let idx = buffer.indexOf("\n");
     while (idx >= 0) {
