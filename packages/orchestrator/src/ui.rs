@@ -33,11 +33,15 @@ struct NodeSpeechState {
 
 #[derive(Debug, Clone)]
 struct NodeAgentState {
-    status: String, // "idle", "waiting", "streaming", "complete"
+    status: String, // "idle", "waiting", "thinking", "tool", "streaming", "complete"
     tokens: u64,
     ttft: Option<u64>,
     submit_ts: Option<u64>,
     first_delta_ts: Option<u64>,
+    text: String,             // accumulated response text (streamed deltas)
+    thinking: bool,           // currently in thinking state
+    tool_name: Option<String>,  // active tool call name
+    tool_status: Option<String>, // last tool call result
 }
 
 #[derive(Debug, Clone)]
@@ -66,7 +70,12 @@ impl Default for PerNodeState {
             done: false,
             audio: NodeAudioState { rms: 0.0, dbfs: f64::NEG_INFINITY },
             speech: NodeSpeechState { text: String::new(), state: "idle".into() },
-            agent: NodeAgentState { status: "idle".into(), tokens: 0, ttft: None, submit_ts: None, first_delta_ts: None },
+            agent: NodeAgentState {
+                status: "idle".into(), tokens: 0, ttft: None,
+                submit_ts: None, first_delta_ts: None,
+                text: String::new(), thinking: false,
+                tool_name: None, tool_status: None,
+            },
             player: None,
             interrupted: false,
             error: None,
@@ -154,11 +163,19 @@ impl UiState {
                     ttft: None,
                     submit_ts: Some(ts),
                     first_delta_ts: None,
+                    text: String::new(),
+                    thinking: false,
+                    tool_name: None,
+                    tool_status: None,
                 };
             }
             "agent.delta" => {
                 node.agent.status = "streaming".into();
+                node.agent.thinking = false;
                 node.agent.tokens += 1;
+                if let Some(delta) = event.get("delta").and_then(|v| v.as_str()) {
+                    node.agent.text.push_str(delta);
+                }
                 if node.agent.first_delta_ts.is_none() {
                     node.agent.first_delta_ts = Some(ts);
                     if let Some(submit) = node.agent.submit_ts {
@@ -166,11 +183,33 @@ impl UiState {
                     }
                 }
             }
-            "agent.thinking" | "agent.tool_start" | "agent.tool_done" => {
-                node.agent.status = "streaming".into();
+            "agent.thinking" => {
+                node.agent.status = "thinking".into();
+                node.agent.thinking = true;
+            }
+            "agent.tool_start" => {
+                node.agent.status = "tool".into();
+                node.agent.thinking = false;
+                node.agent.tool_name = event.get("title")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| event.get("toolCallId").and_then(|v| v.as_str()))
+                    .map(String::from);
+                node.agent.tool_status = Some("running".into());
+            }
+            "agent.tool_done" => {
+                node.agent.tool_status = event.get("status")
+                    .and_then(|v| v.as_str())
+                    .map(String::from)
+                    .or(Some("done".into()));
             }
             "agent.complete" => {
                 node.agent.status = "complete".into();
+                node.agent.thinking = false;
+                if let Some(text) = event.get("text").and_then(|v| v.as_str()) {
+                    if !text.is_empty() {
+                        node.agent.text = text.to_string();
+                    }
+                }
             }
 
             "player.status" => {
@@ -215,7 +254,7 @@ fn render_frame(
         for manifest in &state.manifests {
             let mut height = 3u16; // minimum: border + 1 line + border
             if manifest.emits_category("speech") { height += 1; }
-            if manifest.emits_category("agent") { height += 0; } // fits in 1 line
+            if manifest.emits_category("agent") { height += 5; } // status + thinking/tool + 3 text lines
             constraints.push(Constraint::Length(height));
         }
         // Log panel gets remaining space, minimum 5 lines
@@ -259,11 +298,13 @@ fn render_frame(
                 }
             }
 
-            // Agent widget
+            // Agent widget — status line + thinking/tool/text output
             if manifest.emits_category("agent") {
                 let icon = match node_state.agent.status.as_str() {
                     "idle" => "\u{23F9}",
                     "waiting" => "\u{23F3}",
+                    "thinking" => "\u{1F4AD}",
+                    "tool" => "\u{1F527}",
                     "complete" => "\u{2713}",
                     _ => "\u{25B6}",
                 };
@@ -272,6 +313,50 @@ fn render_frame(
                     "{} {} \u{00B7} {} tok{}",
                     icon, node_state.agent.status, node_state.agent.tokens, ttft_str
                 )));
+
+                // Thinking indicator
+                if node_state.agent.thinking {
+                    lines.push(Line::from(Span::styled(
+                        "  thinking...",
+                        Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                    )));
+                }
+
+                // Active tool call
+                if let Some(ref tool) = node_state.agent.tool_name {
+                    let status = node_state.agent.tool_status.as_deref().unwrap_or("running");
+                    let color = if status == "completed" { Color::Green }
+                        else if status == "failed" { Color::Red }
+                        else { Color::Yellow };
+                    lines.push(Line::from(vec![
+                        Span::styled("  \u{1F527} ", Style::default().fg(Color::DarkGray)),
+                        Span::raw(tool.as_str()),
+                        Span::styled(format!(" ({status})"), Style::default().fg(color)),
+                    ]));
+                }
+
+                // Streamed response text — show last 3 lines, truncate long lines
+                if !node_state.agent.text.is_empty() {
+                    let max_width = 100usize;
+                    let text_lines: Vec<&str> = node_state.agent.text.lines().collect();
+                    let total = text_lines.len();
+                    let display: Vec<&str> = if total > 3 {
+                        text_lines[total - 3..].to_vec()
+                    } else {
+                        text_lines.clone()
+                    };
+                    if total > 3 {
+                        lines.push(Line::from(Span::styled("  ...", Style::default().fg(Color::DarkGray))));
+                    }
+                    for tl in display {
+                        let truncated = if tl.len() > max_width {
+                            format!("{}...", &tl[..max_width])
+                        } else {
+                            tl.to_string()
+                        };
+                        lines.push(Line::from(format!("  > {truncated}")));
+                    }
+                }
             }
 
             // Player widget
