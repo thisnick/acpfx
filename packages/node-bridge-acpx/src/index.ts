@@ -40,6 +40,7 @@ const NODE_NAME = process.env.ACPFX_NODE_NAME ?? "bridge";
 let activeChild: ChildProcess | null = null;
 let interrupted = false;
 let streaming = false;
+let agentResponding = false;
 
 function emit(event: Record<string, unknown>): void {
   process.stdout.write(JSON.stringify(event) + "\n");
@@ -179,6 +180,7 @@ function handleSpeechPause(pendingText: string): void {
         const content = update.content as Record<string, unknown> | undefined;
         if (content?.type === "text" && typeof content.text === "string" && content.text) {
           fullText += content.text;
+          agentResponding = true;
           emit({ type: "agent.delta", requestId, delta: content.text, seq: seq++ });
         }
         return;
@@ -270,6 +272,7 @@ function main(): void {
 
   let active = false;
   let interruptedForBargein = false;
+  let accumulatedText = "";
 
   rl.on("line", (line) => {
     if (!line.trim()) return;
@@ -287,8 +290,21 @@ function main(): void {
         const text = event.pendingText ?? event.text ?? "";
         if (text) {
           emit({ type: "control.interrupt", reason: "user_speech" });
-          if (streaming) cancelCurrentPrompt();
-          handleSpeechPause(text);
+
+          if (agentResponding) {
+            // Agent already responded — this is a new turn, clear accumulator
+            accumulatedText = text;
+            agentResponding = false;
+          } else if (streaming) {
+            // Agent hasn't responded yet — append to accumulator and resubmit
+            cancelCurrentPrompt();
+            accumulatedText = accumulatedText ? accumulatedText + " " + text : text;
+          } else {
+            // Fresh submission
+            accumulatedText = accumulatedText ? accumulatedText + " " + text : text;
+          }
+
+          handleSpeechPause(accumulatedText);
         }
       } else if (event.type === "control.interrupt" && event._from !== NODE_NAME) {
         // Ignore our own interrupts that cycled back through the graph
