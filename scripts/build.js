@@ -68,10 +68,17 @@ for (const pkg of nodePackages) {
   buildSync(opts);
 }
 
-// Native binary (if built)
+// Native binary — prefer target/release (most recent), fall back to bin/
+const aecRelease = join(root, "packages/node-aec-speex/target/release/aec-speex");
 const aecBin = join(root, "packages/node-aec-speex/bin/aec-speex");
-if (existsSync(aecBin)) {
-  cpSync(aecBin, join(nodesDist, "aec-speex"));
+const aecSrc = existsSync(aecRelease) ? aecRelease : existsSync(aecBin) ? aecBin : null;
+if (aecSrc) {
+  cpSync(aecSrc, join(nodesDist, "aec-speex"));
+  // Keep bin/ in sync for npx
+  if (aecSrc !== aecBin) {
+    mkdirSync(dirname(aecBin), { recursive: true });
+    cpSync(aecSrc, aecBin);
+  }
 }
 
 console.log("\nBuild complete!");

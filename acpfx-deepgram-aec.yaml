@@ -27,7 +27,6 @@ nodes:
     settings:
       agent: claude
       session: voice
-      model: sonnet
       args:
         approve-all: true
     outputs: [tts, player, ui]

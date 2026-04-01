@@ -65,6 +65,11 @@ impl AecState {
 
     fn feed_mic(&mut self, samples: &[i16]) -> Vec<i16> {
         self.mic_buf.extend_from_slice(samples);
+        // If no speaker reference available, pass mic through uncancelled
+        if self.ref_buf.is_empty() {
+            let out: Vec<i16> = self.mic_buf.drain(..).collect();
+            return out;
+        }
         self.process_frames()
     }
 
@@ -186,10 +191,14 @@ fn main() {
                     if !cleaned.is_empty() {
                         let out_bytes = samples_to_bytes(&cleaned);
                         let out_b64 = B64.encode(&out_bytes);
-                        let out_event = json!({
-                            "type": "audio.chunk",
-                            "data": out_b64,
-                        });
+                        let duration_ms = (cleaned.len() as f64 / SAMPLE_RATE as f64 * 1000.0) as u64;
+                        // Preserve original event fields, update data and duration
+                        let mut out_event = event.clone();
+                        out_event["data"] = json!(out_b64);
+                        out_event["durationMs"] = json!(duration_ms);
+                        // Remove _from so orchestrator re-stamps it
+                        out_event.as_object_mut().map(|o| o.remove("_from"));
+                        out_event.as_object_mut().map(|o| o.remove("ts"));
                         writeln!(out, "{}", out_event).unwrap();
                         out.flush().unwrap();
                     }

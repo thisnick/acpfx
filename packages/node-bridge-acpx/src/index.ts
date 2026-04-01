@@ -35,6 +35,7 @@ if (!settings.agent) {
 
 const AGENT = settings.agent;
 const VERBOSE = settings.verbose ?? false;
+const NODE_NAME = process.env.ACPFX_NODE_NAME ?? "bridge";
 
 let activeChild: ChildProcess | null = null;
 let interrupted = false;
@@ -289,7 +290,8 @@ function main(): void {
           if (streaming) cancelCurrentPrompt();
           handleSpeechPause(text);
         }
-      } else if (event.type === "control.interrupt") {
+      } else if (event.type === "control.interrupt" && event._from !== NODE_NAME) {
+        // Ignore our own interrupts that cycled back through the graph
         interrupted = true;
         cancelCurrentPrompt();
         interrupted = false;

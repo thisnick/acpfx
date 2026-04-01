@@ -71,6 +71,7 @@ export class NodeRunner {
   spawn(): void {
     const resolved = resolveNode(this.use);
     const env: Record<string, string | undefined> = { ...process.env, ...this.options.env };
+    env.ACPFX_NODE_NAME = this.name;
     if (this.options.settings) {
       env.ACPFX_SETTINGS = JSON.stringify(this.options.settings);
     }

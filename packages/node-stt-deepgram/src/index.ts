@@ -227,8 +227,25 @@ async function main(): Promise<void> {
     try {
       const event = JSON.parse(line);
 
-      if (event.type === "audio.chunk" && !interrupted) {
-        sendAudio(event.data);
+      if (event.type === "audio.chunk") {
+        if (interrupted) {
+          // Reconnect after interrupt — queue audio and reconnect once
+          interrupted = false;
+          log("Reconnecting after interrupt...");
+          closeWebSocket();
+          connectWebSocket().then(() => {
+            sendAudio(event.data);
+          }).catch((err) => {
+            log(`Reconnect failed: ${err.message}`);
+          });
+        } else if (!connected) {
+          // Connection dropped — try reconnecting
+          connectWebSocket().then(() => {
+            sendAudio(event.data);
+          }).catch(() => {});
+        } else {
+          sendAudio(event.data);
+        }
       } else if (event.type === "control.interrupt") {
         interrupted = true;
         closeWebSocket();
