@@ -219,23 +219,20 @@ function stopSfxLoop(): void {
   }
 }
 
-const TRANSITION_GAP_MS = 100;
-let transitionTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingSpeechChunks: Buffer[] = [];
+const THINKING_DELAY_MS = 500;
+let sfxDelayTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** Stop SFX and flush the speaker buffer, with a brief silence gap. */
+function cancelSfxDelay(): void {
+  if (sfxDelayTimer) {
+    clearTimeout(sfxDelayTimer);
+    sfxDelayTimer = null;
+  }
+}
+
+/** Stop SFX and flush the speaker buffer. */
 function flushSfxForSpeech(): void {
   stopSfxLoop();
   destroySpeaker();
-}
-
-function flushPendingSpeech(): void {
-  transitionTimer = null;
-  for (const pcm of pendingSpeechChunks) {
-    writePcmToSpeaker(pcm);
-    emitPlayedChunk(pcm, "speech");
-  }
-  pendingSpeechChunks = [];
 }
 
 // ---- Event handling ----
@@ -251,47 +248,39 @@ function handleEvent(event: Record<string, unknown>): void {
       return;
     }
 
-    const pcm = Buffer.from(event.data as string, "base64");
+    // Cancel pending thinking delay — speech arrived first
+    cancelSfxDelay();
 
-    // If SFX is playing, flush it and buffer speech for a brief gap
+    // If SFX is playing, flush it and switch to speech
     if (sfxActive) {
       flushSfxForSpeech();
-      playingKind = "speech";
-      pendingSpeechChunks.push(pcm);
-      if (!transitionTimer) {
-        transitionTimer = setTimeout(flushPendingSpeech, TRANSITION_GAP_MS);
-      }
-      return;
-    }
-
-    // If we're in a transition gap, buffer the speech
-    if (transitionTimer) {
-      pendingSpeechChunks.push(pcm);
-      return;
     }
 
     playingKind = "speech";
+    const pcm = Buffer.from(event.data as string, "base64");
     writePcmToSpeaker(pcm);
     emitPlayedChunk(pcm, "speech");
     return;
   }
 
-  // Agent thinking
+  // Agent thinking — delay SFX start by 500ms
   if (type === "agent.thinking") {
     agentState = "thinking";
-    startSfxLoop();
+    cancelSfxDelay();
+    sfxDelayTimer = setTimeout(() => {
+      sfxDelayTimer = null;
+      if (agentState === "thinking") startSfxLoop();
+    }, THINKING_DELAY_MS);
     emitStatus();
     return;
   }
 
-  // Tool started
+  // Tool started — start SFX immediately
   if (type === "agent.tool_start") {
     agentState = "tool";
+    cancelSfxDelay();
     stopSfxLoop(); // stop thinking sound if any
-    // Delay SFX start to avoid garble at speech→SFX transition
-    setTimeout(() => {
-      if (agentState === "tool") startSfxLoop();
-    }, TRANSITION_GAP_MS);
+    startSfxLoop();
     emitStatus();
     return;
   }
@@ -299,6 +288,7 @@ function handleEvent(event: Record<string, unknown>): void {
   // Tool done
   if (type === "agent.tool_done") {
     agentState = "idle";
+    cancelSfxDelay();
     stopSfxLoop();
     emitStatus();
     return;
@@ -308,6 +298,7 @@ function handleEvent(event: Record<string, unknown>): void {
   if (type === "agent.delta") {
     if (agentState !== "idle") {
       agentState = "idle";
+      cancelSfxDelay();
       emitStatus();
     }
     return;
@@ -316,6 +307,7 @@ function handleEvent(event: Record<string, unknown>): void {
   // Agent complete
   if (type === "agent.complete") {
     agentState = "idle";
+    cancelSfxDelay();
     stopSfxLoop();
     emitStatus();
     return;
@@ -324,6 +316,7 @@ function handleEvent(event: Record<string, unknown>): void {
   // Interrupt — stop everything
   if (type === "control.interrupt") {
     agentState = "idle";
+    cancelSfxDelay();
     stopSfxLoop();
     destroySpeaker();
     playingKind = null;
