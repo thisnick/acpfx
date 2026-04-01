@@ -10,6 +10,7 @@
     "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --packages=external"
   },
   "dependencies": {
-    "@acpfx/core": "workspace:*"
+    "@acpfx/core": "workspace:*",
+    "@acpfx/node-sdk": "workspace:*"
   }
 }

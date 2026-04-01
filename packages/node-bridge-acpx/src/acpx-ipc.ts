@@ -8,6 +8,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as net from "node:net";
+import { log } from "@acpfx/node-sdk";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -383,9 +384,7 @@ export class AcpxIpcClient {
       socket.write(JSON.stringify(request) + "\n");
 
       if (this._verbose) {
-        process.stderr.write(
-          `[acpfx:bridge] submitted prompt to session ${this._sessionId} (requestId: ${requestId})\n`,
-        );
+        log.debug(`submitted prompt to session ${this._sessionId} (requestId: ${requestId})`);
       }
     });
   }
@@ -479,9 +478,7 @@ export class AcpxIpcClient {
       socket.write(JSON.stringify(request) + "\n");
 
       if (this._verbose) {
-        process.stderr.write(
-          `[acpfx:bridge] cancel request sent to session ${this._sessionId}\n`,
-        );
+        log.debug(`cancel request sent to session ${this._sessionId}`);
       }
     });
   }

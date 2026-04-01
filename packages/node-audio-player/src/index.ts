@@ -13,10 +13,12 @@
  *   sfxVolume?: number      — 0.0-1.0 gain for SFX (default: 0.3)
  */
 
-import { createInterface } from "node:readline";
 import { readFileSync } from "node:fs";
 // @ts-ignore — speaker has no type declarations
 import Speaker from "speaker";
+import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 type Settings = {
   speechSource?: string;
@@ -62,7 +64,7 @@ function loadWavPcm(filePath: string): Buffer | null {
     // Skip 44-byte WAV header to get raw PCM
     return raw.subarray(44);
   } catch (err) {
-    log(`Failed to load WAV: ${filePath}: ${err instanceof Error ? err.message : err}`);
+    log.error(`Failed to load WAV: ${filePath}: ${err instanceof Error ? err.message : err}`);
     return null;
   }
 }
@@ -91,13 +93,6 @@ let sfxCurrentClip: Buffer | null = null; // gain-adjusted clip being played
 const SFX_CHUNK_MS = 100;
 const SFX_CHUNK_BYTES = Math.floor(SAMPLE_RATE * BYTES_PER_SAMPLE * SFX_CHUNK_MS / 1000);
 
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
-}
-
-function log(msg: string): void {
-  process.stderr.write(`[audio-player] ${msg}\n`);
-}
 
 function emitStatus(): void {
   emit({
@@ -119,7 +114,7 @@ function createSpeaker(): InstanceType<typeof Speaker> {
 
   s.on("error", (err: Error) => {
     if (!err.message?.includes("underflow")) {
-      log(`Speaker error: ${err.message}`);
+      log.error(`Speaker error: ${err.message}`);
     }
   });
 
@@ -224,7 +219,7 @@ function startSfxLoop(): void {
   playingKind = "sfx";
   sfxCurrentClip = applyGain(clip, SFX_VOLUME);
   sfxClipOffset = 0;
-  log(`Starting SFX loop (${agentState})`);
+  log.info(`Starting SFX loop (${agentState})`);
 
   // Write in small chunks so we can interrupt mid-clip
   writeSfxChunk();
@@ -256,7 +251,7 @@ function stopSfxLoop(): void {
   }
   if (sfxActive) {
     sfxActive = false;
-    log("Stopped SFX loop");
+    log.info("Stopped SFX loop");
   }
   if (playingKind === "sfx") {
     playingKind = null;
@@ -289,7 +284,7 @@ function handleEvent(event: Record<string, unknown>): void {
   // Speech audio from TTS
   if (type === "audio.chunk") {
     if (from !== SPEECH_SOURCE) {
-      log(`Ignoring audio.chunk from "${from}" (expected "${SPEECH_SOURCE}")`);
+      log.debug(`Ignoring audio.chunk from "${from}" (expected "${SPEECH_SOURCE}")`);
       return;
     }
     // Cancel pending thinking delay — speech arrived first
@@ -376,26 +371,16 @@ function main(): void {
   // Load WAV clips
   if (settings.thinkingClip) {
     thinkingPcm = loadWavPcm(settings.thinkingClip);
-    if (thinkingPcm) log(`Loaded thinking clip: ${settings.thinkingClip} (${thinkingPcm.length} bytes)`);
+    if (thinkingPcm) log.info(`Loaded thinking clip: ${settings.thinkingClip} (${thinkingPcm.length} bytes)`);
   }
   if (settings.toolClip) {
     toolPcm = loadWavPcm(settings.toolClip);
-    if (toolPcm) log(`Loaded tool clip: ${settings.toolClip} (${toolPcm.length} bytes)`);
+    if (toolPcm) log.info(`Loaded tool clip: ${settings.toolClip} (${toolPcm.length} bytes)`);
   }
 
   emit({ type: "lifecycle.ready", component: "audio-player" });
 
-  const rl = createInterface({ input: process.stdin });
-
-  rl.on("line", (line) => {
-    if (!line.trim()) return;
-    try {
-      const event = JSON.parse(line);
-      handleEvent(event);
-    } catch {
-      // ignore malformed
-    }
-  });
+  const rl = onEvent(handleEvent);
 
   rl.on("close", () => {
     stdinClosed = true;

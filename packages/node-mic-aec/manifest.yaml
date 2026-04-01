@@ -1,0 +1,11 @@
+name: mic-aec
+description: Captures mic audio with acoustic echo cancellation (native Rust)
+consumes:
+  - audio.chunk
+  - control.interrupt
+emits:
+  - audio.chunk
+  - audio.level
+  - lifecycle.ready
+  - lifecycle.done
+  - control.error

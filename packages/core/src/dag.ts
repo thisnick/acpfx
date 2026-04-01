@@ -20,6 +20,10 @@ export type DagNode = {
   use: string;
   settings?: Record<string, unknown>;
   outputs: string[];
+  /** Event types this node declares it consumes (from manifest). Empty = accepts all. */
+  consumes: string[];
+  /** Event types this node declares it emits (from manifest). Empty = emits any. */
+  emits: string[];
 };
 
 export type Dag = {
@@ -41,6 +45,8 @@ export function buildDag(config: PipelineConfig): Dag {
       use: nc.use,
       settings: nc.settings,
       outputs: nc.outputs ?? [],
+      consumes: [],
+      emits: [],
     });
   }
 
@@ -59,6 +65,15 @@ export function buildDag(config: PipelineConfig): Dag {
   const downstream = computeDownstream(nodes);
 
   return { nodes, order, downstream };
+}
+
+/**
+ * Check if a node accepts a given event type based on its manifest.
+ * If the node has no consumes list (empty), it accepts everything (permissive mode).
+ */
+export function nodeConsumesEvent(node: DagNode, eventType: string): boolean {
+  if (node.consumes.length === 0) return true; // permissive: no manifest or empty consumes
+  return node.consumes.includes(eventType);
 }
 
 // ---- Topological sort (Kahn's algorithm, cycles allowed) ----

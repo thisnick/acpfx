@@ -9,7 +9,9 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { createInterface } from "node:readline";
+import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 type Settings = {
   sampleRate?: number;
@@ -31,13 +33,6 @@ const TRACK_ID = "mic";
 let recProc: ChildProcess | null = null;
 let interrupted = false;
 
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
-}
-
-function log(msg: string): void {
-  process.stderr.write(`[mic-sox] ${msg}\n`);
-}
 
 function computeLevel(pcm: Buffer): { rms: number; peak: number; dbfs: number } {
   const samples = pcm.length / BYTES_PER_SAMPLE;
@@ -64,16 +59,11 @@ function cleanup(): void {
 }
 
 // Handle control.interrupt from stdin
-const rl = createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  if (!line.trim()) return;
-  try {
-    const event = JSON.parse(line);
-    if (event.type === "control.interrupt") {
-      interrupted = true;
-      cleanup();
-    }
-  } catch {}
+const rl = onEvent((event) => {
+  if (event.type === "control.interrupt") {
+    interrupted = true;
+    cleanup();
+  }
 });
 
 rl.on("close", () => {
@@ -105,11 +95,11 @@ recProc = spawn("rec", [
 
 recProc.stderr?.on("data", (data: Buffer) => {
   // sox may emit warnings to stderr
-  log(data.toString().trim());
+  log.warn(data.toString().trim());
 });
 
 recProc.on("error", (err) => {
-  log(`rec error: ${err.message}`);
+  log.error(`rec error: ${err.message}`);
   emit({
     type: "control.error",
     component: "mic-sox",

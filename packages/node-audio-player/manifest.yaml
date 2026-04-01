@@ -1,0 +1,15 @@
+name: audio-player
+description: Plays audio chunks through system speaker with SFX support
+consumes:
+  - audio.chunk
+  - agent.thinking
+  - agent.tool_start
+  - agent.tool_done
+  - agent.delta
+  - agent.complete
+  - control.interrupt
+emits:
+  - audio.chunk
+  - player.status
+  - lifecycle.ready
+  - lifecycle.done

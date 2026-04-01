@@ -1,51 +1,29 @@
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
-    settings:
-      sampleRate: 16000
-      channels: 1
-    outputs: [aec, ui]
-
+    use: '@acpfx/mic-sox'
+    settings: {sampleRate: 16000, channels: 1}
+    outputs: [aec]
   aec:
-    use: "@acpfx/aec-speex"
-    settings:
-      micSource: mic
-      speakerSource: player
-    outputs: [stt, ui]
-
+    use: '@acpfx/mic-aec'
+    settings: {micSource: mic, speakerSource: player}
+    outputs: [stt]
   stt:
-    use: "@acpfx/stt-deepgram"
-    settings:
-      language: en
-      model: nova-3
-      utteranceEndMs: 1500
-      endpointing: 500
-    outputs: [bridge, ui]
-
+    use: '@acpfx/stt-deepgram'
+    settings: {language: en, model: nova-3, utteranceEndMs: 1500, endpointing: 500}
+    outputs: [bridge]
   bridge:
-    use: "@acpfx/bridge-acpx"
+    use: '@acpfx/bridge-acpx'
     settings:
       agent: claude
       session: voice
-      args:
-        approve-all: true
-    outputs: [tts, player, ui]
-
+      args: {approve-all: true}
+    outputs: [tts, player]
   tts:
-    use: "@acpfx/tts-deepgram"
-    settings:
-      voice: aura-2-aries-en
-    outputs: [player, ui]
-
+    use: '@acpfx/tts-deepgram'
+    settings: {voice: aura-2-aries-en}
+    outputs: [player]
   player:
-    use: "@acpfx/audio-player"
-    settings:
-      speechSource: tts
-      thinkingClip: ./sounds/thinking.wav
-      toolClip: ./sounds/typing.wav
-      sfxVolume: 0.3
-    outputs: [aec, ui]
-
-  ui:
-    use: "@acpfx/ui-cli"
-    outputs: []
+    use: '@acpfx/audio-player'
+    settings: {speechSource: tts, thinkingClip: ./sounds/thinking.wav, toolClip: ./sounds/typing.wav,
+      sfxVolume: 0.3}
+    outputs: [aec]

@@ -3,18 +3,15 @@
  * back to stdout unchanged. Emits lifecycle.ready on startup.
  */
 
-import { createInterface } from "node:readline";
+import { emit, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
 
-// Emit lifecycle.ready
-const ready = JSON.stringify({ type: "lifecycle.ready", component: "echo" });
-process.stdout.write(ready + "\n");
+handleManifestFlag();
 
-const rl = createInterface({ input: process.stdin });
+emit({ type: "lifecycle.ready", component: "echo" });
 
-rl.on("line", (line) => {
-  if (!line.trim()) return;
+const rl = onEvent((event) => {
   // Echo back unchanged
-  process.stdout.write(line + "\n");
+  emit(event);
 });
 
 rl.on("close", () => {

@@ -11,18 +11,6 @@ importers:
       '@acpfx/core':
         specifier: workspace:*
         version: link:packages/core
-      '@acpfx/orchestrator':
-        specifier: workspace:*
-        version: link:packages/orchestrator
-      commander:
-        specifier: ^13.0.0
-        version: 13.1.0
-      ink:
-        specifier: ^6.8.0
-        version: 6.8.0(@types/react@19.2.14)(react@19.2.4)
-      react:
-        specifier: ^19.2.4
-        version: 19.2.4
       speaker:
         specifier: ^0.5.5
         version: 0.5.5
@@ -33,18 +21,15 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.15
-      '@types/react':
-        specifier: ^19.2.14
-        version: 19.2.14
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12
-      ink-testing-library:
-        specifier: ^4.0.0
-        version: 4.0.0(@types/react@19.2.14)
       typescript:
         specifier: ^5.7.0
         version: 5.9.3
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
 
   packages/core:
     dependencies:
@@ -59,6 +44,9 @@ importers:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
       speaker:
         specifier: ^0.5.5
         version: 0.5.5
@@ -68,41 +56,70 @@ importers:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
 
   packages/node-echo:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
+
+  packages/node-mic-aec: {}
 
   packages/node-mic-file:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
 
   packages/node-mic-sox:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
 
   packages/node-play-file:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
 
   packages/node-play-sox:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
       speaker:
         specifier: ^0.5.5
         version: 0.5.5
 
   packages/node-recorder:
+    dependencies:
+      '@acpfx/core':
+        specifier: workspace:*
+        version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
+
+  packages/node-sdk:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
@@ -113,30 +130,45 @@ importers:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
 
   packages/node-stt-elevenlabs:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
 
   packages/node-tts-deepgram:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
 
   packages/node-tts-elevenlabs:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
 
   packages/node-ui-cli:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*
         version: link:../core
+      '@acpfx/node-sdk':
+        specifier: workspace:*
+        version: link:../node-sdk
       ink:
         specifier: ^6.8.0
         version: 6.8.0(@types/react@19.2.14)(react@19.2.4)
@@ -419,15 +451,6 @@ packages:
     resolution: {integrity: sha512-m6FAo/spmsW2Ab2fU35JTYwtOKa2yAwXSwgjSv1TJzh4Mh7mC3lzAOVLBprb72XsTrgkEIsl7YrFNAiDiRhIGg==}
     engines: {node: '>=12'}
 
-  ink-testing-library@4.0.0:
-    resolution: {integrity: sha512-yF92kj3pmBvk7oKbSq5vEALO//o7Z9Ck/OaLNlkzXNeYdwfpxMQkSowGTFUCS5MSu9bWfSZMewGpp7bFc66D7Q==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/react': '>=18.0.0'
-    peerDependenciesMeta:
-      '@types/react':
-        optional: true
-
   ink@6.8.0:
     resolution: {integrity: sha512-sbl1RdLOgkO9isK42WCZlJCFN9hb++sX9dsklOvfd1YQ3bQ2AiFu12Q6tFlr0HvEUvzraJntQCCpfEoUe9DSzA==}
     engines: {node: '>=20'}
@@ -557,6 +580,9 @@ packages:
   yoga-layout@3.2.1:
     resolution: {integrity: sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ==}
 
+  zod@4.3.6:
+    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
+
 snapshots:
 
   '@alcalzone/ansi-tokenize@0.2.5':
@@ -649,6 +675,7 @@ snapshots:
   '@types/react@19.2.14':
     dependencies:
       csstype: 3.2.3
+    optional: true
 
   ansi-escapes@7.3.0:
     dependencies:
@@ -694,7 +721,8 @@ snapshots:
 
   convert-to-spaces@2.0.1: {}
 
-  csstype@3.2.3: {}
+  csstype@3.2.3:
+    optional: true
 
   debug@4.4.3:
     dependencies:
@@ -742,10 +770,6 @@ snapshots:
   get-east-asian-width@1.5.0: {}
 
   indent-string@5.0.0: {}
-
-  ink-testing-library@4.0.0(@types/react@19.2.14):
-    optionalDependencies:
-      '@types/react': 19.2.14
 
   ink@6.8.0(@types/react@19.2.14)(react@19.2.4):
     dependencies:
@@ -872,3 +896,5 @@ snapshots:
   yaml@2.8.3: {}
 
   yoga-layout@3.2.1: {}
+
+  zod@4.3.6: {}

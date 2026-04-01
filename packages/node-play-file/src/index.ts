@@ -8,8 +8,10 @@
 
 import { createWriteStream, type WriteStream } from "node:fs";
 import { open } from "node:fs/promises";
-import { createInterface } from "node:readline";
 import { resolve } from "node:path";
+import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 type Settings = {
   path: string;
@@ -20,7 +22,7 @@ const settings: Settings = JSON.parse(
 );
 
 if (!settings.path) {
-  process.stderr.write("[play-file] ERROR: settings.path is required\n");
+  log.error("settings.path is required");
   process.exit(1);
 }
 
@@ -30,10 +32,6 @@ let bytesWritten = 0;
 let sampleRate = 16000;
 let channels = 1;
 let started = false;
-
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
-}
 
 function createWavHeader(dataSize: number, sr: number, ch: number): Buffer {
   const bitsPerSample = 16;
@@ -88,40 +86,29 @@ async function finalize(): Promise<void> {
 // Emit lifecycle.ready
 emit({ type: "lifecycle.ready", component: "play-file" });
 
-const rl = createInterface({ input: process.stdin });
-
-rl.on("line", (line) => {
-  if (!line.trim()) return;
-  try {
-    const event = JSON.parse(line);
-
-    if (event.type === "audio.chunk") {
-      startWriting();
-      // Capture format from first chunk
-      if (bytesWritten === 0) {
-        sampleRate = event.sampleRate ?? 16000;
-        channels = event.channels ?? 1;
-      }
-      const pcm = Buffer.from(event.data, "base64");
-      if (stream?.writable) {
-        stream.write(pcm);
-        bytesWritten += pcm.length;
-      }
-    } else if (event.type === "control.interrupt") {
-      // Stop writing, finalize
-      finalize().then(() => {
-        emit({ type: "lifecycle.done", component: "play-file" });
-        process.exit(0);
-      });
-    } else if (event.type === "lifecycle.done") {
-      // Upstream is done, finalize and exit
-      finalize().then(() => {
-        emit({ type: "lifecycle.done", component: "play-file" });
-        process.exit(0);
-      });
+const rl = onEvent((event) => {
+  if (event.type === "audio.chunk") {
+    startWriting();
+    // Capture format from first chunk
+    if (bytesWritten === 0) {
+      sampleRate = (event.sampleRate as number) ?? 16000;
+      channels = (event.channels as number) ?? 1;
     }
-  } catch {
-    // ignore invalid JSON
+    const pcm = Buffer.from(event.data as string, "base64");
+    if (stream?.writable) {
+      stream.write(pcm);
+      bytesWritten += pcm.length;
+    }
+  } else if (event.type === "control.interrupt") {
+    finalize().then(() => {
+      emit({ type: "lifecycle.done", component: "play-file" });
+      process.exit(0);
+    });
+  } else if (event.type === "lifecycle.done") {
+    finalize().then(() => {
+      emit({ type: "lifecycle.done", component: "play-file" });
+      process.exit(0);
+    });
   }
 });
 

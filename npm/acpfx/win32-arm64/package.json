@@ -1,0 +1,23 @@
+{
+  "name": "@acpfx/acpfx-win32-arm64",
+  "version": "0.0.0",
+  "description": "acpfx pipeline orchestrator (win32 arm64)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickyyu/acpfx.git"
+  },
+  "license": "ISC",
+  "preferUnplugged": true,
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "files": [
+    "bin/acpfx.exe"
+  ]
+}

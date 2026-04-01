@@ -12,7 +12,9 @@
  *   pauseMs?: number     — VAD silence threshold hint (default: 600)
  */
 
-import { createInterface } from "node:readline";
+import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 const WS_URL = "wss://api.elevenlabs.io/v1/speech-to-text/realtime";
 const MODEL = "scribe_v2_realtime";
@@ -32,9 +34,7 @@ const API_KEY = settings.apiKey ?? process.env.ELEVENLABS_API_KEY ?? "";
 const TRACK_ID = "stt";
 
 if (!API_KEY) {
-  process.stderr.write(
-    "[stt-elevenlabs] ERROR: No API key. Set ELEVENLABS_API_KEY or settings.apiKey\n",
-  );
+  log.error("No API key. Set ELEVENLABS_API_KEY or settings.apiKey");
   process.exit(1);
 }
 
@@ -47,13 +47,6 @@ let accumulatedText = "";
 let partialStaleTimer: ReturnType<typeof setTimeout> | null = null;
 const PARTIAL_STALE_MS = 3000;
 
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
-}
-
-function log(msg: string): void {
-  process.stderr.write(`[stt-elevenlabs] ${msg}\n`);
-}
 
 async function connectWebSocket(): Promise<void> {
   const vadSilenceSecs = (settings.pauseMs ?? 600) / 1000;
@@ -80,7 +73,7 @@ async function connectWebSocket(): Promise<void> {
       "open",
       () => {
         connected = true;
-        log("Connected to ElevenLabs STT");
+        log.info("Connected to ElevenLabs STT");
         resolve();
       },
       { once: true },
@@ -109,7 +102,7 @@ async function connectWebSocket(): Promise<void> {
   });
 
   ws.addEventListener("error", (event: Event) => {
-    log(`WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`);
+    log.error(`WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`);
     emit({
       type: "control.error",
       component: "stt-elevenlabs",
@@ -120,7 +113,7 @@ async function connectWebSocket(): Promise<void> {
 
   ws.addEventListener("close", () => {
     connected = false;
-    log("WebSocket closed — will reconnect on next audio");
+    log.info("WebSocket closed — will reconnect on next audio");
   });
 }
 
@@ -156,7 +149,7 @@ function handleServerMessage(msg: Record<string, unknown>): void {
     if (partialStaleTimer) clearTimeout(partialStaleTimer);
     partialStaleTimer = setTimeout(() => {
       if (lastPartialText && !interrupted && ws && connected) {
-        log(`Stale partial: forcing commit`);
+        log.info(`Stale partial: forcing commit`);
         ws.send(JSON.stringify({
           message_type: "input_audio_chunk",
           audio_base_64: "",
@@ -200,7 +193,7 @@ function handleServerMessage(msg: Record<string, unknown>): void {
   } else if (msgType === "auth_error" || msgType === "error") {
     const errMsg =
       (msg.message as string) ?? (msg.error as string) ?? msgType;
-    log(`Server error: ${errMsg}`);
+    log.error(`Server error: ${errMsg}`);
     emit({
       type: "control.error",
       component: "stt-elevenlabs",
@@ -242,37 +235,23 @@ async function main(): Promise<void> {
   // Emit lifecycle.ready after WS is connected
   emit({ type: "lifecycle.ready", component: "stt-elevenlabs" });
 
-  // Read NDJSON from stdin
-  const rl = createInterface({ input: process.stdin });
-
-  rl.on("line", (line) => {
-    if (!line.trim()) return;
-    try {
-      const event = JSON.parse(line);
-
-      if (event.type === "audio.chunk") {
-        if (!connected && !reconnecting) {
-          // Reconnect after close or interrupt
-          reconnecting = true;
-          interrupted = false;
-          log("Reconnecting...");
-          connectWebSocket().then(() => {
-            reconnecting = false;
-            sendAudio(event.data);
-          }).catch(() => {
-            reconnecting = false;
-          });
-        } else if (connected && !interrupted) {
-          sendAudio(event.data);
-        }
-        // else: reconnecting or interrupted — drop this chunk
-      } else if (event.type === "control.interrupt") {
-        // Don't close WebSocket — STT should keep listening for barge-in.
-        // Interrupt is meant for downstream nodes (TTS, player) to stop playback.
-        // Closing the WebSocket kills the session mid-recognition.
+  const rl = onEvent((event) => {
+    if (event.type === "audio.chunk") {
+      if (!connected && !reconnecting) {
+        reconnecting = true;
+        interrupted = false;
+        log.info("Reconnecting...");
+        connectWebSocket().then(() => {
+          reconnecting = false;
+          sendAudio(event.data as string);
+        }).catch(() => {
+          reconnecting = false;
+        });
+      } else if (connected && !interrupted) {
+        sendAudio(event.data as string);
       }
-    } catch {
-      // ignore
+    } else if (event.type === "control.interrupt") {
+      // Don't close WebSocket — STT should keep listening for barge-in.
     }
   });
 
@@ -289,6 +268,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log(`Fatal: ${err.message}`);
+  log.error(`Fatal: ${err.message}`);
   process.exit(1);
 });

@@ -1,0 +1,17 @@
+name: bridge-acpx
+description: Agent bridge connecting to Claude via ACP
+consumes:
+  - speech.partial
+  - speech.pause
+  - control.interrupt
+emits:
+  - agent.submit
+  - agent.delta
+  - agent.complete
+  - agent.thinking
+  - agent.tool_start
+  - agent.tool_done
+  - control.interrupt
+  - control.error
+  - lifecycle.ready
+  - lifecycle.done

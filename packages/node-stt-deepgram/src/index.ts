@@ -15,7 +15,9 @@
  *   endpointing?: number        — VAD endpointing ms (default: 300)
  */
 
-import { createInterface } from "node:readline";
+import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 const WS_URL = "wss://api.deepgram.com/v1/listen";
 
@@ -36,9 +38,7 @@ const ENDPOINTING = settings.endpointing ?? 300;
 const TRACK_ID = "stt";
 
 if (!API_KEY) {
-  process.stderr.write(
-    "[stt-deepgram] ERROR: No API key. Set DEEPGRAM_API_KEY or settings.apiKey\n",
-  );
+  log.error("No API key. Set DEEPGRAM_API_KEY or settings.apiKey");
   process.exit(1);
 }
 
@@ -47,13 +47,6 @@ let connected = false;
 let lastFinalText = "";
 let pendingText = "";
 
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
-}
-
-function log(msg: string): void {
-  process.stderr.write(`[stt-deepgram] ${msg}\n`);
-}
 
 async function connectWebSocket(): Promise<void> {
   const url =
@@ -76,7 +69,7 @@ async function connectWebSocket(): Promise<void> {
       "open",
       () => {
         connected = true;
-        log("Connected to Deepgram STT");
+        log.info("Connected to Deepgram STT");
         resolve();
       },
       { once: true },
@@ -105,7 +98,7 @@ async function connectWebSocket(): Promise<void> {
   });
 
   ws.addEventListener("error", (event: Event) => {
-    log(`WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`);
+    log.error(`WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`);
     emit({
       type: "control.error",
       component: "stt-deepgram",
@@ -115,7 +108,7 @@ async function connectWebSocket(): Promise<void> {
   });
 
   ws.addEventListener("close", (event: CloseEvent) => {
-    log(`WebSocket closed (code=${event.code})`);
+    log.info(`WebSocket closed (code=${event.code})`);
     connected = false;
   });
 }
@@ -219,28 +212,17 @@ async function main(): Promise<void> {
 
   emit({ type: "lifecycle.ready", component: "stt-deepgram" });
 
-  const rl = createInterface({ input: process.stdin });
-
-  rl.on("line", (line) => {
-    if (!line.trim()) return;
-    try {
-      const event = JSON.parse(line);
-
-      if (event.type === "audio.chunk") {
-        if (!connected) {
-          // Connection dropped — try reconnecting
-          connectWebSocket().then(() => {
-            sendAudio(event.data);
-          }).catch(() => {});
-        } else {
-          sendAudio(event.data);
-        }
-      } else if (event.type === "control.interrupt") {
-        // Don't close WebSocket — STT should keep listening for barge-in.
-        // Interrupt is meant for downstream nodes (TTS, player), not STT.
+  const rl = onEvent((event) => {
+    if (event.type === "audio.chunk") {
+      if (!connected) {
+        connectWebSocket().then(() => {
+          sendAudio(event.data as string);
+        }).catch(() => {});
+      } else {
+        sendAudio(event.data as string);
       }
-    } catch {
-      // ignore
+    } else if (event.type === "control.interrupt") {
+      // Don't close WebSocket — STT should keep listening for barge-in.
     }
   });
 
@@ -257,6 +239,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log(`Fatal: ${err.message}`);
+  log.error(`Fatal: ${err.message}`);
   process.exit(1);
 });

@@ -1,0 +1,10 @@
+name: mic-sox
+description: Captures audio from system microphone via sox/rec
+consumes:
+  - control.interrupt
+emits:
+  - audio.chunk
+  - audio.level
+  - lifecycle.ready
+  - lifecycle.done
+  - control.error

@@ -1,0 +1,12 @@
+name: stt-elevenlabs
+description: Speech-to-text via ElevenLabs streaming API
+consumes:
+  - audio.chunk
+emits:
+  - speech.partial
+  - speech.delta
+  - speech.final
+  - speech.pause
+  - lifecycle.ready
+  - lifecycle.done
+  - control.error

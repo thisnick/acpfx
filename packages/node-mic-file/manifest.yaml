@@ -1,0 +1,9 @@
+name: mic-file
+description: Plays back a WAV file as if it were mic input
+consumes:
+  - control.interrupt
+emits:
+  - audio.chunk
+  - audio.level
+  - lifecycle.ready
+  - lifecycle.done

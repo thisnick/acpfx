@@ -1,0 +1,24 @@
+{
+  "name": "@acpfx/cli",
+  "version": "0.0.0",
+  "description": "acpfx pipeline orchestrator — pluggable, observable audio pipeline framework",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickyyu/acpfx.git"
+  },
+  "license": "ISC",
+  "bin": {
+    "acpfx": "bin/acpfx"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@acpfx/acpfx-darwin-arm64": "0.0.0",
+    "@acpfx/acpfx-darwin-x64": "0.0.0",
+    "@acpfx/acpfx-linux-arm64": "0.0.0",
+    "@acpfx/acpfx-linux-x64": "0.0.0",
+    "@acpfx/acpfx-win32-arm64": "0.0.0",
+    "@acpfx/acpfx-win32-x64": "0.0.0"
+  }
+}

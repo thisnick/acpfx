@@ -1,47 +1,29 @@
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
-    settings:
-      sampleRate: 16000
-      channels: 1
-    outputs: [stt, recorder, ui]
-
+    use: '@acpfx/mic-sox'
+    settings: {sampleRate: 16000, channels: 1}
+    outputs: [stt, recorder]
   stt:
-    use: "@acpfx/stt-elevenlabs"
-    settings:
-      language: en
-    outputs: [bridge, ui]
-
+    use: '@acpfx/stt-elevenlabs'
+    settings: {language: en}
+    outputs: [bridge]
   bridge:
-    use: "@acpfx/bridge-acpx"
+    use: '@acpfx/bridge-acpx'
     settings:
       agent: claude
-      session: voice              # named session
-      args:
-        approve-all: true         # extra acpx flags passed through
-    outputs: [tts, player, ui, recorder]
-
+      session: voice
+      args: {approve-all: true}
+    outputs: [tts, player, recorder]
   tts:
-    use: "@acpfx/tts-elevenlabs"
-    settings:
-      voiceId: JBFqnCBsd6RMkjVDRZzb
-    outputs: [player, ui]
-
+    use: '@acpfx/tts-elevenlabs'
+    settings: {voiceId: JBFqnCBsd6RMkjVDRZzb}
+    outputs: [player]
   player:
-    use: "@acpfx/audio-player"
-    settings:
-      speechSource: tts
-      thinkingClip: ./sounds/thinking.wav
-      toolClip: ./sounds/typing.wav
-      sfxVolume: 0.3
-    outputs: [recorder, ui]
-
+    use: '@acpfx/audio-player'
+    settings: {speechSource: tts, thinkingClip: ./sounds/thinking.wav, toolClip: ./sounds/typing.wav,
+      sfxVolume: 0.3}
+    outputs: [recorder]
   recorder:
-    use: "@acpfx/recorder"
-    settings:
-      outputDir: ./recordings
-    outputs: []
-
-  ui:
-    use: "@acpfx/ui-cli"
+    use: '@acpfx/recorder'
+    settings: {outputDir: ./recordings}
     outputs: []

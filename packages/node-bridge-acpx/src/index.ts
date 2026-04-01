@@ -16,8 +16,10 @@
 
 import { randomUUID } from "node:crypto";
 import { spawn, execSync, type ChildProcess } from "node:child_process";
-import { createInterface } from "node:readline";
 import { appendFileSync, writeFileSync } from "node:fs";
+import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 type Settings = {
   agent: string;
@@ -29,7 +31,7 @@ type Settings = {
 const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
 
 if (!settings.agent) {
-  process.stderr.write("[bridge-acpx] ERROR: settings.agent is required\n");
+  log.error("settings.agent is required");
   process.exit(1);
 }
 
@@ -42,13 +44,6 @@ let interrupted = false;
 let streaming = false;
 let agentResponding = false;
 
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
-}
-
-function log(msg: string): void {
-  process.stderr.write(`[bridge-acpx] ${msg}\n`);
-}
 
 /** Build CLI args from settings.args */
 function buildExtraArgs(): string[] {
@@ -70,7 +65,7 @@ function buildExtraArgs(): string[] {
  * `sessions ensure` creates the record; the first prompt bootstraps the queue owner.
  */
 function ensureSession(): void {
-  log(`Ensuring session for "${AGENT}"${settings.session ? ` (session: ${settings.session})` : ""}...`);
+  log.info(`Ensuring session for "${AGENT}"${settings.session ? ` (session: ${settings.session})` : ""}...`);
 
   const args = ["acpx@latest", AGENT, "sessions", "ensure"];
   if (settings.session) args.push("--name", settings.session);
@@ -82,9 +77,9 @@ function ensureSession(): void {
       timeout: 30000,
       encoding: "utf8",
     });
-    log(`Session: ${output.trim()}`);
+    log.info(`Session: ${output.trim()}`);
   } catch (err) {
-    log(`Warning: sessions ensure failed: ${err instanceof Error ? err.message : err}`);
+    log.warn(`sessions ensure failed: ${err instanceof Error ? err.message : err}`);
   }
 }
 
@@ -138,7 +133,7 @@ function handleSpeechPause(pendingText: string): void {
       const sessionUpdate = update.sessionUpdate as string;
       // Log all non-chunk session updates to debug event flow
       if (sessionUpdate !== "agent_message_chunk" && sessionUpdate !== "usage_update" && sessionUpdate !== "available_commands_update") {
-        log(`ACP: ${sessionUpdate} ${JSON.stringify(update).slice(0, 200)}`);
+        log.debug(`ACP: ${sessionUpdate} ${JSON.stringify(update).slice(0, 200)}`);
       }
 
       // Thinking chunks
@@ -217,7 +212,7 @@ function handleSpeechPause(pendingText: string): void {
   if (VERBOSE) {
     child.stderr!.setEncoding("utf8");
     child.stderr!.on("data", (chunk: string) => {
-      log(`acpx stderr: ${chunk.trimEnd()}`);
+      log.debug(`acpx stderr: ${chunk.trimEnd()}`);
     });
   }
 
@@ -227,7 +222,7 @@ function handleSpeechPause(pendingText: string): void {
 
     // null code + signal means we killed it (SIGTERM on cancel) — not an error
     if (code !== 0 && code !== null && !interrupted) {
-      log(`acpx exited with code ${code}`);
+      log.error(`acpx exited with code ${code}`);
       emit({
         type: "control.error",
         component: "bridge-acpx",
@@ -268,26 +263,20 @@ function main(): void {
 
   emit({ type: "lifecycle.ready", component: "bridge-acpx" });
 
-  const rl = createInterface({ input: process.stdin });
-
   let active = false;
   let interruptedForBargein = false;
   let accumulatedText = "";
 
-  rl.on("line", (line) => {
-    if (!line.trim()) return;
-    try {
-      const event = JSON.parse(line);
-
+  const rl = onEvent((event) => {
       if (event.type === "speech.partial" && active && !interruptedForBargein) {
-        log("Barge-in detected (speech.partial while active) — interrupting");
+        log.info("Barge-in detected (speech.partial while active) — interrupting");
         interruptedForBargein = true;
         emit({ type: "control.interrupt", reason: "user_speech" });
         if (streaming) cancelCurrentPrompt();
       } else if (event.type === "speech.pause") {
         interruptedForBargein = false;
         active = true;
-        const text = event.pendingText ?? event.text ?? "";
+        const text = (event.pendingText as string) ?? (event.text as string) ?? "";
         if (text) {
           emit({ type: "control.interrupt", reason: "user_speech" });
 
@@ -312,9 +301,6 @@ function main(): void {
         cancelCurrentPrompt();
         interrupted = false;
       }
-    } catch {
-      // ignore malformed lines
-    }
   });
 
   rl.on("close", () => {

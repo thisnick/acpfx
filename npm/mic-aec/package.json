@@ -1,0 +1,24 @@
+{
+  "name": "@acpfx/mic-aec",
+  "version": "0.0.0",
+  "description": "acpfx microphone with acoustic echo cancellation",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nickyyu/acpfx.git"
+  },
+  "license": "ISC",
+  "bin": {
+    "mic-aec": "bin/mic-aec"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "@acpfx/mic-aec-darwin-arm64": "0.0.0",
+    "@acpfx/mic-aec-darwin-x64": "0.0.0",
+    "@acpfx/mic-aec-linux-arm64": "0.0.0",
+    "@acpfx/mic-aec-linux-x64": "0.0.0",
+    "@acpfx/mic-aec-win32-arm64": "0.0.0",
+    "@acpfx/mic-aec-win32-x64": "0.0.0"
+  }
+}

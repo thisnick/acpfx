@@ -1,0 +1,12 @@
+name: tts-elevenlabs
+description: Text-to-speech via ElevenLabs streaming API
+consumes:
+  - agent.delta
+  - agent.complete
+  - agent.tool_start
+  - control.interrupt
+emits:
+  - audio.chunk
+  - lifecycle.ready
+  - lifecycle.done
+  - control.error

@@ -1,0 +1,836 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Event",
+  "description": "Top-level event enum, discriminated by the `type` field.\n\nSerializes to JSON with `{\"type\": \"audio.chunk\", ...}` format.",
+  "oneOf": [
+    {
+      "description": "PCM audio data chunk.",
+      "type": "object",
+      "required": [
+        "channels",
+        "data",
+        "durationMs",
+        "format",
+        "sampleRate",
+        "trackId",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "channels": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "data": {
+          "description": "Base64-encoded PCM data.",
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "format": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AudioKind"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sampleRate": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "trackId": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "audio.chunk"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Audio level metrics for a track.",
+      "type": "object",
+      "required": [
+        "dbfs",
+        "peak",
+        "rms",
+        "trackId",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dbfs": {
+          "type": "number",
+          "format": "double"
+        },
+        "peak": {
+          "type": "number",
+          "format": "double"
+        },
+        "rms": {
+          "type": "number",
+          "format": "double"
+        },
+        "trackId": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "audio.level"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Partial (in-progress) speech recognition result.",
+      "type": "object",
+      "required": [
+        "text",
+        "trackId",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "trackId": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "speech.partial"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Incremental speech delta (replaces previous partial).",
+      "type": "object",
+      "required": [
+        "text",
+        "trackId",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replaces": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "trackId": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "speech.delta"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Final speech recognition result.",
+      "type": "object",
+      "required": [
+        "text",
+        "trackId",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double"
+        },
+        "text": {
+          "type": "string"
+        },
+        "trackId": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "speech.final"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Speech pause detection (silence after speech).",
+      "type": "object",
+      "required": [
+        "pendingText",
+        "silenceMs",
+        "trackId",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pendingText": {
+          "type": "string"
+        },
+        "silenceMs": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "trackId": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "speech.pause"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Submit text to the agent for processing.",
+      "type": "object",
+      "required": [
+        "requestId",
+        "text",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "agent.submit"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Incremental agent response token.",
+      "type": "object",
+      "required": [
+        "delta",
+        "requestId",
+        "seq",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "delta": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "agent.delta"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Agent response complete.",
+      "type": "object",
+      "required": [
+        "requestId",
+        "text",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "tokenUsage": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TokenUsage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "agent.complete"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Agent is thinking (before first token).",
+      "type": "object",
+      "required": [
+        "requestId",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "agent.thinking"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Agent started a tool call.",
+      "type": "object",
+      "required": [
+        "requestId",
+        "toolCallId",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "toolCallId": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "agent.tool_start"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Agent tool call completed.",
+      "type": "object",
+      "required": [
+        "requestId",
+        "status",
+        "toolCallId",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "agent.tool_done"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Interrupt signal — stop current processing.",
+      "type": "object",
+      "required": [
+        "reason",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "control.interrupt"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Node state change notification.",
+      "type": "object",
+      "required": [
+        "component",
+        "state",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "component": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "control.state"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Error report from a node.",
+      "type": "object",
+      "required": [
+        "component",
+        "fatal",
+        "message",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "component": {
+          "type": "string"
+        },
+        "fatal": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "control.error"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Node is ready to process events.",
+      "type": "object",
+      "required": [
+        "component",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "component": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "lifecycle.ready"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Node has finished and is shutting down.",
+      "type": "object",
+      "required": [
+        "component",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "component": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "lifecycle.done"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Structured log event emitted by a node.",
+      "type": "object",
+      "required": [
+        "component",
+        "level",
+        "message",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "component": {
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/definitions/LogLevel"
+        },
+        "message": {
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "log"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Current playback status of the audio player.",
+      "type": "object",
+      "required": [
+        "agentState",
+        "playing",
+        "sfxActive",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agentState": {
+          "description": "Current agent state as seen by the player."
+        },
+        "playing": {
+          "description": "What kind of audio is currently playing (null/false if idle)."
+        },
+        "sfxActive": {
+          "description": "Whether SFX is currently active.",
+          "type": "boolean"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "player.status"
+          ]
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "AudioKind": {
+      "description": "Kind of audio content being played.",
+      "type": "string",
+      "enum": [
+        "speech",
+        "sfx"
+      ]
+    },
+    "LogLevel": {
+      "description": "Log level.",
+      "type": "string",
+      "enum": [
+        "info",
+        "warn",
+        "error",
+        "debug"
+      ]
+    },
+    "TokenUsage": {
+      "description": "Token usage statistics.",
+      "type": "object",
+      "required": [
+        "input",
+        "output"
+      ],
+      "properties": {
+        "input": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "output": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    }
+  }
+}

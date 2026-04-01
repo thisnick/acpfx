@@ -6,11 +6,11 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.js",
-    "build:native": "cd packages/node-aec-speex && cargo build --release",
+    "build:native": "cargo build --release -p acpfx-orchestrator",
     "check": "tsc --noEmit",
     "test": "node --test dist/tests/**/*.test.js",
-    "start": "node dist/orchestrator.js run",
-    "start:headless": "node dist/orchestrator.js run --headless"
+    "start": "./target/release/acpfx run",
+    "start:headless": "./target/release/acpfx run"
   },
   "keywords": [
     "acp",
@@ -22,22 +22,20 @@
   "license": "ISC",
   "dependencies": {
     "@acpfx/core": "workspace:*",
-    "@acpfx/orchestrator": "workspace:*",
-    "commander": "^13.0.0",
-    "ink": "^6.8.0",
-    "react": "^19.2.4",
     "speaker": "^0.5.5",
     "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/react": "^19.2.14",
     "esbuild": "^0.25.0",
-    "ink-testing-library": "^4.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "zod": "^4.3.6"
   },
   "packageManager": "pnpm@10.29.3",
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "speaker"]
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "speaker"
+    ]
   }
 }

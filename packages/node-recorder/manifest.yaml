@@ -1,0 +1,26 @@
+name: recorder
+# NOTE: Source has hardcoded _from === "mic"/"tts" checks (Phase 2 cleanup needed)
+description: Records all events to JSONL and audio tracks to WAV files
+consumes:
+  - audio.chunk
+  - audio.level
+  - speech.partial
+  - speech.delta
+  - speech.final
+  - speech.pause
+  - agent.submit
+  - agent.delta
+  - agent.complete
+  - agent.thinking
+  - agent.tool_start
+  - agent.tool_done
+  - control.interrupt
+  - control.state
+  - control.error
+  - lifecycle.ready
+  - lifecycle.done
+  - log
+  - player.status
+emits:
+  - lifecycle.ready
+  - lifecycle.done

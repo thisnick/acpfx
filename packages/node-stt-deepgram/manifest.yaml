@@ -1,0 +1,11 @@
+name: stt-deepgram
+description: Speech-to-text via Deepgram streaming API
+consumes:
+  - audio.chunk
+emits:
+  - speech.partial
+  - speech.final
+  - speech.pause
+  - lifecycle.ready
+  - lifecycle.done
+  - control.error

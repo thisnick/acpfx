@@ -1,0 +1,9 @@
+name: play-file
+description: Writes audio chunks to a WAV file
+consumes:
+  - audio.chunk
+  - control.interrupt
+  - lifecycle.done
+emits:
+  - lifecycle.ready
+  - lifecycle.done

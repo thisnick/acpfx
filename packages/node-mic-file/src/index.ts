@@ -9,8 +9,10 @@
  */
 
 import { readFileSync } from "node:fs";
-import { createInterface } from "node:readline";
 import { resolve } from "node:path";
+import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 type Settings = {
   path: string;
@@ -23,7 +25,7 @@ const settings: Settings = JSON.parse(
 );
 
 if (!settings.path) {
-  process.stderr.write("[mic-file] ERROR: settings.path is required\n");
+  log.error("settings.path is required");
   process.exit(1);
 }
 
@@ -35,16 +37,9 @@ const TRACK_ID = "mic";
 let interrupted = false;
 
 // Handle control.interrupt from stdin
-const rl = createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  if (!line.trim()) return;
-  try {
-    const event = JSON.parse(line);
-    if (event.type === "control.interrupt") {
-      interrupted = true;
-    }
-  } catch {
-    // ignore
+const rl = onEvent((event) => {
+  if (event.type === "control.interrupt") {
+    interrupted = true;
   }
 });
 
@@ -112,10 +107,6 @@ function computeLevel(pcm: Buffer): { rms: number; peak: number; dbfs: number } 
   const dbfs = rms > 0 ? 20 * Math.log10(rms / 32768) : -Infinity;
 
   return { rms: Math.round(rms), peak, dbfs: Math.round(dbfs * 10) / 10 };
-}
-
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
 }
 
 function sleep(ms: number): Promise<void> {
@@ -193,6 +184,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(`[mic-file] Fatal: ${err.message}\n`);
+  log.error(`Fatal: ${err.message}`);
   process.exit(1);
 });

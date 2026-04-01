@@ -12,6 +12,9 @@
  */
 
 import { createInterface } from "node:readline";
+import { emit, log, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 const WS_BASE_URL = "wss://api.elevenlabs.io/v1/text-to-speech";
 const DEFAULT_MODEL = "eleven_turbo_v2_5";
@@ -38,9 +41,7 @@ const VOICE_ID = settings.voiceId ?? DEFAULT_VOICE_ID;
 const MODEL = settings.model ?? DEFAULT_MODEL;
 
 if (!API_KEY) {
-  process.stderr.write(
-    "[tts-elevenlabs] ERROR: No API key. Set ELEVENLABS_API_KEY or settings.apiKey\n",
-  );
+  log.error("No API key. Set ELEVENLABS_API_KEY or settings.apiKey");
   process.exit(1);
 }
 
@@ -50,13 +51,6 @@ let interrupted = false;
 let pcmBuffer = Buffer.alloc(0);
 let currentRequestId: string | null = null;
 
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
-}
-
-function log(msg: string): void {
-  process.stderr.write(`[tts-elevenlabs] ${msg}\n`);
-}
 
 async function openWebSocket(): Promise<void> {
   if (ws && connected) return;
@@ -74,7 +68,7 @@ async function openWebSocket(): Promise<void> {
       "open",
       () => {
         connected = true;
-        log("Connected to ElevenLabs TTS");
+        log.info("Connected to ElevenLabs TTS");
         resolve();
       },
       { once: true },
@@ -135,7 +129,7 @@ async function openWebSocket(): Promise<void> {
   });
 
   ws.addEventListener("error", (event: Event) => {
-    log(`WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`);
+    log.error(`WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`);
     emit({
       type: "control.error",
       component: "tts-elevenlabs",
@@ -145,7 +139,7 @@ async function openWebSocket(): Promise<void> {
   });
 
   ws.addEventListener("close", (event: CloseEvent) => {
-    log(`WebSocket closed (code=${event.code}, reason=${event.reason || "none"})`);
+    log.info(`WebSocket closed (code=${event.code}, reason=${event.reason || "none"})`);
     connected = false;
   });
 }
@@ -202,7 +196,7 @@ function stripMarkdown(text: string): string {
 
 function sendText(text: string): void {
   if (!ws || !connected) {
-    log(`sendText dropped (connected=${connected}): "${text.slice(0, 30)}"`);
+    log.warn(`sendText dropped (connected=${connected}): "${text.slice(0, 30)}"`);
     return;
   }
   const clean = stripMarkdown(text);
@@ -213,7 +207,7 @@ function sendText(text: string): void {
 function endStream(): void {
   if (!ws || !connected) return;
   // Send empty text to signal EOS (end of stream)
-  log("Sending EOS");
+  log.debug("Sending EOS");
   ws.send(JSON.stringify({ text: "" }));
   // Don't close the WebSocket — let ElevenLabs close it after isFinal
 }
@@ -270,7 +264,7 @@ async function main(): Promise<void> {
         // Reconnect if WebSocket is down, we were interrupted, or we're
         // starting a new segment after a tool call.
         if (interrupted || !connected || afterTool) {
-          log(`Opening TTS stream (interrupted=${interrupted}, connected=${connected}, afterTool=${afterTool})`);
+          log.info(`Opening TTS stream (interrupted=${interrupted}, connected=${connected}, afterTool=${afterTool})`);
           interrupted = false;
           afterTool = false;
           closeWebSocket();
@@ -284,7 +278,7 @@ async function main(): Promise<void> {
       // finalize audio for the text sent so far. EOS alone may not work
       // if the text was mid-sentence.
       if (connected) {
-        log("Tool started — closing TTS stream for segment break");
+        log.info("Tool started — closing TTS stream for segment break");
         endStream();
         // Give ElevenLabs a moment to send final audio, then force close
         setTimeout(() => {
@@ -323,6 +317,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log(`Fatal: ${err.message}`);
+  log.error(`Fatal: ${err.message}`);
   process.exit(1);
 });

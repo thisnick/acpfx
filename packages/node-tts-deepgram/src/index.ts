@@ -16,6 +16,9 @@
  */
 
 import { createInterface } from "node:readline";
+import { emit, log, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 const WS_URL = "wss://api.deepgram.com/v1/speak";
 const DEFAULT_VOICE = "aura-2-apollo-en";
@@ -39,9 +42,7 @@ const CHUNK_SIZE = Math.floor(
 );
 
 if (!API_KEY) {
-  process.stderr.write(
-    "[tts-deepgram] ERROR: No API key. Set DEEPGRAM_API_KEY or settings.apiKey\n",
-  );
+  log.error("No API key. Set DEEPGRAM_API_KEY or settings.apiKey");
   process.exit(1);
 }
 
@@ -51,13 +52,6 @@ let interrupted = false;
 let pcmBuffer = Buffer.alloc(0);
 let currentRequestId: string | null = null;
 
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
-}
-
-function log(msg: string): void {
-  process.stderr.write(`[tts-deepgram] ${msg}\n`);
-}
 
 async function openWebSocket(): Promise<void> {
   if (ws && connected) return;
@@ -74,7 +68,7 @@ async function openWebSocket(): Promise<void> {
       "open",
       () => {
         connected = true;
-        log("Connected to Deepgram TTS");
+        log.info("Connected to Deepgram TTS");
         resolve();
       },
       { once: true },
@@ -116,7 +110,7 @@ async function openWebSocket(): Promise<void> {
             pcmBuffer = Buffer.alloc(0);
           }
         } else if (msg.type === "Warning") {
-          log(`Deepgram warning: ${msg.description ?? msg.code ?? "unknown"}`);
+          log.warn(`Deepgram warning: ${msg.description ?? msg.code ?? "unknown"}`);
         }
       } catch {
         // ignore
@@ -134,7 +128,7 @@ async function openWebSocket(): Promise<void> {
   }
 
   ws.addEventListener("error", (event: Event) => {
-    log(`WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`);
+    log.error(`WebSocket error: ${(event as ErrorEvent).message ?? "unknown"}`);
     emit({
       type: "control.error",
       component: "tts-deepgram",
@@ -144,7 +138,7 @@ async function openWebSocket(): Promise<void> {
   });
 
   ws.addEventListener("close", (event: CloseEvent) => {
-    log(`WebSocket closed (code=${event.code})`);
+    log.info(`WebSocket closed (code=${event.code})`);
     connected = false;
   });
 }
@@ -204,7 +198,7 @@ function stripMarkdown(text: string): string {
 
 function sendText(text: string): void {
   if (!ws || !connected) {
-    log(`sendText dropped (connected=${connected}): "${text.slice(0, 30)}"`);
+    log.warn(`sendText dropped (connected=${connected}): "${text.slice(0, 30)}"`);
     return;
   }
   const clean = stripMarkdown(text);
@@ -214,13 +208,13 @@ function sendText(text: string): void {
 
 function flushStream(): void {
   if (!ws || !connected) return;
-  log("Sending Flush");
+  log.debug("Sending Flush");
   ws.send(JSON.stringify({ type: "Flush" }));
 }
 
 function clearStream(): void {
   if (!ws || !connected) return;
-  log("Sending Clear");
+  log.debug("Sending Clear");
   ws.send(JSON.stringify({ type: "Clear" }));
 }
 
@@ -271,7 +265,7 @@ async function main(): Promise<void> {
     if (event.type === "agent.delta") {
       if (event.delta) {
         if (interrupted || !connected) {
-          log(`Reconnecting (interrupted=${interrupted}, connected=${connected})`);
+          log.info(`Reconnecting (interrupted=${interrupted}, connected=${connected})`);
           interrupted = false;
           closeWebSocket();
           await openWebSocket();
@@ -282,7 +276,7 @@ async function main(): Promise<void> {
     } else if (event.type === "agent.tool_start" && !interrupted) {
       // Tool call started — flush current segment
       if (connected) {
-        log("Tool started — flushing TTS segment");
+        log.info("Tool started — flushing TTS segment");
         flushStream();
       }
     } else if (event.type === "agent.complete" && !interrupted) {
@@ -317,6 +311,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log(`Fatal: ${err.message}`);
+  log.error(`Fatal: ${err.message}`);
   process.exit(1);
 });

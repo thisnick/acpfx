@@ -14,7 +14,8 @@ acpfx is a pluggable, observable audio pipeline framework. Its primary use case 
 ### 2. Everything is a node
 - Nodes are child processes that speak NDJSON on stdin/stdout and log to stderr.
 - Nodes can be TypeScript (fork), native binaries (spawn), or npm packages (npx).
-- A node's only contract: emit `lifecycle.ready`, process events on stdin, emit events on stdout.
+- A node's contract is declared in its `manifest.yaml` (consumes/emits lists) and enforced by the orchestrator at routing time.
+- Every node must: emit `lifecycle.ready`, process declared events on stdin, emit declared events on stdout, support the `--manifest` flag.
 
 ### 3. Observable event bus
 - All events flow through the orchestrator, stamped with `ts` and `_from`.
@@ -75,6 +76,84 @@ Events are JSON objects with a `type` field. The orchestrator adds `ts` (wall cl
 - `control.*` — interrupt, error, state
 - `lifecycle.*` — ready, done
 - `player.*` — playback status
+
+## Manifest Contract System
+
+Every node declares its contract in `manifest.yaml` at its package root:
+
+```yaml
+name: stt-deepgram
+consumes:
+  - audio.chunk
+emits:
+  - speech.partial
+  - speech.final
+  - speech.pause
+  - lifecycle.ready
+  - lifecycle.done
+  - log
+  - control.error
+```
+
+**Manifest IS the contract.** The orchestrator loads manifests at startup and filters events: a node only receives events whose type is in its `consumes` list. This replaces ad-hoc event ignoring in node code.
+
+**Manifest retrieval:** Co-located `<name>.manifest.yaml` next to the built artifact (copied by build script). Fallback: run `<node> --manifest` which prints JSON and exits. All nodes must support `--manifest`.
+
+**Upstream dependencies are OK if declared.** A node can consume `agent.thinking` (coupling to the agent) as long as it's in the manifest. The manifest makes implicit dependencies explicit.
+
+**Validation:** At startup the orchestrator warns on zero-overlap edges (A emits nothing B consumes). In strict mode (`strict: true` in YAML), missing manifests error.
+
+## Event Schema and Codegen
+
+The canonical event schema is defined in Rust (`packages/schema/`). TypeScript types are generated from it:
+
+```
+cargo run -p acpfx-schema --bin acpfx-codegen
+```
+
+This produces:
+- `packages/core/src/generated-types.ts` — TypeScript discriminated unions
+- `packages/core/src/generated-zod.ts` — Zod schemas for runtime validation
+- `schema.json` — JSON Schema for external tooling
+
+Generated files are checked in. CI verifies no drift.
+
+## Control Event Routing
+
+- **Data events** (audio, speech, agent, player, log): routed via DAG edges, filtered by destination's `consumes`.
+- **`control.interrupt`**: broadcast to ALL transitive downstream nodes that declare it in `consumes`. Uses precomputed downstream sets, not just direct outputs.
+- **`control.error` / `control.state`**: routed via edges like data events (informational, not action signals).
+- STT nodes don't declare `consumes: control.interrupt` → they never receive it (no more ignore-interrupt hacks).
+
+## Structured Logging
+
+Nodes emit structured log events on stdout as part of their NDJSON stream:
+
+```json
+{"type": "log", "level": "info", "component": "stt-deepgram", "message": "Connected to Deepgram STT"}
+```
+
+Use the node-sdk helpers (`@acpfx/node-sdk`):
+
+```typescript
+import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+log.info("Connected");   // emits {"type":"log","level":"info",...} on stdout
+log.error("Failed");     // same, with level "error"
+```
+
+**stderr is a true error channel** — only for unexpected crashes/panics. The orchestrator does not parse or convert stderr lines.
+
+## Orchestrator
+
+The orchestrator is a Rust binary at `packages/orchestrator/`. Run with:
+
+```
+cargo run -p acpfx-orchestrator --release -- run --config acpfx.yaml
+```
+
+Or via `pnpm start --config acpfx.yaml`.
+
+The `--ui` flag enables a ratatui terminal dashboard that renders each node in its own bordered box with category-based widgets driven by manifests. No separate UI node needed in YAML configs.
 
 ## Things to avoid
 

@@ -12,18 +12,15 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "react-jsx",
     "types": ["node"],
     "paths": {
       "@acpfx/core": ["./packages/core/src/index.ts"],
-      "@acpfx/orchestrator": ["./packages/orchestrator/src/index.ts"]
+      "@acpfx/node-sdk": ["./packages/node-sdk/src/index.ts"]
     }
   },
   "include": [
     "packages/*/src/**/*.ts",
-    "packages/*/src/**/*.tsx",
-    "tests/**/*.ts",
-    "tests/**/*.tsx"
+    "tests/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

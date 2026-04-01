@@ -1,0 +1,42 @@
+name: echo
+description: Echoes all received events back (testing/debugging)
+consumes:
+  - audio.chunk
+  - audio.level
+  - speech.partial
+  - speech.delta
+  - speech.final
+  - speech.pause
+  - agent.submit
+  - agent.delta
+  - agent.complete
+  - agent.thinking
+  - agent.tool_start
+  - agent.tool_done
+  - control.interrupt
+  - control.state
+  - control.error
+  - lifecycle.ready
+  - lifecycle.done
+  - log
+  - player.status
+emits:
+  - audio.chunk
+  - audio.level
+  - speech.partial
+  - speech.delta
+  - speech.final
+  - speech.pause
+  - agent.submit
+  - agent.delta
+  - agent.complete
+  - agent.thinking
+  - agent.tool_start
+  - agent.tool_done
+  - control.interrupt
+  - control.state
+  - control.error
+  - lifecycle.ready
+  - lifecycle.done
+  - log
+  - player.status

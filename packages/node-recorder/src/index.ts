@@ -16,7 +16,9 @@ import {
 import { open } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { createInterface } from "node:readline";
+import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+
+handleManifestFlag();
 
 type Settings = {
   outputDir?: string;
@@ -43,13 +45,6 @@ type TrackWriter = {
 };
 const tracks = new Map<string, TrackWriter>();
 
-function emit(event: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify(event) + "\n");
-}
-
-function log(msg: string): void {
-  process.stderr.write(`[recorder] ${msg}\n`);
-}
 
 function createWavHeader(dataSize: number, sr: number, ch: number): Buffer {
   const bitsPerSample = 16;
@@ -166,7 +161,7 @@ function generateConversationWav(): void {
   const convPath = join(OUTPUT_DIR, "conversation.wav");
   const header = createWavHeader(pcm.length, SAMPLE_RATE, CHANNELS);
   writeFileSync(convPath, Buffer.concat([header, pcm]));
-  log(`Wrote conversation.wav (${totalDurationMs}ms)`);
+  log.info(`Wrote conversation.wav (${totalDurationMs}ms)`);
 }
 
 function generateTimelineHtml(): void {
@@ -299,7 +294,7 @@ function playPause() {
 
   const htmlPath = join(OUTPUT_DIR, "timeline.html");
   writeFileSync(htmlPath, html);
-  log(`Wrote timeline.html`);
+  log.info(`Wrote timeline.html`);
 }
 
 async function finalize(): Promise<void> {
@@ -317,17 +312,17 @@ async function finalize(): Promise<void> {
   try {
     generateConversationWav();
   } catch (err) {
-    log(`Error generating conversation.wav: ${err}`);
+    log.error(`Error generating conversation.wav: ${err}`);
   }
 
   // Generate timeline.html
   try {
     generateTimelineHtml();
   } catch (err) {
-    log(`Error generating timeline.html: ${err}`);
+    log.error(`Error generating timeline.html: ${err}`);
   }
 
-  log(`Recording saved to ${OUTPUT_DIR}`);
+  log.info(`Recording saved to ${OUTPUT_DIR}`);
 }
 
 // --- Main ---
@@ -337,29 +332,20 @@ eventsStream = createWriteStream(join(OUTPUT_DIR, "events.jsonl"));
 startTime = Date.now();
 
 emit({ type: "lifecycle.ready", component: "recorder" });
-log(`Recording to ${OUTPUT_DIR}`);
+log.info(`Recording to ${OUTPUT_DIR}`);
 
-const rl = createInterface({ input: process.stdin });
+const rl = onEvent((event) => {
+  // Record every event to events.jsonl
+  allEvents.push(event);
+  eventsStream.write(JSON.stringify(event) + "\n");
 
-rl.on("line", (line) => {
-  if (!line.trim()) return;
-  try {
-    const event = JSON.parse(line);
-
-    // Record every event to events.jsonl
-    allEvents.push(event);
-    eventsStream.write(JSON.stringify(event) + "\n");
-
-    // Capture audio tracks
-    if (event.type === "audio.chunk") {
-      const trackId = event.trackId ?? event._from ?? "unknown";
-      const tw = getOrCreateTrack(trackId);
-      const pcm = Buffer.from(event.data ?? "", "base64");
-      tw.stream.write(pcm);
-      tw.bytesWritten += pcm.length;
-    }
-  } catch {
-    // ignore
+  // Capture audio tracks
+  if (event.type === "audio.chunk") {
+    const trackId = (event.trackId as string) ?? (event._from as string) ?? "unknown";
+    const tw = getOrCreateTrack(trackId);
+    const pcm = Buffer.from((event.data as string) ?? "", "base64");
+    tw.stream.write(pcm);
+    tw.bytesWritten += pcm.length;
   }
 });
 
