@@ -1,0 +1,12 @@
+[package]
+name = "aec-offline-test"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "aec-offline-test"
+path = "main.rs"
+
+[dependencies]
+aec3 = "0.1"
+hound = "3.5"

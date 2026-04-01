@@ -11,3 +11,4 @@ eval/e2e/
 *.mp3
 aec-debug/
 debug.log
+tests/aec-offline/target/

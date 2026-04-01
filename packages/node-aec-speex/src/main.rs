@@ -186,7 +186,7 @@ fn main() {
         .to_string();
     let filter_length = settings["filterLength"]
         .as_u64()
-        .unwrap_or(8192) as usize; // 512ms at 16kHz — covers speaker buffer + room
+        .unwrap_or(16000) as usize; // 1s at 16kHz — covers speaker buffer + room + air
 
     // Debug recording: set ACPFX_AEC_DEBUG=1 or debugDir in settings
     let debug_dir = settings["debugDir"].as_str().map(|s| s.to_string())
@@ -219,13 +219,6 @@ fn main() {
     let ready = json!({"type": "lifecycle.ready"});
     writeln!(out, "{}", ready).unwrap();
     out.flush().unwrap();
-
-    // Finalize WAV files on exit
-    let finalize = |mic: &mut Option<WavWriter>, reff: &mut Option<WavWriter>, outt: &mut Option<WavWriter>| {
-        if let Some(ref mut w) = mic { w.finalize(SAMPLE_RATE); }
-        if let Some(ref mut w) = reff { w.finalize(SAMPLE_RATE); }
-        if let Some(ref mut w) = outt { w.finalize(SAMPLE_RATE); }
-    };
 
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
@@ -317,5 +310,9 @@ fn main() {
         }
     }
 
-    finalize(&mut mic_wav, &mut ref_wav, &mut out_wav);
+    // Finalize WAV files on stdin close
+    if let Some(ref mut w) = mic_wav { w.finalize(SAMPLE_RATE); }
+    if let Some(ref mut w) = ref_wav { w.finalize(SAMPLE_RATE); }
+    if let Some(ref mut w) = out_wav { w.finalize(SAMPLE_RATE); }
+    eprintln!("[aec] Debug WAVs finalized");
 }

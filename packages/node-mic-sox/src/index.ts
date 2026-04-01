@@ -15,6 +15,7 @@ type Settings = {
   sampleRate?: number;
   channels?: number;
   chunkMs?: number;
+  noiseGateRms?: number;  // below this RMS → emit silence
 };
 
 const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
