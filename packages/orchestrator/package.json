@@ -1,0 +1,16 @@
+{
+  "name": "@acpfx/orchestrator",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "acpfx": "./dist/main.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.js --packages=external && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --packages=external"
+  },
+  "dependencies": {
+    "@acpfx/core": "workspace:*",
+    "commander": "^13.0.0"
+  }
+}

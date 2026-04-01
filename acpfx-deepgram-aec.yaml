@@ -1,0 +1,52 @@
+nodes:
+  mic:
+    use: "@acpfx/mic-sox"
+    settings:
+      sampleRate: 16000
+      channels: 1
+    outputs: [aec, ui]
+
+  aec:
+    use: "@acpfx/aec-speex"
+    settings:
+      micSource: mic
+      speakerSource: player
+    outputs: [stt, ui]
+
+  stt:
+    use: "@acpfx/stt-deepgram"
+    settings:
+      language: en
+      model: nova-3
+      utteranceEndMs: 1500
+      endpointing: 500
+    outputs: [bridge, ui]
+
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    settings:
+      agent: claude
+      session: voice
+      model: sonnet
+      args:
+        approve-all: true
+    outputs: [tts, player, ui]
+
+  tts:
+    use: "@acpfx/tts-deepgram"
+    settings:
+      voice: aura-2-aries-en
+    outputs: [player, ui]
+
+  player:
+    use: "@acpfx/audio-player"
+    settings:
+      speechSource: tts
+      thinkingClip: ./sounds/thinking.wav
+      toolClip: ./sounds/typing.wav
+      sfxVolume: 0.3
+    outputs: [aec, ui]
+
+  ui:
+    use: "@acpfx/ui-cli"
+    outputs: []

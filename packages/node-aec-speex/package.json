@@ -1,0 +1,10 @@
+{
+  "name": "@acpfx/aec-speex",
+  "version": "0.1.0",
+  "bin": {
+    "acpfx-aec-speex": "./bin/aec-speex"
+  },
+  "scripts": {
+    "build:native": "cargo build --release && mkdir -p bin && cp target/release/aec-speex bin/"
+  }
+}

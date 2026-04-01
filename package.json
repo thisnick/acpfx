@@ -1,20 +1,16 @@
 {
   "name": "acpfx",
   "version": "0.2.0",
+  "private": true,
   "description": "Observable DAG-based voice pipeline for ACP agents",
   "type": "module",
-  "bin": {
-    "acpfx": "dist/main.js"
-  },
-  "files": [
-    "dist"
-  ],
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/build.js",
+    "build:native": "cd packages/node-aec-speex && cargo build --release",
     "check": "tsc --noEmit",
-    "test": "node --test dist/test/**/*.test.js",
-    "start": "node dist/main.js run",
-    "start:headless": "node dist/main.js run --headless"
+    "test": "node --test dist/tests/**/*.test.js",
+    "start": "node dist/orchestrator.js run",
+    "start:headless": "node dist/orchestrator.js run --headless"
   },
   "keywords": [
     "acp",
@@ -25,6 +21,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@acpfx/core": "workspace:*",
+    "@acpfx/orchestrator": "workspace:*",
     "commander": "^13.0.0",
     "ink": "^6.8.0",
     "react": "^19.2.4",
@@ -34,8 +32,12 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.14",
+    "esbuild": "^0.25.0",
     "ink-testing-library": "^4.0.0",
     "typescript": "^5.7.0"
   },
-  "packageManager": "pnpm@10.29.3"
+  "packageManager": "pnpm@10.29.3",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "speaker"]
+  }
 }
