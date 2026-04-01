@@ -40,6 +40,7 @@ if (!API_KEY) {
 
 let ws: WebSocket | null = null;
 let connected = false;
+let reconnecting = false;
 let interrupted = false;
 let lastPartialText = "";
 let accumulatedText = "";
@@ -117,7 +118,7 @@ async function connectWebSocket(): Promise<void> {
 
   ws.addEventListener("close", () => {
     connected = false;
-    log("WebSocket closed");
+    log("WebSocket closed — will reconnect on next audio");
   });
 }
 
@@ -228,8 +229,22 @@ async function main(): Promise<void> {
     try {
       const event = JSON.parse(line);
 
-      if (event.type === "audio.chunk" && !interrupted) {
-        sendAudio(event.data);
+      if (event.type === "audio.chunk") {
+        if (!connected && !reconnecting) {
+          // Reconnect after close or interrupt
+          reconnecting = true;
+          interrupted = false;
+          log("Reconnecting...");
+          connectWebSocket().then(() => {
+            reconnecting = false;
+            sendAudio(event.data);
+          }).catch(() => {
+            reconnecting = false;
+          });
+        } else if (connected && !interrupted) {
+          sendAudio(event.data);
+        }
+        // else: reconnecting or interrupted — drop this chunk
       } else if (event.type === "control.interrupt") {
         interrupted = true;
         closeWebSocket();
