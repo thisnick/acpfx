@@ -47,6 +47,9 @@ let connected = false;
 let interrupted = false;
 let lastFinalText = "";
 let pendingText = "";
+let lastPartialText = "";
+let partialStaleTimer: ReturnType<typeof setTimeout> | null = null;
+const PARTIAL_STALE_MS = 3000;
 
 function emit(event: Record<string, unknown>): void {
   process.stdout.write(JSON.stringify(event) + "\n");
@@ -157,6 +160,10 @@ function handleServerMessage(msg: Record<string, unknown>): void {
     if (!transcript) return;
 
     if (isFinal) {
+      // Clear stale partial timer — proper final arrived
+      if (partialStaleTimer) { clearTimeout(partialStaleTimer); partialStaleTimer = null; }
+      lastPartialText = "";
+
       // Final transcript for this segment
       lastFinalText = transcript;
       pendingText = transcript;
@@ -180,11 +187,26 @@ function handleServerMessage(msg: Record<string, unknown>): void {
       }
     } else {
       // Interim result — partial transcript
+      lastPartialText = transcript;
       emit({
         type: "speech.partial",
         trackId: TRACK_ID,
         text: transcript,
       });
+
+      // Safety: if partial never gets finalized, commit after timeout
+      if (partialStaleTimer) clearTimeout(partialStaleTimer);
+      partialStaleTimer = setTimeout(() => {
+        if (lastPartialText && !interrupted) {
+          log(`Stale partial: committing "${lastPartialText.slice(0, 50)}"`);
+          pendingText = lastPartialText;
+          emit({ type: "speech.final", trackId: TRACK_ID, text: lastPartialText });
+          emit({ type: "speech.pause", trackId: TRACK_ID, pendingText: lastPartialText, silenceMs: PARTIAL_STALE_MS });
+          pendingText = "";
+          lastPartialText = "";
+        }
+        partialStaleTimer = null;
+      }, PARTIAL_STALE_MS);
     }
   }
 }
