@@ -125,9 +125,9 @@ async function connectWebSocket(): Promise<void> {
 }
 
 function handleServerMessage(msg: Record<string, unknown>): void {
-  if (interrupted) return;
-
   const msgType = msg.message_type as string;
+
+  if (interrupted) return;
 
   if (msgType === "partial_transcript") {
     const text = (msg.text as string) ?? "";
@@ -267,8 +267,9 @@ async function main(): Promise<void> {
         }
         // else: reconnecting or interrupted — drop this chunk
       } else if (event.type === "control.interrupt") {
-        interrupted = true;
-        closeWebSocket();
+        // Don't close WebSocket — STT should keep listening for barge-in.
+        // Interrupt is meant for downstream nodes (TTS, player) to stop playback.
+        // Closing the WebSocket kills the session mid-recognition.
       }
     } catch {
       // ignore

@@ -44,12 +44,8 @@ if (!API_KEY) {
 
 let ws: WebSocket | null = null;
 let connected = false;
-let interrupted = false;
 let lastFinalText = "";
 let pendingText = "";
-let lastPartialText = "";
-let partialStaleTimer: ReturnType<typeof setTimeout> | null = null;
-const PARTIAL_STALE_MS = 3000;
 
 function emit(event: Record<string, unknown>): void {
   process.stdout.write(JSON.stringify(event) + "\n");
@@ -96,7 +92,6 @@ async function connectWebSocket(): Promise<void> {
   });
 
   ws.addEventListener("message", (event: MessageEvent) => {
-    if (interrupted) return;
     try {
       const data =
         typeof event.data === "string"
@@ -161,9 +156,6 @@ function handleServerMessage(msg: Record<string, unknown>): void {
 
     if (isFinal) {
       // Clear stale partial timer — proper final arrived
-      if (partialStaleTimer) { clearTimeout(partialStaleTimer); partialStaleTimer = null; }
-      lastPartialText = "";
-
       // Final transcript for this segment
       lastFinalText = transcript;
       pendingText = transcript;
@@ -187,32 +179,17 @@ function handleServerMessage(msg: Record<string, unknown>): void {
       }
     } else {
       // Interim result — partial transcript
-      lastPartialText = transcript;
       emit({
         type: "speech.partial",
         trackId: TRACK_ID,
         text: transcript,
       });
-
-      // If partial hasn't been finalized after timeout, send Finalize to Deepgram.
-      // Background noise / AEC residual prevents VAD from detecting silence,
-      // so speech_final never fires. Finalize forces Deepgram to commit.
-      if (partialStaleTimer) clearTimeout(partialStaleTimer);
-      partialStaleTimer = setTimeout(() => {
-        if (lastPartialText && !interrupted && ws && connected) {
-          log(`Stale partial: sending Finalize to Deepgram`);
-          try {
-            ws.send(JSON.stringify({ type: "Finalize" }));
-          } catch {}
-        }
-        partialStaleTimer = null;
-      }, PARTIAL_STALE_MS);
     }
   }
 }
 
 function sendAudio(base64Pcm: string): void {
-  if (!ws || !connected || interrupted) return;
+  if (!ws || !connected) return;
   const pcm = Buffer.from(base64Pcm, "base64");
   try {
     ws.send(pcm);
@@ -250,17 +227,7 @@ async function main(): Promise<void> {
       const event = JSON.parse(line);
 
       if (event.type === "audio.chunk") {
-        if (interrupted) {
-          // Reconnect after interrupt — queue audio and reconnect once
-          interrupted = false;
-          log("Reconnecting after interrupt...");
-          closeWebSocket();
-          connectWebSocket().then(() => {
-            sendAudio(event.data);
-          }).catch((err) => {
-            log(`Reconnect failed: ${err.message}`);
-          });
-        } else if (!connected) {
+        if (!connected) {
           // Connection dropped — try reconnecting
           connectWebSocket().then(() => {
             sendAudio(event.data);
@@ -269,8 +236,8 @@ async function main(): Promise<void> {
           sendAudio(event.data);
         }
       } else if (event.type === "control.interrupt") {
-        interrupted = true;
-        closeWebSocket();
+        // Don't close WebSocket — STT should keep listening for barge-in.
+        // Interrupt is meant for downstream nodes (TTS, player), not STT.
       }
     } catch {
       // ignore
