@@ -34,7 +34,7 @@ jobs:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
-- name: Install system deps for native modules
+      - name: Install system deps for native modules
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - run: pnpm install --frozen-lockfile
       - name: Create release PR or publish
