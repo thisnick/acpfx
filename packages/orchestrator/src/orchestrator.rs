@@ -15,20 +15,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::sync::mpsc;
 
+use acpfx_schema::manifest::NodeManifest;
+
 use crate::config::{load_config, parse_config, PipelineConfig};
 use crate::dag::{build_dag, node_consumes_event, Dag};
 use crate::node_runner::{resolve_node, NodeEvent, NodeRunner};
-
-/// Manifest loaded from a node's co-located manifest file.
-#[derive(Debug, Clone, serde::Deserialize)]
-#[allow(dead_code)]
-pub struct NodeManifest {
-    pub name: Option<String>,
-    #[serde(default)]
-    pub consumes: Vec<String>,
-    #[serde(default)]
-    pub emits: Vec<String>,
-}
 
 pub struct Orchestrator {
     config: PipelineConfig,
@@ -126,6 +117,11 @@ impl Orchestrator {
             };
 
             if let Some(m) = manifest {
+                // Validate settings against manifest arguments
+                let node_settings = self.config.nodes.get(name)
+                    .and_then(|n| n.settings.as_ref());
+                validate_settings(name, node_settings, &m);
+
                 dag_node.consumes = m.consumes;
                 dag_node.emits = m.emits;
             } else {
@@ -342,5 +338,85 @@ impl Orchestrator {
                 runner.stop(3000).await;
             }
         }
+    }
+}
+
+/// Validate YAML config `settings` against the manifest's declared `arguments`.
+/// Emits warnings on stderr for mismatches (does not abort the pipeline).
+fn validate_settings(
+    node_name: &str,
+    settings: Option<&serde_json::Value>,
+    manifest: &NodeManifest,
+) {
+    use acpfx_schema::manifest::ArgumentType;
+
+    let settings_obj = match settings {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(_) => {
+            eprintln!(
+                "[orchestrator] WARN: node '{node_name}' settings is not a JSON object"
+            );
+            return;
+        }
+        None => return,
+    };
+
+    // Check for unknown keys if additional_arguments is not enabled
+    if !manifest.allows_additional_arguments() {
+        for key in settings_obj.keys() {
+            if !manifest.arguments.contains_key(key) {
+                eprintln!(
+                    "[orchestrator] WARN: node '{node_name}' has unknown setting '{key}' \
+                     (not declared in manifest arguments)"
+                );
+            }
+        }
+    }
+
+    // Validate declared arguments
+    for (arg_name, arg_def) in &manifest.arguments {
+        if let Some(value) = settings_obj.get(arg_name) {
+            // Type check
+            let type_ok = match arg_def.type_ {
+                ArgumentType::String => value.is_string(),
+                ArgumentType::Number => value.is_number(),
+                ArgumentType::Boolean => value.is_boolean(),
+            };
+            if !type_ok {
+                eprintln!(
+                    "[orchestrator] WARN: node '{node_name}' setting '{arg_name}' \
+                     has type {} but manifest declares type {:?}",
+                    json_type_name(value),
+                    arg_def.type_,
+                );
+            }
+
+            // Enum check
+            if let Some(ref enum_values) = arg_def.enum_values {
+                if !enum_values.contains(value) {
+                    eprintln!(
+                        "[orchestrator] WARN: node '{node_name}' setting '{arg_name}' \
+                         value {} is not in allowed enum values {:?}",
+                        value,
+                        enum_values,
+                    );
+                }
+            }
+        } else if arg_def.is_required() && arg_def.default.is_none() {
+            eprintln!(
+                "[orchestrator] WARN: node '{node_name}' is missing required setting '{arg_name}'"
+            );
+        }
+    }
+}
+
+fn json_type_name(v: &serde_json::Value) -> &'static str {
+    match v {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "boolean",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
     }
 }
