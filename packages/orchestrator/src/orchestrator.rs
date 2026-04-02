@@ -36,14 +36,14 @@ pub struct Orchestrator {
     runners: BTreeMap<String, NodeRunner>,
     event_tx: mpsc::Sender<(String, NodeEvent)>,
     event_rx: Option<mpsc::Receiver<(String, NodeEvent)>>,
-    dist_dir: PathBuf,
+    dist_dir: Option<PathBuf>,
     ready_timeout_ms: u64,
     stopped: bool,
 }
 
 impl Orchestrator {
     /// Create from a YAML file path.
-    pub fn from_file(path: &Path, dist_dir: &Path) -> Result<Self, String> {
+    pub fn from_file(path: &Path, dist_dir: Option<&Path>) -> Result<Self, String> {
         let config =
             load_config(path).map_err(|e| format!("Failed to load config: {e}"))?;
         Ok(Self::new(config, dist_dir))
@@ -51,13 +51,13 @@ impl Orchestrator {
 
     /// Create from a YAML string.
     #[allow(dead_code)]
-    pub fn from_yaml(yaml: &str, dist_dir: &Path) -> Result<Self, String> {
+    pub fn from_yaml(yaml: &str, dist_dir: Option<&Path>) -> Result<Self, String> {
         let config =
             parse_config(yaml).map_err(|e| format!("Failed to parse config: {e}"))?;
         Ok(Self::new(config, dist_dir))
     }
 
-    fn new(config: PipelineConfig, dist_dir: &Path) -> Self {
+    fn new(config: PipelineConfig, dist_dir: Option<&Path>) -> Self {
         let dag = build_dag(&config);
         let (event_tx, event_rx) = mpsc::channel(1024);
         Orchestrator {
@@ -66,7 +66,7 @@ impl Orchestrator {
             runners: BTreeMap::new(),
             event_tx,
             event_rx: Some(event_rx),
-            dist_dir: dist_dir.to_path_buf(),
+            dist_dir: dist_dir.map(|p| p.to_path_buf()),
             ready_timeout_ms: 10000,
             stopped: false,
         }
@@ -93,7 +93,7 @@ impl Orchestrator {
     /// Load manifests for all nodes from co-located manifest files.
     fn load_manifests(&mut self) {
         for (name, dag_node) in &mut self.dag.nodes {
-            let resolved = resolve_node(&dag_node.use_, &self.dist_dir);
+            let resolved = resolve_node(&dag_node.use_, self.dist_dir.as_deref());
             // Strip extension from command to find manifest base path
             let cmd = if resolved.args.is_empty() {
                 &resolved.command
@@ -180,7 +180,7 @@ impl Orchestrator {
         let order = self.dag.order.clone();
         for name in &order {
             let dag_node = self.dag.nodes.get(name).unwrap();
-            let resolved = resolve_node(&dag_node.use_, &self.dist_dir);
+            let resolved = resolve_node(&dag_node.use_, self.dist_dir.as_deref());
 
             // Create a per-node event sender that tags events with the node name
             let node_name = name.clone();

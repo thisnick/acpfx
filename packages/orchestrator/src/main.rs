@@ -25,7 +25,8 @@ enum Commands {
         #[arg(long, default_value = "examples/pipeline/elevenlabs.yaml")]
         config: String,
 
-        /// Path to dist directory (for node resolution)
+        /// Path to local dist directory for node resolution (debug builds only)
+        #[cfg(debug_assertions)]
         #[arg(long, default_value = "dist")]
         dist: String,
 
@@ -46,6 +47,7 @@ async fn main() {
     match cli.command {
         Commands::Run {
             config,
+            #[cfg(debug_assertions)]
             dist,
             ready_timeout,
             ui: use_ui,
@@ -54,16 +56,21 @@ async fn main() {
                 eprintln!("[acpfx] Cannot find config file '{config}': {e}");
                 std::process::exit(1);
             });
-            let dist_path = PathBuf::from(&dist).canonicalize().unwrap_or_else(|_| {
+
+            // Debug: resolve from local dist/. Release: always npx.
+            #[cfg(debug_assertions)]
+            let dist_path = Some(PathBuf::from(&dist).canonicalize().unwrap_or_else(|_| {
                 PathBuf::from(&dist)
-            });
+            }));
+            #[cfg(not(debug_assertions))]
+            let dist_path: Option<PathBuf> = None;
 
             if !use_ui {
                 eprintln!("[acpfx] Loading config: {}", config_path.display());
             }
 
             let mut orch =
-                orchestrator::Orchestrator::from_file(&config_path, &dist_path)
+                orchestrator::Orchestrator::from_file(&config_path, dist_path.as_deref())
                     .unwrap_or_else(|e| {
                         eprintln!("[acpfx] Fatal: {e}");
                         std::process::exit(1);

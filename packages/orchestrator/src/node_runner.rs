@@ -37,39 +37,42 @@ pub struct ResolvedNode {
 
 /// Resolve a `use` string to a command + launch strategy.
 ///
-/// For @acpfx/<name>:
+/// When `dist_dir` is Some (debug/dev), tries local resolution first:
 ///   1. Local JS:     dist/nodes/<name>.js  -> fork via `node`
 ///   2. Local binary: dist/nodes/<name>     -> spawn directly
-///   3. npx fallback: npx -y @acpfx/<name>  -> spawn
+///   3. npx fallback
 ///
-/// For external paths:
-///   - .js/.mjs -> fork via `node`
-///   - otherwise -> spawn directly
-pub fn resolve_node(use_: &str, dist_dir: &Path) -> ResolvedNode {
+/// When `dist_dir` is None (release), goes straight to npx for @acpfx/* packages.
+///
+/// External paths always resolve directly regardless of mode.
+pub fn resolve_node(use_: &str, dist_dir: Option<&Path>) -> ResolvedNode {
     if let Some(name) = use_.strip_prefix("@acpfx/") {
-        let nodes_dir = dist_dir.join("nodes");
+        // Debug/dev: try local dist/ first
+        if let Some(dist) = dist_dir {
+            let nodes_dir = dist.join("nodes");
 
-        // 1. Local JS bundle
-        let js_path = nodes_dir.join(format!("{name}.js"));
-        if js_path.exists() {
-            return ResolvedNode {
-                command: "node".into(),
-                args: vec![js_path.to_string_lossy().into()],
-                launch_type: LaunchType::Fork,
-            };
+            // 1. Local JS bundle
+            let js_path = nodes_dir.join(format!("{name}.js"));
+            if js_path.exists() {
+                return ResolvedNode {
+                    command: "node".into(),
+                    args: vec![js_path.to_string_lossy().into()],
+                    launch_type: LaunchType::Fork,
+                };
+            }
+
+            // 2. Local native binary
+            let bin_path = nodes_dir.join(name);
+            if bin_path.exists() {
+                return ResolvedNode {
+                    command: bin_path.to_string_lossy().into(),
+                    args: vec![],
+                    launch_type: LaunchType::Spawn,
+                };
+            }
         }
 
-        // 2. Local native binary
-        let bin_path = nodes_dir.join(name);
-        if bin_path.exists() {
-            return ResolvedNode {
-                command: bin_path.to_string_lossy().into(),
-                args: vec![],
-                launch_type: LaunchType::Spawn,
-            };
-        }
-
-        // 3. npx fallback
+        // Release (or local not found): use npx
         return ResolvedNode {
             command: "npx".into(),
             args: vec!["-y".into(), use_.into()],
