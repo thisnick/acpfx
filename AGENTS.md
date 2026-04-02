@@ -210,6 +210,12 @@ pnpm check                  # TypeScript type checking
 4. Process only events declared in your `consumes` manifest
 5. Add to the `nodePackages` array in `scripts/build.js`
 
+## Pull Requests
+
+- **Always include a changeset** when creating a PR that changes code, configs, or CI/CD. Run `pnpm changeset` to create one, or manually add a `.changeset/<name>.md` file. Without a changeset, the release workflow won't trigger and changes won't be published.
+- Changesets should reference the affected packages (`@acpfx/cli`, `@acpfx/mic-aec`, `@acpfx/core`, etc.) with the appropriate bump level (`patch`, `minor`, `major`).
+- CI-only or docs-only changes that don't affect published packages still need a changeset if they fix release infrastructure (e.g., postinstall scripts, release workflow).
+
 ## Things to Avoid
 
 - **Never hardcode node names** -- use `ACPFX_NODE_NAME` env var and settings.
@@ -217,3 +223,4 @@ pnpm check                  # TypeScript type checking
 - **Don't buffer when you can stream** -- latency is critical for voice.
 - **Don't put business logic in the orchestrator** -- it is a dumb event router.
 - **stderr is for crashes only** -- use `log.*` from node-sdk for structured logging on stdout.
+- **Never create a PR without a changeset** -- if it touches code or release infra, it needs one.

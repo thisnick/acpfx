@@ -60,8 +60,7 @@ async function main() {
     return;
   }
 
-  // Both packages ship in the same GitHub Release, tagged as acpfx@{version}
-  const url = `https://github.com/thisnick/acpfx/releases/download/acpfx%40${version}/${binaryName}`;
+  const url = `https://github.com/thisnick/acpfx/releases/download/%40acpfx/mic-aec%40${version}/${binaryName}`;
   console.log(`mic-aec: downloading ${binaryName} from GitHub Releases...`);
   console.log(`  ${url}`);
 

@@ -62,7 +62,7 @@ async function main() {
     return;
   }
 
-  const url = `https://github.com/thisnick/acpfx/releases/download/%40acpfx%2Fcli%40${version}/${binaryName}`;
+  const url = `https://github.com/thisnick/acpfx/releases/download/%40acpfx/cli%40${version}/${binaryName}`;
   console.log(`acpfx: downloading ${binaryName} from GitHub Releases...`);
   console.log(`  ${url}`);
 
