@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/mic-aec",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "acpfx microphone with acoustic echo cancellation",
   "repository": {
     "type": "git",

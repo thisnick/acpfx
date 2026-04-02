@@ -1,5 +1,11 @@
 # acpfx
 
+## 0.2.3
+
+### Patch Changes
+
+- 65d0337: Use native GitHub runners for all 6 platforms (no cross-compilation)
+
 ## 0.2.2
 
 ### Patch Changes

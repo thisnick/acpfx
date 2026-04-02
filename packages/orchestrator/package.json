@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Observable audio pipeline framework — pluggable voice agent pipelines via YAML config",
   "license": "MIT",
   "repository": {
