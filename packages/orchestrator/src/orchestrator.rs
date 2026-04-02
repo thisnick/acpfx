@@ -136,7 +136,8 @@ impl Orchestrator {
         }
 
         // Validate edge compatibility
-        let nodes_snapshot: BTreeMap<String, (Vec<String>, Vec<String>, Vec<String>)> = self
+        type NodeInfo = (Vec<String>, Vec<String>, Vec<String>);
+        let nodes_snapshot: BTreeMap<String, NodeInfo> = self
             .dag
             .nodes
             .iter()
@@ -209,7 +210,7 @@ impl Orchestrator {
         let timeout = self.ready_timeout_ms;
         for name in &order {
             if let Some(runner) = self.runners.get_mut(name) {
-                runner.wait_ready(timeout).await.map_err(|e| e)?;
+                runner.wait_ready(timeout).await?;
             }
         }
 
@@ -306,11 +307,10 @@ impl Orchestrator {
                     }
                 }
                 NodeEvent::Exited { code, name } => {
-                    if !self.stopped && code != Some(0) && code.is_some() {
-                        eprintln!(
-                            "[orchestrator] Node '{name}' exited with code {}",
-                            code.unwrap()
-                        );
+                    if let Some(c) = code {
+                        if !self.stopped && c != 0 {
+                            eprintln!("[orchestrator] Node '{name}' exited with code {c}");
+                        }
                     }
                 }
                 NodeEvent::Error { message, name } => {
