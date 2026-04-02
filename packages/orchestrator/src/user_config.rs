@@ -286,4 +286,93 @@ mod tests {
         // D: yaml only
         assert_eq!(env.get("D").unwrap(), "yaml");
     }
+
+    // ---- Evaluator tests ----
+
+    #[test]
+    fn build_env_system_env_overrides_all() {
+        // System env should override project, global, and yaml
+        let key = "ACPFX_TEST_SYS_OVERRIDE_1234";
+        std::env::set_var(key, "system-wins");
+
+        let merged = MergedConfig {
+            global: UserConfig {
+                default_pipeline: None,
+                env: {
+                    let mut m = BTreeMap::new();
+                    m.insert(key.into(), "global".into());
+                    m
+                },
+            },
+            project: UserConfig {
+                default_pipeline: None,
+                env: {
+                    let mut m = BTreeMap::new();
+                    m.insert(key.into(), "project".into());
+                    m
+                },
+            },
+        };
+
+        let yaml_env = {
+            let mut m = BTreeMap::new();
+            m.insert(key.into(), "yaml".into());
+            m
+        };
+
+        let env = build_node_env(&merged, &yaml_env);
+        assert_eq!(env.get(key).unwrap(), "system-wins",
+            "System env must override all config layers");
+
+        std::env::remove_var(key);
+    }
+
+    #[test]
+    fn default_pipeline_project_overrides_global() {
+        let merged = MergedConfig {
+            global: UserConfig {
+                default_pipeline: Some("global-pipeline".into()),
+                env: BTreeMap::new(),
+            },
+            project: UserConfig {
+                default_pipeline: Some("project-pipeline".into()),
+                env: BTreeMap::new(),
+            },
+        };
+        assert_eq!(merged.default_pipeline(), Some("project-pipeline"));
+    }
+
+    #[test]
+    fn default_pipeline_falls_back_to_global() {
+        let merged = MergedConfig {
+            global: UserConfig {
+                default_pipeline: Some("global-pipeline".into()),
+                env: BTreeMap::new(),
+            },
+            project: UserConfig::default(),
+        };
+        assert_eq!(merged.default_pipeline(), Some("global-pipeline"));
+    }
+
+    #[test]
+    fn default_pipeline_none_when_both_empty() {
+        let merged = MergedConfig {
+            global: UserConfig::default(),
+            project: UserConfig::default(),
+        };
+        assert_eq!(merged.default_pipeline(), None);
+    }
+
+    #[test]
+    fn config_json_uses_camel_case() {
+        let config = UserConfig {
+            default_pipeline: Some("test".into()),
+            env: BTreeMap::new(),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("defaultPipeline"),
+            "config.json should use camelCase: {json}");
+        assert!(!json.contains("default_pipeline"),
+            "config.json should not use snake_case: {json}");
+    }
 }

@@ -3,8 +3,10 @@
 mod config;
 mod dag;
 mod node_runner;
+mod onboard;
 mod orchestrator;
 mod pipeline_resolver;
+mod templates;
 mod ui;
 mod user_config;
 
@@ -51,7 +53,19 @@ enum Commands {
     },
 
     /// List available pipelines
-    Pipelines,
+    Pipelines {
+        #[command(subcommand)]
+        action: Option<PipelinesAction>,
+    },
+
+    /// Interactive setup for first-time users
+    Onboard,
+}
+
+#[derive(Subcommand)]
+enum PipelinesAction {
+    /// Interactive pipeline builder
+    Create,
 }
 
 #[derive(Subcommand)]
@@ -109,10 +123,22 @@ async fn main() {
                         std::process::exit(1);
                     })
                 } else {
-                    eprintln!("[acpfx] No pipeline specified and no default configured.");
-                    eprintln!("[acpfx] Run 'acpfx onboard' to set up your first pipeline,");
-                    eprintln!("[acpfx] or specify one: acpfx run <pipeline-name>");
-                    std::process::exit(1);
+                    // No default pipeline — auto-trigger onboarding
+                    match onboard::run_onboard(true) {
+                        Ok(Some(result)) if result.run_now => result.pipeline_path,
+                        Ok(Some(_)) => {
+                            eprintln!("[acpfx] Pipeline saved. Run it with: acpfx run");
+                            std::process::exit(0);
+                        }
+                        Ok(None) => {
+                            eprintln!("[acpfx] Onboarding cancelled.");
+                            std::process::exit(0);
+                        }
+                        Err(e) => {
+                            eprintln!("[acpfx] Onboarding error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
                 }
             };
 
@@ -277,21 +303,55 @@ async fn main() {
             }
         }
 
-        Commands::Pipelines => {
-            let pipelines = pipeline_resolver::list_pipelines();
-            if pipelines.is_empty() {
-                println!("No pipelines found.");
-                println!("Run 'acpfx onboard' to create your first pipeline.");
-            } else {
-                let merged = user_config::load_merged_config();
-                let default = merged.default_pipeline().map(String::from);
-                for (name, source) in &pipelines {
-                    let marker = if default.as_deref() == Some(name.as_str()) {
-                        " (default)"
-                    } else {
-                        ""
-                    };
-                    println!("  {name:<30} [{source}]{marker}");
+        Commands::Pipelines { action } => match action {
+            None => {
+                let pipelines = pipeline_resolver::list_pipelines();
+                if pipelines.is_empty() {
+                    println!("No pipelines found.");
+                    println!("Run 'acpfx onboard' to create your first pipeline.");
+                } else {
+                    let merged = user_config::load_merged_config();
+                    let default = merged.default_pipeline().map(String::from);
+                    for (name, source) in &pipelines {
+                        let marker = if default.as_deref() == Some(name.as_str()) {
+                            " (default)"
+                        } else {
+                            ""
+                        };
+                        println!("  {name:<30} [{source}]{marker}");
+                    }
+                }
+            }
+            Some(PipelinesAction::Create) => {
+                match onboard::run_onboard(false) {
+                    Ok(Some(result)) => {
+                        println!("Pipeline '{}' saved to {}", result.pipeline_name, result.pipeline_path.display());
+                    }
+                    Ok(None) => {
+                        eprintln!("Cancelled.");
+                    }
+                    Err(e) => {
+                        eprintln!("[acpfx] Error: {e}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+        },
+
+        Commands::Onboard => {
+            match onboard::run_onboard(false) {
+                Ok(Some(result)) => {
+                    println!("Pipeline '{}' saved to {}", result.pipeline_name, result.pipeline_path.display());
+                    if result.run_now {
+                        println!("Run: acpfx run {}", result.pipeline_name);
+                    }
+                }
+                Ok(None) => {
+                    eprintln!("Onboarding cancelled.");
+                }
+                Err(e) => {
+                    eprintln!("[acpfx] Onboarding error: {e}");
+                    std::process::exit(1);
                 }
             }
         }

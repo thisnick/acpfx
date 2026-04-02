@@ -157,4 +157,36 @@ mod tests {
             assert!(pipelines[i - 1].0 <= pipelines[i].0);
         }
     }
+
+    // ---- Evaluator tests ----
+
+    #[test]
+    fn resolve_path_with_slash() {
+        // Any name containing '/' should be treated as a file path, not a name
+        let result = resolve_pipeline("/tmp/does-not-exist/pipeline.yaml");
+        assert!(result.is_err());
+        // Should say "file not found", not "pipeline not found" via name resolution
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn resolve_path_ending_yaml() {
+        // Names ending in .yaml should be treated as file paths
+        let result = resolve_pipeline("my-pipeline.yaml");
+        assert!(result.is_err());
+        // Should attempt direct file load, not name resolution
+        let err = result.unwrap_err();
+        assert!(err.contains("not found"), "Should report file not found: {err}");
+    }
+
+    #[test]
+    fn resolve_direct_file_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let yaml_path = dir.path().join("custom.yaml");
+        fs::write(&yaml_path, "nodes: {}").unwrap();
+
+        // Absolute path
+        let result = resolve_pipeline(yaml_path.to_str().unwrap());
+        assert!(result.is_ok(), "Should resolve absolute yaml path");
+    }
 }
