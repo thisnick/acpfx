@@ -21,8 +21,13 @@ use ratatui::Terminal;
 
 #[derive(Debug, Clone)]
 struct NodeAudioState {
+    // Real-time level (from audio.level events)
     rms: f64,
     dbfs: f64,
+    has_level: bool, // true if we've received audio.level
+    // Accumulated chunk stats (from audio.chunk events)
+    chunks: u64,
+    duration_ms: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -38,6 +43,7 @@ struct NodeAgentState {
     ttft: Option<u64>,
     submit_ts: Option<u64>,
     first_delta_ts: Option<u64>,
+    prompt: String,           // submitted prompt text
     text: String,             // accumulated response text (streamed deltas)
     thinking: bool,           // currently in thinking state
     tool_name: Option<String>,  // active tool call name
@@ -68,12 +74,12 @@ impl Default for PerNodeState {
         Self {
             ready: false,
             done: false,
-            audio: NodeAudioState { rms: 0.0, dbfs: f64::NEG_INFINITY },
+            audio: NodeAudioState { rms: 0.0, dbfs: f64::NEG_INFINITY, has_level: false, chunks: 0, duration_ms: 0.0 },
             speech: NodeSpeechState { text: String::new(), state: "idle".into() },
             agent: NodeAgentState {
                 status: "idle".into(), tokens: 0, ttft: None,
                 submit_ts: None, first_delta_ts: None,
-                text: String::new(), thinking: false,
+                prompt: String::new(), text: String::new(), thinking: false,
                 tool_name: None, tool_status: None,
             },
             player: None,
@@ -142,9 +148,15 @@ impl UiState {
             "lifecycle.ready" => node.ready = true,
             "lifecycle.done" => node.done = true,
 
+            "audio.chunk" => {
+                node.audio.chunks += 1;
+                node.audio.duration_ms += event.get("durationMs").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            }
+
             "audio.level" => {
                 node.audio.rms = event.get("rms").and_then(|v| v.as_f64()).unwrap_or(0.0);
                 node.audio.dbfs = event.get("dbfs").and_then(|v| v.as_f64()).unwrap_or(f64::NEG_INFINITY);
+                node.audio.has_level = true;
             }
 
             "speech.partial" | "speech.delta" => {
@@ -159,17 +171,25 @@ impl UiState {
 
             "agent.submit" => {
                 node.interrupted = false; // clear stale interrupt flag on new turn
+                let prompt = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 node.agent = NodeAgentState {
                     status: "waiting".into(),
                     tokens: 0,
                     ttft: None,
                     submit_ts: Some(ts),
                     first_delta_ts: None,
+                    prompt,
                     text: String::new(),
                     thinking: false,
                     tool_name: None,
                     tool_status: None,
                 };
+                // Reset audio chunk counters for downstream nodes on new turn
+                // (TTS/player chunk counts are per-turn)
+                for other in self.nodes.values_mut() {
+                    other.audio.chunks = 0;
+                    other.audio.duration_ms = 0.0;
+                }
             }
             "agent.delta" => {
                 node.agent.status = "streaming".into();
@@ -278,17 +298,31 @@ fn render_frame(
 
             let mut lines: Vec<Line> = Vec::new();
 
-            // Audio widget
+            // Audio widget — level meter for real-time sources, chunk stats for burst sources
+            // Distinguished by manifest: emits audio.level = real-time, only audio.chunk = burst
             if manifest.emits_category("audio") {
-                let level = ((node_state.audio.rms / 32768.0) * 20.0).min(20.0) as usize;
-                let filled = "\u{2588}".repeat(level);
-                let empty = "\u{2591}".repeat(20 - level);
-                let db_str = if node_state.audio.dbfs == f64::NEG_INFINITY {
-                    "-inf".to_string()
+                let is_realtime = manifest.emits.iter().any(|e| e == "audio.level");
+                if is_realtime {
+                    // Real-time audio (mic): show level meter
+                    let level = ((node_state.audio.rms / 32768.0) * 20.0).min(20.0) as usize;
+                    let filled = "\u{2588}".repeat(level);
+                    let empty = "\u{2591}".repeat(20 - level);
+                    let db_str = if node_state.audio.dbfs == f64::NEG_INFINITY {
+                        "-inf".to_string()
+                    } else {
+                        format!("{:.0}", node_state.audio.dbfs)
+                    };
+                    lines.push(Line::from(format!("[{filled}{empty}] {db_str}dB")));
+                } else if node_state.audio.chunks > 0 {
+                    // Burst audio (TTS/player): show accumulated chunk stats
+                    let secs = node_state.audio.duration_ms / 1000.0;
+                    lines.push(Line::from(format!(
+                        "\u{266B} {} chunks ({:.1}s audio)",
+                        node_state.audio.chunks, secs
+                    )));
                 } else {
-                    format!("{:.0}", node_state.audio.dbfs)
-                };
-                lines.push(Line::from(format!("[{filled}{empty}] {db_str}dB")));
+                    lines.push(Line::from(Span::styled("idle", Style::default().fg(Color::DarkGray))));
+                }
             }
 
             // Speech widget
@@ -315,6 +349,19 @@ fn render_frame(
                     "{} {} \u{00B7} {} tok{}",
                     icon, node_state.agent.status, node_state.agent.tokens, ttft_str
                 )));
+
+                // Submitted prompt
+                if !node_state.agent.prompt.is_empty() {
+                    let prompt = if node_state.agent.prompt.len() > 80 {
+                        format!("{}...", &node_state.agent.prompt[..80])
+                    } else {
+                        node_state.agent.prompt.clone()
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled("  prompt: ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(format!("\"{prompt}\""), Style::default().fg(Color::Cyan)),
+                    ]));
+                }
 
                 // Thinking indicator
                 if node_state.agent.thinking {
