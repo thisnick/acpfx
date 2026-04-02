@@ -46,7 +46,7 @@ struct NodeAgentState {
     prompt: String,           // submitted prompt text
     text: String,             // accumulated response text (streamed deltas)
     thinking: bool,           // currently in thinking state
-    tool_name: Option<String>,  // active tool call name
+    tool_active: bool,          // tool call in progress
     tool_status: Option<String>, // last tool call result
 }
 
@@ -80,7 +80,7 @@ impl Default for PerNodeState {
                 status: "idle".into(), tokens: 0, ttft: None,
                 submit_ts: None, first_delta_ts: None,
                 prompt: String::new(), text: String::new(), thinking: false,
-                tool_name: None, tool_status: None,
+                tool_active: false, tool_status: None,
             },
             player: None,
             interrupted: false,
@@ -181,7 +181,7 @@ impl UiState {
                     prompt,
                     text: String::new(),
                     thinking: false,
-                    tool_name: None,
+                    tool_active: false,
                     tool_status: None,
                 };
                 // Reset audio chunk counters for downstream nodes on new turn
@@ -212,17 +212,11 @@ impl UiState {
             "agent.tool_start" => {
                 node.agent.status = "tool".into();
                 node.agent.thinking = false;
-                // Try title first, fall back to toolCallId (truncated if UUID-like)
-                let title = event.get("title")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty() && *s != "undefined");
-                let tool_id = event.get("toolCallId")
-                    .and_then(|v| v.as_str())
-                    .map(|id| if id.len() > 12 { &id[..12] } else { id });
-                node.agent.tool_name = title.or(tool_id).map(String::from);
+                node.agent.tool_active = true;
                 node.agent.tool_status = Some("running".into());
             }
             "agent.tool_done" => {
+                node.agent.tool_active = false;
                 node.agent.tool_status = event.get("status")
                     .and_then(|v| v.as_str())
                     .map(String::from)
@@ -379,17 +373,20 @@ fn render_frame(
                     )));
                 }
 
-                // Active tool call
-                if let Some(ref tool) = node_state.agent.tool_name {
-                    let status = node_state.agent.tool_status.as_deref().unwrap_or("running");
+                // Tool call indicator
+                if node_state.agent.tool_active {
+                    lines.push(Line::from(Span::styled(
+                        "  \u{1F527} tool call...",
+                        Style::default().fg(Color::Yellow),
+                    )));
+                } else if let Some(ref status) = node_state.agent.tool_status {
                     let color = if status == "completed" { Color::Green }
                         else if status == "failed" { Color::Red }
-                        else { Color::Yellow };
-                    lines.push(Line::from(vec![
-                        Span::styled("  \u{1F527} ", Style::default().fg(Color::DarkGray)),
-                        Span::raw(tool.as_str()),
-                        Span::styled(format!(" ({status})"), Style::default().fg(color)),
-                    ]));
+                        else { Color::DarkGray };
+                    lines.push(Line::from(Span::styled(
+                        format!("  \u{1F527} tool call ({status})"),
+                        Style::default().fg(color),
+                    )));
                 }
 
                 // Streamed response text — wrap long lines, include all (scroll handles overflow)

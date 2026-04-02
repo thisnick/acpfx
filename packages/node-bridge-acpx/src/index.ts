@@ -147,20 +147,10 @@ function handleSpeechPause(pendingText: string): void {
 
       // Tool call started — tool_call event means a new tool invocation
       if (sessionUpdate === "tool_call") {
-        // Extract tool name — prefer _meta.claudeCode.toolName, fall back to title
-        const meta = update._meta as Record<string, unknown> | undefined;
-        const claudeCode = meta?.claudeCode as Record<string, unknown> | undefined;
-        const toolTitle =
-          (typeof claudeCode?.toolName === "string" && claudeCode.toolName ? claudeCode.toolName : null)
-          ?? (typeof update.title === "string" && update.title ? update.title : null)
-          ?? (typeof update.name === "string" && update.name ? update.name : null)
-          ?? undefined;
-        log.debug(`tool_call: toolName=${claudeCode?.toolName} title=${update.title} resolved=${toolTitle}`);
         emit({
           type: "agent.tool_start",
           requestId,
-          toolCallId: (typeof update.toolCallId === "string" ? update.toolCallId : "") ?? "",
-          title: toolTitle,
+          toolCallId: (typeof update.toolCallId === "string" ? update.toolCallId : ""),
         });
         return;
       }
