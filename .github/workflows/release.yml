@@ -103,21 +103,17 @@ jobs:
             cargo build --release --target ${{ matrix.target }} -p acpfx-orchestrator
           fi
         shell: bash
-      - name: Stage binary into npm package
+      - name: Rename binary for release
         run: |
-          mkdir -p npm/acpfx/${{ matrix.npm-pkg }}/bin
-          cp target/${{ matrix.target }}/release/${{ matrix.binary }} npm/acpfx/${{ matrix.npm-pkg }}/bin/${{ matrix.binary }}
+          ext=""
+          if [[ "${{ matrix.binary }}" == *.exe ]]; then ext=".exe"; fi
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "acpfx-${{ matrix.npm-pkg }}${ext}"
         shell: bash
-      - name: Upload npm package dir
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-acpfx-${{ matrix.npm-pkg }}
-          path: npm/acpfx/${{ matrix.npm-pkg }}/
-      - name: Upload raw binary for GitHub Release
+      - name: Upload binary for GitHub Release
         uses: actions/upload-artifact@v4
         with:
           name: release-orchestrator-${{ matrix.npm-pkg }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
+          path: acpfx-${{ matrix.npm-pkg }}*
 
   # ---------- Build mic-aec (native runners only) ----------
   build-mic-aec:
@@ -159,124 +155,17 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }} -p mic-aec
         shell: bash
-      - name: Stage binary into npm package
+      - name: Rename binary for release
         run: |
-          mkdir -p npm/mic-aec/${{ matrix.npm-pkg }}/bin
-          cp target/${{ matrix.target }}/release/${{ matrix.binary }} npm/mic-aec/${{ matrix.npm-pkg }}/bin/${{ matrix.binary }}
+          ext=""
+          if [[ "${{ matrix.binary }}" == *.exe ]]; then ext=".exe"; fi
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "mic-aec-${{ matrix.npm-pkg }}${ext}"
         shell: bash
-      - name: Upload npm package dir
-        uses: actions/upload-artifact@v4
-        with:
-          name: npm-mic-aec-${{ matrix.npm-pkg }}
-          path: npm/mic-aec/${{ matrix.npm-pkg }}/
-      - name: Upload raw binary for GitHub Release
+      - name: Upload binary for GitHub Release
         uses: actions/upload-artifact@v4
         with:
           name: release-mic-aec-${{ matrix.npm-pkg }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary }}
-
-  # ---------- Publish to npm ----------
-  publish-npm:
-    name: Publish npm packages
-    runs-on: ubuntu-latest
-    needs: [changesets, build-orchestrator, build-mic-aec]
-    if: needs.changesets.outputs.published == 'true'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@11.12.1
-
-      - name: Extract version from changesets
-        id: version
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Download all npm package artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: npm-*
-          path: staging/
-
-      # Overlay built binaries onto the checked-in npm/ package.json files
-      - name: Assemble packages
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          # --- orchestrator platform packages ---
-          for dir in staging/npm-acpfx-*/; do
-            platform=$(basename "$dir" | sed 's/npm-acpfx-//')
-            target="npm/acpfx/${platform}"
-            cp -r "$dir"/* "$target"/
-            chmod +x "$target"/bin/* 2>/dev/null || true
-            # Stamp version
-            node -e "
-              const p = require('./${target}/package.json');
-              p.version = '${VERSION}';
-              require('fs').writeFileSync('./${target}/package.json', JSON.stringify(p, null, 2) + '\n');
-            "
-            echo "Assembled: $target (v${VERSION})"
-          done
-
-          # --- mic-aec platform packages ---
-          for dir in staging/npm-mic-aec-*/; do
-            platform=$(basename "$dir" | sed 's/npm-mic-aec-//')
-            target="npm/mic-aec/${platform}"
-            cp -r "$dir"/* "$target"/
-            chmod +x "$target"/bin/* 2>/dev/null || true
-            node -e "
-              const p = require('./${target}/package.json');
-              p.version = '${VERSION}';
-              require('fs').writeFileSync('./${target}/package.json', JSON.stringify(p, null, 2) + '\n');
-            "
-            echo "Assembled: $target (v${VERSION})"
-          done
-
-          # --- wrapper packages: stamp version + update optionalDependencies ---
-          for wrapper in npm/acpfx/package.json npm/mic-aec/package.json; do
-            node -e "
-              const p = require('./${wrapper}');
-              p.version = '${VERSION}';
-              if (p.optionalDependencies) {
-                for (const dep of Object.keys(p.optionalDependencies)) {
-                  p.optionalDependencies[dep] = '${VERSION}';
-                }
-              }
-              require('fs').writeFileSync('./${wrapper}', JSON.stringify(p, null, 2) + '\n');
-            "
-            echo "Stamped: $wrapper (v${VERSION})"
-          done
-
-      # Publish platform packages first, then wrappers
-      - name: Publish orchestrator platform packages
-        run: |
-          for dir in npm/acpfx/darwin-* npm/acpfx/linux-* npm/acpfx/win32-*; do
-            [ -f "$dir/bin/"* ] || continue
-            echo "Publishing $(node -p "require('./$dir/package.json').name")"
-            npm publish "$dir" --access public
-          done
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish mic-aec platform packages
-        run: |
-          for dir in npm/mic-aec/darwin-* npm/mic-aec/linux-* npm/mic-aec/win32-*; do
-            [ -f "$dir/bin/"* ] || continue
-            echo "Publishing $(node -p "require('./$dir/package.json').name")"
-            npm publish "$dir" --access public
-          done
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # Note: the main 'acpfx' package is published by changesets (workspace package)
-      # Only platform binary packages are published here
-
-      - name: Publish @acpfx/mic-aec wrapper
-        run: npm publish npm/mic-aec --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          path: mic-aec-${{ matrix.npm-pkg }}*
 
   # ---------- GitHub Release ----------
   github-release:
@@ -287,6 +176,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Extract acpfx version
+        id: version
+        run: echo "version=$(node -p "require('./packages/orchestrator/package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Download release binaries
         uses: actions/download-artifact@v4
         with:
@@ -294,28 +187,17 @@ jobs:
           path: release-staging/
           merge-multiple: false
 
-      - name: Flatten and rename binaries
+      - name: Collect binaries
         run: |
           mkdir -p release-assets
           for dir in release-staging/release-*/; do
-            name=$(basename "$dir")  # e.g. release-orchestrator-darwin-arm64
-            kind=$(echo "$name" | sed 's/release-//' | sed 's/-\(darwin\|linux\|win32\)//')
-            platform=$(echo "$name" | sed "s/release-${kind}-//")
-            for f in "$dir"/*; do
-              base=$(basename "$f")
-              ext=""
-              if [[ "$base" == *.exe ]]; then
-                ext=".exe"
-                base="${base%.exe}"
-              fi
-              mv "$f" "release-assets/${base}-${platform}${ext}"
-            done
+            cp "$dir"/* release-assets/
           done
           ls -la release-assets/
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ needs.changesets.outputs.publishedPackages && fromJson(needs.changesets.outputs.publishedPackages)[0].version || '' }}
+          tag_name: acpfx@${{ steps.version.outputs.version }}
           files: release-assets/*
           generate_release_notes: true
