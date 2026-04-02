@@ -34,10 +34,10 @@ echo 'dotenv' > .envrc && direnv allow
 acpx --model claude-sonnet-4-6 --approve-all claude "hello"
 
 # Run with terminal dashboard
-node dist/main.js run --config acpfx.yaml
+node dist/main.js run --config examples/pipelines/acpfx.yaml
 
 # Run headless (event logs only)
-node dist/main.js run --config acpfx-simple.yaml
+node dist/main.js run --config examples/pipelines/acpfx-simple.yaml
 ```
 
 ## Configuration
@@ -45,7 +45,7 @@ node dist/main.js run --config acpfx-simple.yaml
 Pipelines are defined in YAML. Each node has a `use` field (implementation) and `outputs` (where its events go).
 
 ```yaml
-# acpfx.yaml
+# examples/pipelines/acpfx.yaml
 nodes:
   mic:
     use: "@acpfx/mic-sox"

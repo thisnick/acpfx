@@ -26,20 +26,20 @@ The orchestrator is a Rust binary (`packages/orchestrator/`):
 
 ```bash
 # Via cargo (development)
-cargo run -p acpfx-orchestrator --release -- run --config acpfx.yaml
+cargo run -p acpfx-orchestrator --release -- run --config examples/pipelines/acpfx.yaml
 
 # Via pnpm (after cargo build)
-pnpm start --config acpfx.yaml
+pnpm start --config examples/pipelines/acpfx.yaml
 
 # With terminal dashboard UI
-pnpm start --config acpfx.yaml --ui
+pnpm start --config examples/pipelines/acpfx.yaml --ui
 ```
 
 CLI flags for `acpfx run`:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--config` | `acpfx.yaml` | Path to pipeline YAML config |
+| `--config` | `examples/pipelines/acpfx.yaml` | Path to pipeline YAML config |
 | `--dist` | `dist` | Path to built node artifacts |
 | `--ready-timeout` | `10000` | ms to wait for each node's `lifecycle.ready` |
 | `--ui` | off | Enable ratatui terminal dashboard |

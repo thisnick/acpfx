@@ -22,7 +22,7 @@ enum Commands {
     /// Run a pipeline from a YAML config file
     Run {
         /// Path to acpfx YAML config file
-        #[arg(long, default_value = "acpfx.yaml")]
+        #[arg(long, default_value = "examples/pipelines/acpfx.yaml")]
         config: String,
 
         /// Path to dist directory (for node resolution)
