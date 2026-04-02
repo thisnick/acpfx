@@ -1,5 +1,11 @@
 # acpfx
 
+## 0.2.5
+
+### Patch Changes
+
+- baf94bd: Upgrade GitHub Actions to Node.js 24 compatible versions
+
 ## 0.2.4
 
 ### Patch Changes
