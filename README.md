@@ -1,220 +1,150 @@
 # acpfx
 
-Observable, DAG-based voice pipeline for [ACP](https://github.com/anthropics/agent-client-protocol) agents.
+Observable audio pipeline framework for voice agents.
 
-Speak to coding agents like Claude Code through your microphone. Hear their responses through your speaker. See everything happening in a real-time terminal dashboard.
+Speak to coding agents like Claude Code through your microphone. Hear their responses through your speaker. See everything in a real-time terminal dashboard.
 
 ## Architecture
 
 ```
-mic → stt → bridge → tts → speaker
+mic → stt → bridge → tts → player
               ↓
          ACP agent
        (Claude Code)
 ```
 
-The **orchestrator** loads a YAML config, spawns each node as a child process, and routes NDJSON events between them. It's a dumb DAG executor — it doesn't know what nodes do, just routes events per the config.
-
-**Nodes** are concrete implementations: `@acpfx/stt-elevenlabs`, `@acpfx/tts-elevenlabs`, `@acpfx/bridge-acpx`, etc. Swap providers by changing one line in YAML.
+Nodes are child processes connected via NDJSON stdio. The graph topology is defined in YAML and supports cycles (e.g., player → mic for echo cancellation). The Rust orchestrator routes events between nodes, filtering by each node's declared manifest contract.
 
 ## Quick Start
 
 ```bash
-# Install
+# Install dependencies
 pnpm install
 
-# Build
+# Build TypeScript nodes
 pnpm build
 
-# Set up ElevenLabs API key (used for both STT and TTS)
-echo 'ELEVENLABS_API_KEY=sk_...' > .env
+# Build Rust orchestrator
+cargo build --release -p acpfx-orchestrator
+
+# Set up API keys
+echo 'DEEPGRAM_API_KEY=...' > .env
 echo 'dotenv' > .envrc && direnv allow
 
-# Set up acpx session
-acpx --model claude-sonnet-4-6 --approve-all claude "hello"
-
 # Run with terminal dashboard
-node dist/main.js run --config examples/pipeline/elevenlabs.yaml
+pnpm start --config examples/pipeline/deepgram-sysvoice.yaml --ui
 
-# Run headless (event logs only)
-node dist/main.js run --config examples/pipeline/elevenlabs-minimal.yaml
+# Run headless
+pnpm start --config examples/pipeline/deepgram-sysvoice.yaml
 ```
 
-## Configuration
+## Config
 
-Pipelines are defined in YAML. Each node has a `use` field (implementation) and `outputs` (where its events go).
+Pipelines are YAML files. Each node has `use` (implementation), `settings`, and `outputs` (event routing):
 
 ```yaml
-# examples/pipeline/elevenlabs.yaml
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
-    outputs: [stt, recorder, ui]
-
+    use: "@acpfx/mic-aec"
+    settings: { sampleRate: 16000, speechSource: player }
+    outputs: [stt]
   stt:
-    use: "@acpfx/stt-elevenlabs"
-    settings:
-      language: en
-    outputs: [bridge, ui]
-
+    use: "@acpfx/stt-deepgram"
+    settings: { language: en, model: nova-3 }
+    outputs: [bridge]
   bridge:
     use: "@acpfx/bridge-acpx"
-    settings:
-      agent: claude
-      session: voice-chat    # optional named session
-    outputs: [tts, ui, recorder]
-
+    settings: { agent: claude, session: voice }
+    outputs: [tts, player]
   tts:
-    use: "@acpfx/tts-elevenlabs"
-    settings:
-      voiceId: JBFqnCBsd6RMkjVDRZzb
-    outputs: [speaker, recorder, ui]
-
-  speaker:
-    use: "@acpfx/play-sox"
-    outputs: []
-
-  recorder:
-    use: "@acpfx/recorder"
-    settings:
-      outputDir: ./recordings
-    outputs: []
-
-  ui:
-    use: "@acpfx/ui-cli"
-    outputs: []
+    use: "@acpfx/tts-deepgram"
+    settings: { voice: aura-2-aries-en }
+    outputs: [player]
+  player:
+    use: "@acpfx/audio-player"
+    settings: { speechSource: tts, noLocalPlayback: true }
+    outputs: [mic]  # cycle: reference audio for AEC
 ```
 
-### Setting model and session
+See `examples/pipeline/` for more configurations (Deepgram, ElevenLabs, with/without AEC).
 
-Configure the ACP agent via acpx before running:
+## Packages
 
-```bash
-# Set model
-acpx claude set model claude-sonnet-4-6
+### Rust
 
-# Use a named session
-acpx claude -s voice-chat "hello"
+| Package | Description |
+|---------|-------------|
+| `packages/orchestrator` | Rust orchestrator — event routing, manifest filtering, ratatui TUI |
+| `packages/schema` | Canonical event types (source of truth), codegen to TypeScript + Zod |
+| `packages/sys-voice` | Native audio I/O with OS-level AEC |
+| `packages/node-mic-aec` | Mic capture with acoustic echo cancellation |
 
-# Then in YAML:
-# bridge.settings.session: voice-chat
-```
+### TypeScript Nodes
 
-## Available Nodes
+| Package | Description |
+|---------|-------------|
+| `node-mic-sox` | Mic capture via sox |
+| `node-mic-file` | WAV file input (for testing) |
+| `node-stt-deepgram` | Deepgram streaming STT |
+| `node-stt-elevenlabs` | ElevenLabs streaming STT |
+| `node-bridge-acpx` | ACP agent bridge (Claude via acpx) |
+| `node-tts-deepgram` | Deepgram streaming TTS |
+| `node-tts-elevenlabs` | ElevenLabs streaming TTS |
+| `node-audio-player` | Speaker output with SFX |
+| `node-play-file` | WAV file output (for testing) |
+| `node-recorder` | Records events + audio + generates timeline |
+| `node-echo` | Passthrough (for testing) |
 
-| Node | Package | Description |
-|------|---------|-------------|
-| Mic (sox) | `@acpfx/mic-sox` | Live microphone capture via sox |
-| Mic (file) | `@acpfx/mic-file` | WAV file playback with real-time pacing |
-| STT | `@acpfx/stt-elevenlabs` | ElevenLabs Scribe v2 with built-in VAD |
-| Bridge | `@acpfx/bridge-acpx` | ACP agent via acpx queue IPC |
-| TTS | `@acpfx/tts-elevenlabs` | ElevenLabs streaming WebSocket TTS |
-| Speaker | `@acpfx/play-sox` | Speaker output via node-speaker |
-| Play (file) | `@acpfx/play-file` | Write audio to WAV file |
-| Recorder | `@acpfx/recorder` | Multi-track recording + timeline viewer |
-| UI (CLI) | `@acpfx/ui-cli` | Ink-based terminal dashboard |
-| Echo | `@acpfx/echo` | Passthrough (for testing) |
+### Shared
 
-## Streaming Protocol
+| Package | Description |
+|---------|-------------|
+| `core` | Generated types, Zod schemas, manifest utilities |
+| `node-sdk` | Node authoring SDK: `emit()`, `log.*`, `onEvent()` |
 
-All events are NDJSON (one JSON object per line) with a `type` field:
+## Manifest Contracts
 
-```
-audio.chunk      — PCM audio data (base64)
-audio.level      — RMS/peak/dBFS metrics
-speech.partial   — interim STT transcript
-speech.delta     — STT correction
-speech.final     — finalized transcript
-speech.pause     — silence detected, ready to submit
-agent.submit     — prompt sent to agent
-agent.delta      — streaming token from agent
-agent.complete   — agent response done
-control.interrupt — stop downstream (barge-in)
-control.state    — component state change
-control.error    — error
-lifecycle.ready  — node initialized
-lifecycle.done   — node shutting down
-log              — component log message
-```
-
-The orchestrator stamps every event with `ts` (wall-clock ms) and `_from` (source node name).
-
-## Barge-In (Interrupt)
-
-When you speak while the agent is responding:
-
-1. STT detects first word → `speech.partial`
-2. Bridge sees `speech.partial` while active → immediately emits `control.interrupt`
-3. TTS closes WebSocket, speaker goes silent
-4. You finish speaking → `speech.pause` → bridge submits new prompt
-
-Interrupt is near-instant — triggers on the first recognized word, not after your full utterance.
-
-## File-Based Testing
-
-Replace mic/speaker with file nodes for automated testing:
+Every node declares what it consumes and emits in a `manifest.yaml`:
 
 ```yaml
-nodes:
-  mic:
-    use: "@acpfx/mic-file"
-    settings:
-      path: ./test-input.wav
-      realtime: true
-    outputs: [stt]
-  # ... rest of pipeline ...
-  speaker:
-    use: "@acpfx/play-file"
-    settings:
-      path: ./test-output.wav
-    outputs: []
+name: stt-deepgram
+consumes: [audio.chunk]
+emits: [speech.partial, speech.final, speech.pause, lifecycle.ready, lifecycle.done]
 ```
 
-## Recording & Timeline
+The orchestrator filters events at runtime — nodes only receive what they declared. See [AGENTS.md](AGENTS.md) for details.
 
-Add a recorder node to capture all events and audio:
+## Event Protocol
 
-```yaml
-recorder:
-  use: "@acpfx/recorder"
-  settings:
-    outputDir: ./recordings
-  outputs: []
-```
+Events are NDJSON with a `type` field, stamped by the orchestrator with `ts` and `_from`:
 
-Produces:
-- `events.jsonl` — all events with timestamps
-- `mic.wav` / `tts.wav` — audio tracks
-- `conversation.wav` — merged timeline
-- `timeline.html` — interactive WaveSurfer.js viewer
+| Category | Events |
+|----------|--------|
+| `audio` | `audio.chunk`, `audio.level` |
+| `speech` | `speech.partial`, `speech.delta`, `speech.final`, `speech.pause` |
+| `agent` | `agent.submit`, `agent.delta`, `agent.complete`, `agent.thinking`, `agent.tool_start`, `agent.tool_done` |
+| `control` | `control.interrupt`, `control.state`, `control.error` |
+| `lifecycle` | `lifecycle.ready`, `lifecycle.done` |
+| `log` | `log` |
+| `player` | `player.status` |
+
+Full protocol reference: [docs/PROTOCOL.md](docs/PROTOCOL.md)
 
 ## Development
 
 ```bash
-pnpm build          # compile TypeScript
-pnpm test           # run unit tests (46 tests)
-pnpm check          # type check without building
-```
-
-### Project Structure
-
-```
-src/
-  main.ts              CLI entrypoint
-  orchestrator.ts      DAG executor
-  config.ts            YAML config loader
-  dag.ts               DAG validation + topological sort
-  protocol.ts          Event type definitions
-  node-runner.ts       Child process spawner
-  nodes/               Node implementations
-  bridge/acpx-ipc.ts   acpx queue IPC client
-  test/                Unit tests
+pnpm install                                    # install TS deps
+pnpm build                                      # build TS nodes
+cargo build --release -p acpfx-orchestrator     # build orchestrator
+cargo test --workspace                          # Rust tests
+pnpm check                                      # TypeScript type check
+cargo run -p acpfx-schema --bin acpfx-codegen   # regenerate types from schema
 ```
 
 ## Requirements
 
-- Node.js 22+
-- pnpm
-- sox (`brew install sox`)
-- acpx (`npm install -g acpx`)
-- ElevenLabs API key (for STT + TTS)
+- Node.js 22+, pnpm
+- Rust (via rustup)
+- sox (`brew install sox`) — for mic-sox node
+- API keys for STT/TTS providers (Deepgram, ElevenLabs)
+- acpx (`npx acpx@latest`) — for the ACP agent bridge

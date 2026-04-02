@@ -21,6 +21,7 @@ use crate::node_runner::{resolve_node, NodeEvent, NodeRunner};
 
 /// Manifest loaded from a node's co-located manifest file.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 pub struct NodeManifest {
     pub name: Option<String>,
     #[serde(default)]
@@ -49,6 +50,7 @@ impl Orchestrator {
     }
 
     /// Create from a YAML string.
+    #[allow(dead_code)]
     pub fn from_yaml(yaml: &str, dist_dir: &Path) -> Result<Self, String> {
         let config =
             parse_config(yaml).map_err(|e| format!("Failed to parse config: {e}"))?;
@@ -134,7 +136,8 @@ impl Orchestrator {
         }
 
         // Validate edge compatibility
-        let nodes_snapshot: BTreeMap<String, (Vec<String>, Vec<String>, Vec<String>)> = self
+        type NodeInfo = (Vec<String>, Vec<String>, Vec<String>);
+        let nodes_snapshot: BTreeMap<String, NodeInfo> = self
             .dag
             .nodes
             .iter()
@@ -207,7 +210,7 @@ impl Orchestrator {
         let timeout = self.ready_timeout_ms;
         for name in &order {
             if let Some(runner) = self.runners.get_mut(name) {
-                runner.wait_ready(timeout).await.map_err(|e| e)?;
+                runner.wait_ready(timeout).await?;
             }
         }
 
@@ -304,11 +307,10 @@ impl Orchestrator {
                     }
                 }
                 NodeEvent::Exited { code, name } => {
-                    if !self.stopped && code != Some(0) && code.is_some() {
-                        eprintln!(
-                            "[orchestrator] Node '{name}' exited with code {}",
-                            code.unwrap()
-                        );
+                    if let Some(c) = code {
+                        if !self.stopped && c != 0 {
+                            eprintln!("[orchestrator] Node '{name}' exited with code {c}");
+                        }
                     }
                 }
                 NodeEvent::Error { message, name } => {
@@ -319,6 +321,7 @@ impl Orchestrator {
     }
 
     /// Send an event directly to a specific node.
+    #[allow(dead_code)]
     pub async fn send_to_node(&self, name: &str, event: &serde_json::Value) {
         if let Some(runner) = self.runners.get(name) {
             let json = serde_json::to_string(event).unwrap_or_default();

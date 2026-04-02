@@ -107,7 +107,7 @@ struct NodeManifest {
 impl NodeManifest {
     fn emits_category(&self, category: &str) -> bool {
         self.emits.iter().any(|e| {
-            e.split('.').next().map_or(false, |cat| cat == category)
+            e.split('.').next() == Some(category)
         })
     }
 }
