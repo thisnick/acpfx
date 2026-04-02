@@ -21,6 +21,7 @@ use crate::node_runner::{resolve_node, NodeEvent, NodeRunner};
 
 /// Manifest loaded from a node's co-located manifest file.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 pub struct NodeManifest {
     pub name: Option<String>,
     #[serde(default)]
@@ -49,6 +50,7 @@ impl Orchestrator {
     }
 
     /// Create from a YAML string.
+    #[allow(dead_code)]
     pub fn from_yaml(yaml: &str, dist_dir: &Path) -> Result<Self, String> {
         let config =
             parse_config(yaml).map_err(|e| format!("Failed to parse config: {e}"))?;
@@ -319,6 +321,7 @@ impl Orchestrator {
     }
 
     /// Send an event directly to a specific node.
+    #[allow(dead_code)]
     pub async fn send_to_node(&self, name: &str, event: &serde_json::Value) {
         if let Some(runner) = self.runners.get(name) {
             let json = serde_json::to_string(event).unwrap_or_default();

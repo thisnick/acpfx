@@ -18,6 +18,7 @@ use tokio::sync::{mpsc, oneshot};
 
 /// How to launch a resolved node.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum LaunchType {
     /// Fork via `node <path>` (JS files)
     Fork,
@@ -27,6 +28,7 @@ pub enum LaunchType {
 
 /// A resolved node ready to spawn.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ResolvedNode {
     pub command: String,
     pub args: Vec<String>,
@@ -100,6 +102,7 @@ pub fn resolve_node(use_: &str, dist_dir: &Path) -> ResolvedNode {
 
 /// Events emitted by a NodeRunner to the orchestrator.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum NodeEvent {
     /// A parsed NDJSON event from the node's stdout.
     Event(serde_json::Value),
@@ -279,6 +282,7 @@ impl NodeRunner {
         }
     }
 
+    #[allow(dead_code)]
     pub fn name(&self) -> &str {
         &self.name
     }
