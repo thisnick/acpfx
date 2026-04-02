@@ -150,6 +150,7 @@ impl UiState {
             "speech.partial" | "speech.delta" => {
                 node.speech.text = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 node.speech.state = "partial".into();
+                node.interrupted = false; // clear on new speech
             }
             "speech.final" => {
                 node.speech.text = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -157,6 +158,7 @@ impl UiState {
             }
 
             "agent.submit" => {
+                node.interrupted = false; // clear stale interrupt flag on new turn
                 node.agent = NodeAgentState {
                     status: "waiting".into(),
                     tokens: 0,

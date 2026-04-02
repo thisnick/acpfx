@@ -11,6 +11,7 @@
 //!   KEY: value
 //! ```
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -27,7 +28,8 @@ pub struct NodeConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PipelineConfig {
-    pub nodes: BTreeMap<String, NodeConfig>,
+    /// Nodes in YAML declaration order (IndexMap preserves insertion order).
+    pub nodes: IndexMap<String, NodeConfig>,
     #[serde(default)]
     pub env: BTreeMap<String, String>,
 }

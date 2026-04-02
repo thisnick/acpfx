@@ -75,11 +75,11 @@ impl Orchestrator {
     }
 
     /// Get manifest data for all nodes (for UI rendering).
-    /// Returns (name, use_, emits) tuples in topological order.
+    /// Returns (name, use_, emits) tuples in config declaration order.
     pub fn get_manifests(&self) -> Vec<(String, String, Vec<String>)> {
-        self.dag
-            .order
-            .iter()
+        self.config
+            .nodes
+            .keys()
             .filter_map(|name| {
                 self.dag.nodes.get(name).map(|n| {
                     (n.name.clone(), n.use_.clone(), n.emits.clone())
