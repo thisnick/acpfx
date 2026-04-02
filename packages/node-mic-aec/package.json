@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/mic-aec",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "bin": {
     "acpfx-mic-aec": "./bin/mic-aec"
   },
