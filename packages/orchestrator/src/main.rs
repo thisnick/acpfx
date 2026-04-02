@@ -4,7 +4,9 @@ mod config;
 mod dag;
 mod node_runner;
 mod orchestrator;
+mod pipeline_resolver;
 mod ui;
+mod user_config;
 
 use std::path::PathBuf;
 
@@ -19,11 +21,15 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run a pipeline from a YAML config file
+    /// Run a pipeline
     Run {
-        /// Path to acpfx YAML config file
-        #[arg(long, default_value = "examples/pipeline/elevenlabs.yaml")]
-        config: String,
+        /// Pipeline name or path (resolved via .acpfx/pipelines/, ~/.acpfx/pipelines/, etc.)
+        #[arg(index = 1)]
+        pipeline: Option<String>,
+
+        /// Explicit path to YAML config file (overrides positional name)
+        #[arg(long)]
+        config: Option<String>,
 
         /// Path to dist directory (for node resolution)
         #[arg(long, default_value = "dist")]
@@ -37,6 +43,34 @@ enum Commands {
         #[arg(long)]
         ui: bool,
     },
+
+    /// Show or modify configuration
+    Config {
+        #[command(subcommand)]
+        action: Option<ConfigAction>,
+    },
+
+    /// List available pipelines
+    Pipelines,
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Set a config value
+    Set {
+        /// Key (e.g., "defaultPipeline" or "env.DEEPGRAM_API_KEY")
+        key: String,
+        /// Value
+        value: String,
+        /// Set in global config (~/.acpfx/) instead of project (.acpfx/)
+        #[arg(long)]
+        global: bool,
+    },
+    /// Get a config value
+    Get {
+        /// Key (e.g., "defaultPipeline" or "env.DEEPGRAM_API_KEY")
+        key: String,
+    },
 }
 
 #[tokio::main]
@@ -45,18 +79,46 @@ async fn main() {
 
     match cli.command {
         Commands::Run {
+            pipeline,
             config,
             dist,
             ready_timeout,
             ui: use_ui,
         } => {
-            let config_path = PathBuf::from(&config).canonicalize().unwrap_or_else(|e| {
-                eprintln!("[acpfx] Cannot find config file '{config}': {e}");
-                std::process::exit(1);
-            });
-            let dist_path = PathBuf::from(&dist).canonicalize().unwrap_or_else(|_| {
-                PathBuf::from(&dist)
-            });
+            // Resolve pipeline path
+            let config_path = if let Some(explicit_config) = config {
+                // --config flag: direct file path
+                PathBuf::from(&explicit_config)
+                    .canonicalize()
+                    .unwrap_or_else(|e| {
+                        eprintln!("[acpfx] Cannot find config file '{explicit_config}': {e}");
+                        std::process::exit(1);
+                    })
+            } else if let Some(name) = pipeline {
+                // Positional arg: resolve via pipeline_resolver
+                pipeline_resolver::resolve_pipeline(&name).unwrap_or_else(|e| {
+                    eprintln!("[acpfx] {e}");
+                    std::process::exit(1);
+                })
+            } else {
+                // No args: check defaultPipeline in config
+                let merged = user_config::load_merged_config();
+                if let Some(default) = merged.default_pipeline() {
+                    pipeline_resolver::resolve_pipeline(default).unwrap_or_else(|e| {
+                        eprintln!("[acpfx] {e}");
+                        std::process::exit(1);
+                    })
+                } else {
+                    eprintln!("[acpfx] No pipeline specified and no default configured.");
+                    eprintln!("[acpfx] Run 'acpfx onboard' to set up your first pipeline,");
+                    eprintln!("[acpfx] or specify one: acpfx run <pipeline-name>");
+                    std::process::exit(1);
+                }
+            };
+
+            let dist_path = PathBuf::from(&dist)
+                .canonicalize()
+                .unwrap_or_else(|_| PathBuf::from(&dist));
 
             if !use_ui {
                 eprintln!("[acpfx] Loading config: {}", config_path.display());
@@ -166,6 +228,72 @@ async fn main() {
             }
 
             std::process::exit(0);
+        }
+
+        Commands::Config { action } => {
+            match action {
+                None => {
+                    // Show merged config
+                    let merged = user_config::load_merged_config();
+                    println!("# Global (~/.acpfx/config.json)");
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&merged.global).unwrap_or_default()
+                    );
+                    println!("\n# Project (.acpfx/config.json)");
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&merged.project).unwrap_or_default()
+                    );
+                }
+                Some(ConfigAction::Set { key, value, global }) => {
+                    let dir = if global {
+                        user_config::global_config_dir()
+                    } else {
+                        user_config::project_config_dir()
+                    };
+                    let mut config = user_config::load_config_from_dir(&dir);
+                    if let Err(e) = user_config::set_config_value(&mut config, &key, &value) {
+                        eprintln!("[acpfx] {e}");
+                        std::process::exit(1);
+                    }
+                    if let Err(e) = user_config::save_config_to_dir(&dir, &config) {
+                        eprintln!("[acpfx] {e}");
+                        std::process::exit(1);
+                    }
+                    let scope = if global { "global" } else { "project" };
+                    println!("Set {key} = {value} ({scope})");
+                }
+                Some(ConfigAction::Get { key }) => {
+                    let merged = user_config::load_merged_config();
+                    match merged.get(&key) {
+                        Some(val) => println!("{val}"),
+                        None => {
+                            eprintln!("(not set)");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            }
+        }
+
+        Commands::Pipelines => {
+            let pipelines = pipeline_resolver::list_pipelines();
+            if pipelines.is_empty() {
+                println!("No pipelines found.");
+                println!("Run 'acpfx onboard' to create your first pipeline.");
+            } else {
+                let merged = user_config::load_merged_config();
+                let default = merged.default_pipeline().map(String::from);
+                for (name, source) in &pipelines {
+                    let marker = if default.as_deref() == Some(name.as_str()) {
+                        " (default)"
+                    } else {
+                        ""
+                    };
+                    println!("  {name:<30} [{source}]{marker}");
+                }
+            }
         }
     }
 }
