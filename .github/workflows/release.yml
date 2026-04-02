@@ -33,6 +33,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          registry-url: https://registry.npmjs.org
       - name: Install system deps for native modules
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - run: pnpm install --frozen-lockfile
@@ -45,7 +46,7 @@ jobs:
           publish: pnpm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # ---------- Build orchestrator for all 6 targets ----------
   build-orchestrator:
