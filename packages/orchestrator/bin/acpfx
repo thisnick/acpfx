@@ -21,7 +21,7 @@ function getBinaryPath() {
       `Could not find the acpfx binary for your platform (${process.platform} ${process.arch}).\n` +
       `Expected: ${binPath}\n` +
       `The postinstall script may have failed. Try reinstalling:\n` +
-      `  npm install acpfx\n` +
+      `  npm install @acpfx/cli\n` +
       `Or set ACPFX_BINARY_PATH to a local build.`
     );
   }
