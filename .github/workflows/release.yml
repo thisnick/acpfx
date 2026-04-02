@@ -25,11 +25,11 @@ jobs:
       publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
       hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: pnpm
@@ -83,7 +83,7 @@ jobs:
             npm-pkg: win32-x64
             binary: acpfx.exe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -100,7 +100,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "acpfx-${{ matrix.npm-pkg }}${ext}"
         shell: bash
       - name: Upload binary for GitHub Release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-orchestrator-${{ matrix.npm-pkg }}
           path: acpfx-${{ matrix.npm-pkg }}*
@@ -140,7 +140,7 @@ jobs:
             npm-pkg: win32-x64
             binary: mic-aec.exe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -160,7 +160,7 @@ jobs:
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "mic-aec-${{ matrix.npm-pkg }}${ext}"
         shell: bash
       - name: Upload binary for GitHub Release
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-mic-aec-${{ matrix.npm-pkg }}
           path: mic-aec-${{ matrix.npm-pkg }}*
@@ -172,7 +172,7 @@ jobs:
     needs: [changesets, build-orchestrator, build-mic-aec]
     if: needs.changesets.outputs.published == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Extract versions
         id: versions
@@ -181,7 +181,7 @@ jobs:
           echo "mic_aec=$(node -p "require('./packages/node-mic-aec/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Download release binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release-staging/

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "acpfx", version, about = "Observable DAG-based voice pipeline")]
+#[command(name = "acpfx", bin_name = "acpfx", version, about = "Observable audio pipeline framework")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
