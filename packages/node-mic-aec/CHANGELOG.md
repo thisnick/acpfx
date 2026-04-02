@@ -1,5 +1,11 @@
 # @acpfx/mic-aec
 
+## 0.2.4
+
+### Patch Changes
+
+- 6e742d2: Fix binary downloads: split GitHub Releases so each package has its own binaries, fix postinstall URL encoding
+
 ## 0.2.3
 
 ### Patch Changes
