@@ -147,11 +147,17 @@ function handleSpeechPause(pendingText: string): void {
 
       // Tool call started — tool_call event means a new tool invocation
       if (sessionUpdate === "tool_call") {
+        // ACP may use different field names for the tool name
+        const toolTitle = (update.title as string)
+          ?? (update.name as string)
+          ?? (update.toolName as string)
+          ?? (update.tool as string)
+          ?? undefined;
         emit({
           type: "agent.tool_start",
           requestId,
           toolCallId: (update.toolCallId as string) ?? "",
-          title: (update.title as string) ?? undefined,
+          title: toolTitle,
         });
         return;
       }

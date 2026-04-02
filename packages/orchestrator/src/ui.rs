@@ -212,10 +212,14 @@ impl UiState {
             "agent.tool_start" => {
                 node.agent.status = "tool".into();
                 node.agent.thinking = false;
-                node.agent.tool_name = event.get("title")
+                // Try title first, fall back to toolCallId (truncated if UUID-like)
+                let title = event.get("title")
                     .and_then(|v| v.as_str())
-                    .or_else(|| event.get("toolCallId").and_then(|v| v.as_str()))
-                    .map(String::from);
+                    .filter(|s| !s.is_empty() && *s != "undefined");
+                let tool_id = event.get("toolCallId")
+                    .and_then(|v| v.as_str())
+                    .map(|id| if id.len() > 12 { &id[..12] } else { id });
+                node.agent.tool_name = title.or(tool_id).map(String::from);
                 node.agent.tool_status = Some("running".into());
             }
             "agent.tool_done" => {
@@ -384,26 +388,37 @@ fn render_frame(
                     ]));
                 }
 
-                // Streamed response text — show last 3 lines, truncate long lines
+                // Streamed response text — wrap long lines, show last 5 wrapped lines
                 if !node_state.agent.text.is_empty() {
                     let max_width = 100usize;
-                    let text_lines: Vec<&str> = node_state.agent.text.lines().collect();
-                    let total = text_lines.len();
-                    let display: Vec<&str> = if total > 3 {
-                        text_lines[total - 3..].to_vec()
-                    } else {
-                        text_lines.clone()
-                    };
-                    if total > 3 {
+                    let mut wrapped: Vec<String> = Vec::new();
+                    for raw_line in node_state.agent.text.lines() {
+                        if raw_line.len() <= max_width {
+                            wrapped.push(raw_line.to_string());
+                        } else {
+                            // Word-wrap at max_width
+                            let mut pos = 0;
+                            while pos < raw_line.len() {
+                                let end = (pos + max_width).min(raw_line.len());
+                                // Try to break at a space
+                                let break_at = if end < raw_line.len() {
+                                    raw_line[pos..end].rfind(' ').map(|i| pos + i + 1).unwrap_or(end)
+                                } else {
+                                    end
+                                };
+                                wrapped.push(raw_line[pos..break_at].to_string());
+                                pos = break_at;
+                            }
+                        }
+                    }
+                    let show = 5usize;
+                    let total = wrapped.len();
+                    let display = if total > show { &wrapped[total - show..] } else { &wrapped[..] };
+                    if total > show {
                         lines.push(Line::from(Span::styled("  ...", Style::default().fg(Color::DarkGray))));
                     }
                     for tl in display {
-                        let truncated = if tl.len() > max_width {
-                            format!("{}...", &tl[..max_width])
-                        } else {
-                            tl.to_string()
-                        };
-                        lines.push(Line::from(format!("  > {truncated}")));
+                        lines.push(Line::from(format!("  > {tl}")));
                     }
                 }
             }
