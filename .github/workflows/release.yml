@@ -63,20 +63,19 @@ jobs:
             npm-pkg: darwin-arm64
             binary: acpfx
           - target: x86_64-apple-darwin
-            runner: macos-14
+            runner: macos-15-intel
             npm-pkg: darwin-x64
             binary: acpfx
           - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
+            runner: ubuntu-24.04-arm
             npm-pkg: linux-arm64
             binary: acpfx
-            use-cross: true
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
             npm-pkg: linux-x64
             binary: acpfx
           - target: aarch64-pc-windows-msvc
-            runner: windows-latest
+            runner: windows-11-arm
             npm-pkg: win32-arm64
             binary: acpfx.exe
           - target: x86_64-pc-windows-msvc
@@ -91,16 +90,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.target }}
-      - name: Install cross
-        if: matrix.use-cross
-        run: cargo install cross --locked
       - name: Build
-        run: |
-          if [ "${{ matrix.use-cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p acpfx-orchestrator
-          else
-            cargo build --release --target ${{ matrix.target }} -p acpfx-orchestrator
-          fi
+        run: cargo build --release --target ${{ matrix.target }} -p acpfx-orchestrator
         shell: bash
       - name: Rename binary for release
         run: |
@@ -129,13 +120,21 @@ jobs:
             npm-pkg: darwin-arm64
             binary: mic-aec
           - target: x86_64-apple-darwin
-            runner: macos-14
+            runner: macos-15-intel
             npm-pkg: darwin-x64
+            binary: mic-aec
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            npm-pkg: linux-arm64
             binary: mic-aec
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
             npm-pkg: linux-x64
             binary: mic-aec
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            npm-pkg: win32-arm64
+            binary: mic-aec.exe
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
             npm-pkg: win32-x64
