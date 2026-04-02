@@ -2,11 +2,11 @@
  * Compliance tests for npm platform package distribution.
  *
  * Verifies the esbuild-style binary distribution pattern:
- * - Wrapper packages (@acpfx/cli, @acpfx/mic-aec) with optionalDependencies
+ * - Wrapper packages (@acpfx/cli, @acpfx/mic-speaker) with optionalDependencies
  * - Platform packages with correct os/cpu fields
  * - bin.js shims that resolve the correct binary for the current platform
  * - Windows .exe handling
- * - Consistent structure across both binaries (acpfx + mic-aec)
+ * - Consistent structure across both binaries (acpfx + mic-speaker)
  */
 
 import { describe, it } from "node:test";
@@ -37,11 +37,11 @@ const BINARIES = [
     binaryName: "acpfx",
   },
   {
-    name: "mic-aec",
-    wrapperPkg: "@acpfx/mic-aec",
-    platformPrefix: "@acpfx/mic-aec",
-    npmDir: "npm/mic-aec",
-    binaryName: "mic-aec",
+    name: "mic-speaker",
+    wrapperPkg: "@acpfx/mic-speaker",
+    platformPrefix: "@acpfx/mic-speaker",
+    npmDir: "npm/mic-speaker",
+    binaryName: "mic-speaker",
   },
 ] as const;
 
@@ -310,10 +310,10 @@ describe("Release workflow", () => {
     }
   });
 
-  it("packages both acpfx and mic-aec binaries", () => {
+  it("packages both acpfx and mic-speaker binaries", () => {
     const content = readFileSync(releasePath, "utf-8");
     assert.ok(content.includes("acpfx"), "must package acpfx binary");
-    assert.ok(content.includes("mic-aec"), "must package mic-aec binary");
+    assert.ok(content.includes("mic-speaker"), "must package mic-speaker binary");
   });
 
   it("does not reference deleted aec-speex binary", () => {

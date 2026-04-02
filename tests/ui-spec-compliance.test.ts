@@ -46,8 +46,7 @@ const ORCHESTRATOR_RS = fs.readFileSync(
 // Hardcoded node names that must NEVER appear as string literals in UI code
 const FORBIDDEN_NODE_NAMES = [
   "mic",
-  "mic-aec",
-  "mic-sox",
+  "mic-speaker",
   "mic-file",
   "stt",
   "stt-deepgram",

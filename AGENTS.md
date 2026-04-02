@@ -51,8 +51,8 @@ Pipeline configs are YAML files with a `nodes` map and optional `env`:
 ```yaml
 nodes:
   mic:
-    use: '@acpfx/mic-sox'
-    settings: {sampleRate: 16000, channels: 1}
+    use: '@acpfx/mic-speaker'
+    settings: {speaker: player}
     outputs: [stt]
   stt:
     use: '@acpfx/stt-deepgram'
@@ -72,7 +72,7 @@ nodes:
   player:
     use: '@acpfx/audio-player'
     settings: {speechSource: tts}
-    outputs: []
+    outputs: [mic]
 env:
   DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
 ```
@@ -87,8 +87,8 @@ With AEC (cyclic graph -- player feeds reference audio back to mic):
 ```yaml
 nodes:
   mic:
-    use: '@acpfx/mic-aec'
-    settings: {sampleRate: 16000, speechSource: player}
+    use: '@acpfx/mic-speaker'
+    settings: {sampleRate: 16000, speaker: player}
     outputs: [stt]
   # ... stt, bridge, tts as above ...
   player:
@@ -125,14 +125,13 @@ At build time, manifests are copied next to built artifacts as both `.manifest.y
 |---------|-------------|
 | `orchestrator` | Rust CLI -- spawns nodes, routes events, manifest filtering, TUI |
 | `schema` | Canonical event type definitions; source of truth for codegen |
-| `sys-voice` | Rust crate for native audio I/O (used by mic-aec) |
-| `node-mic-aec` | Native Rust mic capture with acoustic echo cancellation |
+| `sys-voice` | Rust crate for native audio I/O (used by mic-speaker) |
+| `node-mic-speaker` | Native Rust mic capture with acoustic echo cancellation |
 
 ### TypeScript node packages (`packages/node-*`)
 
 | Package | Consumes | Emits | Description |
 |---------|----------|-------|-------------|
-| `node-mic-sox` | `control.interrupt` | `audio.chunk`, `audio.level` | Mic capture via sox/rec |
 | `node-mic-file` | `control.interrupt` | `audio.chunk`, `audio.level` | WAV file playback as mic input |
 | `node-stt-deepgram` | `audio.chunk` | `speech.*` | Deepgram streaming STT |
 | `node-stt-elevenlabs` | `audio.chunk` | `speech.*` | ElevenLabs streaming STT |
@@ -156,7 +155,7 @@ At build time, manifests are copied next to built artifacts as both `.manifest.y
 | Directory | Description |
 |-----------|-------------|
 | `npm/acpfx` | Platform-specific orchestrator binaries (`@acpfx/cli`) |
-| `npm/mic-aec` | Platform-specific mic-aec binaries |
+| `npm/mic-speaker` | Platform-specific mic-speaker binaries |
 
 ## Event Protocol
 
@@ -213,7 +212,7 @@ pnpm check                  # TypeScript type checking
 ## Pull Requests
 
 - **Always include a changeset** when creating a PR that changes code, configs, or CI/CD. Run `pnpm changeset` to create one, or manually add a `.changeset/<name>.md` file. Without a changeset, the release workflow won't trigger and changes won't be published.
-- Changesets should reference the affected packages (`@acpfx/cli`, `@acpfx/mic-aec`, `@acpfx/core`, etc.) with the appropriate bump level (`patch`, `minor`, `major`).
+- Changesets should reference the affected packages (`@acpfx/cli`, `@acpfx/mic-speaker`, `@acpfx/core`, etc.) with the appropriate bump level (`patch`, `minor`, `major`).
 - CI-only or docs-only changes that don't affect published packages still need a changeset if they fix release infrastructure (e.g., postinstall scripts, release workflow).
 
 ## Things to Avoid

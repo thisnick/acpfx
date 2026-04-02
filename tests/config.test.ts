@@ -6,7 +6,7 @@ describe("config v2", () => {
   const standardYaml = `
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
+    use: "@acpfx/mic-speaker"
     settings:
       sampleRate: 16000
       channels: 1
@@ -110,7 +110,7 @@ nodes:
   it("parses standard config", () => {
     const config = parseConfig(standardYaml);
     assert.equal(Object.keys(config.nodes).length, 7);
-    assert.equal(config.nodes.mic.use, "@acpfx/mic-sox");
+    assert.equal(config.nodes.mic.use, "@acpfx/mic-speaker");
     assert.deepEqual(config.nodes.mic.outputs, ["stt", "recorder"]);
     assert.equal(config.nodes.mic.settings?.sampleRate, 16000);
     assert.equal(config.env?.ELEVENLABS_API_KEY, "${ELEVENLABS_API_KEY}");
@@ -149,7 +149,7 @@ nodes:
     assert.throws(
       () =>
         parseConfig(
-          "nodes:\n  mic:\n    use: '@acpfx/mic-sox'\n    outputs: [nonexistent]",
+          "nodes:\n  mic:\n    use: '@acpfx/mic-speaker'\n    outputs: [nonexistent]",
         ),
       ConfigError,
     );
@@ -159,7 +159,7 @@ nodes:
     assert.throws(
       () =>
         parseConfig(
-          "nodes:\n  mic:\n    use: '@acpfx/mic-sox'\n    outputs: stt",
+          "nodes:\n  mic:\n    use: '@acpfx/mic-speaker'\n    outputs: stt",
         ),
       ConfigError,
     );

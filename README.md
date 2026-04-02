@@ -45,8 +45,8 @@ Pipelines are YAML files. Each node has `use` (implementation), `settings`, and 
 ```yaml
 nodes:
   mic:
-    use: "@acpfx/mic-aec"
-    settings: { sampleRate: 16000, speechSource: player }
+    use: "@acpfx/mic-speaker"
+    settings: { sampleRate: 16000, speaker: player }
     outputs: [stt]
   stt:
     use: "@acpfx/stt-deepgram"
@@ -62,7 +62,7 @@ nodes:
     outputs: [player]
   player:
     use: "@acpfx/audio-player"
-    settings: { speechSource: tts, noLocalPlayback: true }
+    settings: { speechSource: tts }
     outputs: [mic]  # cycle: reference audio for AEC
 ```
 
@@ -77,13 +77,12 @@ See `examples/pipeline/` for more configurations (Deepgram, ElevenLabs, with/wit
 | `packages/orchestrator` | Rust orchestrator — event routing, manifest filtering, ratatui TUI |
 | `packages/schema` | Canonical event types (source of truth), codegen to TypeScript + Zod |
 | `packages/sys-voice` | Native audio I/O with OS-level AEC |
-| `packages/node-mic-aec` | Mic capture with acoustic echo cancellation |
+| `packages/node-mic-speaker` | Mic capture with acoustic echo cancellation |
 
 ### TypeScript Nodes
 
 | Package | Description |
 |---------|-------------|
-| `node-mic-sox` | Mic capture via sox |
 | `node-mic-file` | WAV file input (for testing) |
 | `node-stt-deepgram` | Deepgram streaming STT |
 | `node-stt-elevenlabs` | ElevenLabs streaming STT |
@@ -145,6 +144,5 @@ cargo run -p acpfx-schema --bin acpfx-codegen   # regenerate types from schema
 
 - Node.js 22+, pnpm
 - Rust (via rustup)
-- sox (`brew install sox`) — for mic-sox node
 - API keys for STT/TTS providers (Deepgram, ElevenLabs)
 - acpx (`npx acpx@latest`) — for the ACP agent bridge

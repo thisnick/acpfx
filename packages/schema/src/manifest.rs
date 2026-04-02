@@ -311,7 +311,6 @@ emits: []
         let expected_nodes = [
             "node-stt-deepgram",
             "node-stt-elevenlabs",
-            "node-mic-sox",
             "node-mic-file",
             "node-bridge-acpx",
             "node-tts-deepgram",
@@ -320,7 +319,7 @@ emits: []
             "node-recorder",
             "node-play-file",
             "node-echo",
-            "node-mic-aec",
+            "node-mic-speaker",
         ];
 
         for node_dir_name in &expected_nodes {

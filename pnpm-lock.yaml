@@ -11,9 +11,6 @@ importers:
       '@acpfx/core':
         specifier: workspace:*
         version: link:packages/core
-      speaker:
-        specifier: ^0.5.5
-        version: 0.5.5
       yaml:
         specifier: ^2.8.3
         version: 2.8.3
@@ -70,18 +67,9 @@ importers:
         specifier: workspace:*
         version: link:../node-sdk
 
-  packages/node-mic-aec: {}
+  packages/node-mic-speaker: {}
 
   packages/node-mic-file:
-    dependencies:
-      '@acpfx/core':
-        specifier: workspace:*
-        version: link:../core
-      '@acpfx/node-sdk':
-        specifier: workspace:*
-        version: link:../node-sdk
-
-  packages/node-mic-sox:
     dependencies:
       '@acpfx/core':
         specifier: workspace:*

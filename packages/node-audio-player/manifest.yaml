@@ -1,5 +1,5 @@
 name: audio-player
-description: Plays audio chunks through system speaker with SFX support
+description: Audio mixer with SFX — emits audio.chunk for downstream playback
 consumes:
   - audio.chunk
   - agent.thinking
@@ -31,7 +31,3 @@ arguments:
     type: number
     default: 0.3
     description: "SFX volume multiplier (0-1)"
-  noLocalPlayback:
-    type: boolean
-    default: false
-    description: "Skip local speaker playback (when mic-aec handles it)"

@@ -43,7 +43,7 @@ player emits audio.chunk -> mic (cycle)
 
 This works because:
 
-1. **Manifest filtering prevents runaway loops.** The mic-aec node consumes `audio.chunk` from the player as AEC reference audio but does not blindly re-emit it. It uses the reference to cancel echo from the captured mic audio before emitting its own `audio.chunk`.
+1. **Manifest filtering prevents runaway loops.** The mic-speaker node consumes `audio.chunk` from the player as AEC reference audio but does not blindly re-emit it. It uses the reference to cancel echo from the captured mic audio before emitting its own `audio.chunk`.
 
 2. **Different audio purposes.** The `audio.chunk` from player to mic is reference audio for echo cancellation. The `audio.chunk` from mic to stt is cleaned capture audio. They serve different roles despite being the same event type.
 
@@ -57,7 +57,7 @@ In the AEC pipeline `mic -> stt -> bridge -> tts -> player -> mic`:
 2. Orchestrator computes transitive downstream of bridge: `{tts, player, mic}`.
 3. TTS consumes `control.interrupt` -- receives it, stops generating.
 4. Player consumes `control.interrupt` -- receives it, stops playing.
-5. Mic (mic-aec) consumes `control.interrupt` -- receives it, can reset AEC state.
+5. Mic (mic-speaker) consumes `control.interrupt` -- receives it, can reset AEC state.
 6. STT does NOT consume `control.interrupt` -- never receives it, keeps transcribing.
 
 The key insight: interrupt propagation follows the downstream set (DFS from the emitting node), and manifest filtering ensures only nodes that know how to handle interrupts receive them.

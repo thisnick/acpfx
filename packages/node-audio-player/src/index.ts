@@ -1,9 +1,12 @@
 /**
- * audio-player node — smart speaker with priority queue and SFX.
+ * audio-player node — audio mixer with priority queue and SFX.
  *
- * Replaces play-sox. Receives TTS audio + bridge events, implements a
- * priority queue (speech > SFX), loads WAV clips for thinking/tool
- * indicator sounds, and emits what it actually plays for recording.
+ * Receives TTS audio + bridge events, implements a priority queue
+ * (speech > SFX), loads WAV clips for thinking/tool indicator sounds,
+ * and emits audio.chunk events for downstream playback (mic-speaker).
+ *
+ * Does NOT play audio locally — the downstream mic-speaker node handles
+ * speaker output through the OS audio system with echo cancellation.
  *
  * Settings (via ACPFX_SETTINGS):
  *   speechSource?: string   — _from value identifying speech audio (default: "tts")
@@ -14,8 +17,6 @@
  */
 
 import { readFileSync } from "node:fs";
-// @ts-ignore — speaker has no type declarations
-import Speaker from "speaker";
 import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
 
 handleManifestFlag();
@@ -26,7 +27,6 @@ type Settings = {
   thinkingClip?: string;
   toolClip?: string;
   sfxVolume?: number;
-  noLocalPlayback?: boolean;  // true = don't play through local speaker (mic-aec handles playback)
 };
 
 const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
@@ -34,19 +34,8 @@ const SPEECH_SOURCE = settings.speechSource ?? "tts";
 const SAMPLE_RATE = settings.sampleRate ?? 16000;
 const SFX_VOLUME = settings.sfxVolume ?? 0.3;
 const BYTES_PER_SAMPLE = 2;
-const NO_LOCAL_PLAYBACK = settings.noLocalPlayback ?? false;
 
 // ---- Audio helpers ----
-
-function monoToStereo(mono: Buffer): Buffer {
-  const stereo = Buffer.alloc(mono.length * 2);
-  for (let i = 0; i < mono.length; i += 2) {
-    const sample = mono.readInt16LE(i);
-    stereo.writeInt16LE(sample, i * 2);
-    stereo.writeInt16LE(sample, i * 2 + 2);
-  }
-  return stereo;
-}
 
 function applyGain(pcm: Buffer, gain: number): Buffer {
   if (gain === 1.0) return pcm;
@@ -71,9 +60,6 @@ function loadWavPcm(filePath: string): Buffer | null {
 
 // ---- State ----
 
-let speaker: InstanceType<typeof Speaker> | null = null;
-let stdinClosed = false;
-
 // Agent state from bridge events
 let agentState: "idle" | "thinking" | "tool" = "idle";
 
@@ -87,8 +73,8 @@ let toolPcm: Buffer | null = null;
 // SFX loop state
 let sfxLoopTimer: ReturnType<typeof setInterval> | null = null;
 let sfxActive = false;
-let sfxClipOffset = 0; // current position within the SFX clip
-let sfxCurrentClip: Buffer | null = null; // gain-adjusted clip being played
+let sfxClipOffset = 0;
+let sfxCurrentClip: Buffer | null = null;
 
 const SFX_CHUNK_MS = 100;
 const SFX_CHUNK_BYTES = Math.floor(SAMPLE_RATE * BYTES_PER_SAMPLE * SFX_CHUNK_MS / 1000);
@@ -103,88 +89,9 @@ function emitStatus(): void {
   });
 }
 
-// ---- Speaker management ----
+// ---- Emit audio chunks downstream ----
 
-function createSpeaker(): InstanceType<typeof Speaker> {
-  const s = new Speaker({
-    channels: 2,
-    bitDepth: 16,
-    sampleRate: SAMPLE_RATE,
-  } as Record<string, unknown>);
-
-  s.on("error", (err: Error) => {
-    if (!err.message?.includes("underflow")) {
-      log.error(`Speaker error: ${err.message}`);
-    }
-  });
-
-  s.on("close", () => {
-    speaker = null;
-  });
-
-  return s;
-}
-
-function ensureSpeaker(): void {
-  if (!speaker) {
-    speaker = createSpeaker();
-  }
-}
-
-function destroySpeaker(): void {
-  if (speaker) {
-    try { speaker.destroy(); } catch {}
-    speaker = null;
-  }
-}
-
-// ---- Write audio to speaker ----
-
-function writePcmToSpeaker(mono: Buffer): void {
-  if (NO_LOCAL_PLAYBACK) return; // mic-aec handles playback
-  ensureSpeaker();
-  const stereo = monoToStereo(mono);
-  try {
-    speaker!.write(stereo);
-  } catch {
-    speaker = null;
-  }
-}
-
-// ---- Emit what we play at real-time rate (for AEC reference + recording) ----
-
-type PendingEmit = { pcm: Buffer; kind: "speech" | "sfx" };
-const emitQueue: PendingEmit[] = [];
-let emitTimer: ReturnType<typeof setTimeout> | null = null;
-
-function emitPlayedChunk(pcm: Buffer, kind: "speech" | "sfx"): void {
-  if (NO_LOCAL_PLAYBACK) {
-    // No pacing needed — downstream (mic-aec) handles playback timing
-    const durationMs = Math.round((pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000);
-    emit({
-      type: "audio.chunk",
-      trackId: "player",
-      format: "pcm_s16le",
-      sampleRate: SAMPLE_RATE,
-      channels: 1,
-      data: pcm.toString("base64"),
-      durationMs,
-      kind,
-    });
-    return;
-  }
-  emitQueue.push({ pcm, kind });
-  if (!emitTimer) {
-    drainEmitQueue();
-  }
-}
-
-function drainEmitQueue(): void {
-  if (emitQueue.length === 0) {
-    emitTimer = null;
-    return;
-  }
-  const { pcm, kind } = emitQueue.shift()!;
+function emitChunk(pcm: Buffer, kind: "speech" | "sfx"): void {
   const durationMs = Math.round((pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000);
   emit({
     type: "audio.chunk",
@@ -196,16 +103,6 @@ function drainEmitQueue(): void {
     durationMs,
     kind,
   });
-  // Schedule next emit at real-time rate
-  emitTimer = setTimeout(drainEmitQueue, durationMs);
-}
-
-function clearEmitQueue(): void {
-  emitQueue.length = 0;
-  if (emitTimer) {
-    clearTimeout(emitTimer);
-    emitTimer = null;
-  }
 }
 
 // ---- SFX loop ----
@@ -221,7 +118,6 @@ function startSfxLoop(): void {
   sfxClipOffset = 0;
   log.info(`Starting SFX loop (${agentState})`);
 
-  // Write in small chunks so we can interrupt mid-clip
   writeSfxChunk();
   sfxLoopTimer = setInterval(writeSfxChunk, SFX_CHUNK_MS);
 }
@@ -231,7 +127,6 @@ function writeSfxChunk(): void {
 
   const remaining = sfxCurrentClip.length - sfxClipOffset;
   if (remaining <= 0) {
-    // Loop: restart from beginning
     sfxClipOffset = 0;
   }
 
@@ -239,11 +134,10 @@ function writeSfxChunk(): void {
   const chunk = sfxCurrentClip.subarray(sfxClipOffset, sfxClipOffset + bytesToWrite);
   sfxClipOffset += bytesToWrite;
 
-  writePcmToSpeaker(chunk);
-  emitPlayedChunk(chunk, "sfx");
+  emitChunk(chunk, "sfx");
 }
 
-/** Stop the SFX loop timer. Does NOT flush the speaker buffer. */
+/** Stop the SFX loop timer. */
 function stopSfxLoop(): void {
   if (sfxLoopTimer) {
     clearInterval(sfxLoopTimer);
@@ -268,11 +162,9 @@ function cancelSfxDelay(): void {
   }
 }
 
-/** Stop SFX and flush the speaker buffer. */
+/** Stop SFX for incoming speech. */
 function flushSfxForSpeech(): void {
   stopSfxLoop();
-  clearEmitQueue();
-  destroySpeaker();
 }
 
 // ---- Event handling ----
@@ -287,18 +179,15 @@ function handleEvent(event: Record<string, unknown>): void {
       log.debug(`Ignoring audio.chunk from "${from}" (expected "${SPEECH_SOURCE}")`);
       return;
     }
-    // Cancel pending thinking delay — speech arrived first
     cancelSfxDelay();
 
-    // If SFX is playing, flush it and switch to speech
     if (sfxActive) {
       flushSfxForSpeech();
     }
 
     playingKind = "speech";
     const pcm = Buffer.from(event.data as string, "base64");
-    writePcmToSpeaker(pcm);
-    emitPlayedChunk(pcm, "speech");
+    emitChunk(pcm, "speech");
     return;
   }
 
@@ -318,7 +207,7 @@ function handleEvent(event: Record<string, unknown>): void {
   if (type === "agent.tool_start") {
     agentState = "tool";
     cancelSfxDelay();
-    stopSfxLoop(); // stop thinking sound if any
+    stopSfxLoop();
     startSfxLoop();
     emitStatus();
     return;
@@ -352,15 +241,12 @@ function handleEvent(event: Record<string, unknown>): void {
     return;
   }
 
-  // Interrupt — stop everything (orchestrator propagates to downstream nodes)
+  // Interrupt — stop everything
   if (type === "control.interrupt") {
     agentState = "idle";
     cancelSfxDelay();
     stopSfxLoop();
-    clearEmitQueue();
-    destroySpeaker();
     playingKind = null;
-    // Don't re-emit — orchestrator already sends interrupt to all downstream
     return;
   }
 }
@@ -368,7 +254,6 @@ function handleEvent(event: Record<string, unknown>): void {
 // ---- Main ----
 
 function main(): void {
-  // Load WAV clips
   if (settings.thinkingClip) {
     thinkingPcm = loadWavPcm(settings.thinkingClip);
     if (thinkingPcm) log.info(`Loaded thinking clip: ${settings.thinkingClip} (${thinkingPcm.length} bytes)`);
@@ -383,23 +268,13 @@ function main(): void {
   const rl = onEvent(handleEvent);
 
   rl.on("close", () => {
-    stdinClosed = true;
     stopSfxLoop();
-    if (speaker) {
-      speaker.end();
-      speaker.on("close", () => {
-        emit({ type: "lifecycle.done", component: "audio-player" });
-        process.exit(0);
-      });
-    } else {
-      emit({ type: "lifecycle.done", component: "audio-player" });
-      process.exit(0);
-    }
+    emit({ type: "lifecycle.done", component: "audio-player" });
+    process.exit(0);
   });
 
   process.on("SIGTERM", () => {
     stopSfxLoop();
-    destroySpeaker();
     process.exit(0);
   });
 }

@@ -41,9 +41,9 @@ enum Commands {
         #[arg(long, default_value_t = 10000)]
         ready_timeout: u64,
 
-        /// Enable terminal dashboard UI
+        /// Disable terminal dashboard UI (UI is on by default)
         #[arg(long)]
-        ui: bool,
+        headless: bool,
     },
 
     /// Show or modify configuration
@@ -97,18 +97,10 @@ async fn main() {
             config,
             dist,
             ready_timeout,
-            ui: use_ui,
+            headless,
         } => {
             // Resolve pipeline path
-            let config_path = if let Some(explicit_config) = config {
-                // --config flag: direct file path
-                PathBuf::from(&explicit_config)
-                    .canonicalize()
-                    .unwrap_or_else(|e| {
-                        eprintln!("[acpfx] Cannot find config file '{explicit_config}': {e}");
-                        std::process::exit(1);
-                    })
-            } else if let Some(name) = pipeline {
+            let config_path = if let Some(name) = config.or(pipeline) {
                 // Positional arg: resolve via pipeline_resolver
                 pipeline_resolver::resolve_pipeline(&name).unwrap_or_else(|e| {
                     eprintln!("[acpfx] {e}");
@@ -146,7 +138,7 @@ async fn main() {
                 .canonicalize()
                 .unwrap_or_else(|_| PathBuf::from(&dist));
 
-            if !use_ui {
+            if headless {
                 eprintln!("[acpfx] Loading config: {}", config_path.display());
             }
 
@@ -167,7 +159,7 @@ async fn main() {
                 let _ = shutdown_tx.send(()).await;
             });
 
-            if !use_ui {
+            if headless {
                 eprintln!("[acpfx] Starting pipeline...");
             }
             if let Err(e) = orch.start().await {
@@ -176,11 +168,11 @@ async fn main() {
                 std::process::exit(1);
             }
 
-            if !use_ui {
+            if headless {
                 eprintln!("[acpfx] All nodes ready");
             }
 
-            if use_ui {
+            if !headless {
                 // UI mode: create shared state, spawn UI thread, feed events
                 let manifests = orch.get_manifests();
                 let ui_state = ui::create_ui_state(&manifests);

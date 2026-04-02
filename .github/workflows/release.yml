@@ -25,7 +25,7 @@ jobs:
       publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
       hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
       cli-published: ${{ steps.check-pkgs.outputs.cli }}
-      mic-aec-published: ${{ steps.check-pkgs.outputs.mic-aec }}
+      mic-speaker-published: ${{ steps.check-pkgs.outputs.mic-speaker }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -55,10 +55,10 @@ jobs:
         run: |
           PKGS='${{ steps.changesets.outputs.publishedPackages }}'
           CLI=$(echo "$PKGS" | node -e "const d=require('fs').readFileSync(0,'utf8');console.log(JSON.parse(d).some(p=>p.name==='@acpfx/cli'))")
-          MIC=$(echo "$PKGS" | node -e "const d=require('fs').readFileSync(0,'utf8');console.log(JSON.parse(d).some(p=>p.name==='@acpfx/mic-aec'))")
+          MIC=$(echo "$PKGS" | node -e "const d=require('fs').readFileSync(0,'utf8');console.log(JSON.parse(d).some(p=>p.name==='@acpfx/mic-speaker'))")
           echo "cli=$CLI" >> "$GITHUB_OUTPUT"
-          echo "mic-aec=$MIC" >> "$GITHUB_OUTPUT"
-          echo "Published packages: cli=$CLI mic-aec=$MIC"
+          echo "mic-speaker=$MIC" >> "$GITHUB_OUTPUT"
+          echo "Published packages: cli=$CLI mic-speaker=$MIC"
 
   # ---------- Build orchestrator (only if @acpfx/cli was published) ----------
   build-orchestrator:
@@ -117,11 +117,11 @@ jobs:
           name: release-orchestrator-${{ matrix.npm-pkg }}
           path: acpfx-${{ matrix.npm-pkg }}*
 
-  # ---------- Build mic-aec (only if @acpfx/mic-aec was published) ----------
-  build-mic-aec:
-    name: Build mic-aec (${{ matrix.npm-pkg }})
+  # ---------- Build mic-speaker (only if @acpfx/mic-speaker was published) ----------
+  build-mic-speaker:
+    name: Build mic-speaker (${{ matrix.npm-pkg }})
     needs: changesets
-    if: needs.changesets.outputs.mic-aec-published == 'true'
+    if: needs.changesets.outputs.mic-speaker-published == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: true
@@ -130,27 +130,27 @@ jobs:
           - target: aarch64-apple-darwin
             runner: macos-14
             npm-pkg: darwin-arm64
-            binary: mic-aec
+            binary: mic-speaker
           - target: x86_64-apple-darwin
             runner: macos-15-intel
             npm-pkg: darwin-x64
-            binary: mic-aec
+            binary: mic-speaker
           - target: aarch64-unknown-linux-gnu
             runner: ubuntu-24.04-arm
             npm-pkg: linux-arm64
-            binary: mic-aec
+            binary: mic-speaker
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-latest
             npm-pkg: linux-x64
-            binary: mic-aec
+            binary: mic-speaker
           - target: aarch64-pc-windows-msvc
             runner: windows-11-arm
             npm-pkg: win32-arm64
-            binary: mic-aec.exe
+            binary: mic-speaker.exe
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
             npm-pkg: win32-x64
-            binary: mic-aec.exe
+            binary: mic-speaker.exe
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -163,25 +163,25 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libpulse-dev
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p mic-aec
+        run: cargo build --release --target ${{ matrix.target }} -p mic-speaker
         shell: bash
       - name: Rename binary for release
         run: |
           ext=""
           if [[ "${{ matrix.binary }}" == *.exe ]]; then ext=".exe"; fi
-          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "mic-aec-${{ matrix.npm-pkg }}${ext}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "mic-speaker-${{ matrix.npm-pkg }}${ext}"
         shell: bash
       - name: Upload binary for GitHub Release
         uses: actions/upload-artifact@v7
         with:
-          name: release-mic-aec-${{ matrix.npm-pkg }}
-          path: mic-aec-${{ matrix.npm-pkg }}*
+          name: release-mic-speaker-${{ matrix.npm-pkg }}
+          path: mic-speaker-${{ matrix.npm-pkg }}*
 
   # ---------- GitHub Releases ----------
   github-release:
     name: Create GitHub Releases
     runs-on: ubuntu-latest
-    needs: [changesets, build-orchestrator, build-mic-aec]
+    needs: [changesets, build-orchestrator, build-mic-speaker]
     if: always() && needs.changesets.outputs.published == 'true'
     steps:
       - uses: actions/checkout@v6
@@ -190,10 +190,10 @@ jobs:
         id: versions
         run: |
           echo "cli=$(node -p "require('./packages/orchestrator/package.json').version")" >> "$GITHUB_OUTPUT"
-          echo "mic_aec=$(node -p "require('./packages/node-mic-aec/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "mic_speaker=$(node -p "require('./packages/node-mic-speaker/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Download release binaries
-        if: needs.build-orchestrator.result == 'success' || needs.build-mic-aec.result == 'success'
+        if: needs.build-orchestrator.result == 'success' || needs.build-mic-speaker.result == 'success'
         uses: actions/download-artifact@v8
         with:
           pattern: release-*
@@ -217,19 +217,19 @@ jobs:
           files: cli-assets/*
           generate_release_notes: true
 
-      - name: Create @acpfx/mic-aec release
-        if: needs.build-mic-aec.result == 'success'
+      - name: Create @acpfx/mic-speaker release
+        if: needs.build-mic-speaker.result == 'success'
         run: |
-          mkdir -p mic-aec-assets
-          for dir in release-staging/release-mic-aec-*/; do
-            cp "$dir"/* mic-aec-assets/
+          mkdir -p mic-speaker-assets
+          for dir in release-staging/release-mic-speaker-*/; do
+            cp "$dir"/* mic-speaker-assets/
           done
-          ls -la mic-aec-assets/
+          ls -la mic-speaker-assets/
 
-      - name: Upload @acpfx/mic-aec release
-        if: needs.build-mic-aec.result == 'success'
+      - name: Upload @acpfx/mic-speaker release
+        if: needs.build-mic-speaker.result == 'success'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "@acpfx/mic-aec@${{ steps.versions.outputs.mic_aec }}"
-          files: mic-aec-assets/*
+          tag_name: "@acpfx/mic-speaker@${{ steps.versions.outputs.mic_speaker }}"
+          files: mic-speaker-assets/*
           generate_release_notes: true

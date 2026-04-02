@@ -1,10 +1,10 @@
 [package]
-name = "mic-aec"
+name = "mic-speaker"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "mic-aec"
+name = "mic-speaker"
 path = "src/main.rs"
 
 [dependencies]

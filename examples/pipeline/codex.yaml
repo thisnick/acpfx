@@ -1,7 +1,7 @@
 nodes:
   mic:
-    use: '@acpfx/mic-sox'
-    settings: {sampleRate: 16000, channels: 1}
+    use: '@acpfx/mic-speaker'
+    settings: {speaker: player}
     outputs: [stt, recorder]
   stt:
     use: '@acpfx/stt-elevenlabs'
@@ -22,7 +22,7 @@ nodes:
     use: '@acpfx/audio-player'
     settings: {speechSource: tts, thinkingClip: ./sounds/thinking.wav, toolClip: ./sounds/typing.wav,
       sfxVolume: 0.3}
-    outputs: [recorder]
+    outputs: [mic, recorder]
   recorder:
     use: '@acpfx/recorder'
     settings: {outputDir: ./recordings}

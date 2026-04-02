@@ -1,6 +1,7 @@
 node_modules/
 dist/
 target/
+.acpfx/
 .env
 .envrc
 *.tgz
@@ -14,6 +15,6 @@ aec-debug/
 debug.log
 mic-debug/
 # Downloaded platform binaries (postinstall downloads these)
-packages/node-mic-aec/bin/mic-aec-*
+packages/node-mic-speaker/bin/mic-speaker-*
 # Downloaded platform binaries (postinstall downloads these)
 packages/orchestrator/bin/acpfx-*

@@ -6,11 +6,12 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.js",
-    "build:native": "cargo build --release -p acpfx-orchestrator",
+    "build:native": "cargo build -p acpfx-orchestrator",
     "check": "tsc --noEmit",
     "test": "node --test dist/tests/**/*.test.js",
-    "start": "./target/release/acpfx run",
-    "start:headless": "./target/release/acpfx run",
+    "start": "./target/debug/acpfx run",
+    "start:headless": "./target/debug/acpfx run --headless",
+    "onboard": "./target/debug/acpfx onboard",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish"
@@ -25,7 +26,6 @@
   "license": "ISC",
   "dependencies": {
     "@acpfx/core": "workspace:*",
-    "speaker": "^0.5.5",
     "yaml": "^2.8.3"
   },
   "devDependencies": {
@@ -38,8 +38,7 @@
   "packageManager": "pnpm@10.29.3",
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild",
-      "speaker"
+      "esbuild"
     ]
   }
 }

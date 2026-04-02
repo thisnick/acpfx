@@ -27,21 +27,6 @@ const TEMPLATES: &[Template] = &[
         label: "Deepgram (STT + TTS)",
         yaml: include_str!("../../../examples/pipeline/deepgram.yaml"),
     },
-    Template {
-        id: "elevenlabs-aec",
-        label: "ElevenLabs + AEC (echo cancellation)",
-        yaml: include_str!("../../../examples/pipeline/elevenlabs-sysvoice.yaml"),
-    },
-    Template {
-        id: "deepgram-aec",
-        label: "Deepgram + AEC (echo cancellation)",
-        yaml: include_str!("../../../examples/pipeline/deepgram-aec.yaml"),
-    },
-    Template {
-        id: "elevenlabs-minimal",
-        label: "Minimal (ElevenLabs, no recorder)",
-        yaml: include_str!("../../../examples/pipeline/elevenlabs-minimal.yaml"),
-    },
 ];
 
 /// Get all templates.
@@ -57,7 +42,7 @@ pub fn get_template(id: &str) -> Option<&'static Template> {
 
 /// Entry in the node registry: package name + parsed manifest.
 pub struct NodeRegistryEntry {
-    /// npm package name (e.g., "@acpfx/mic-sox")
+    /// npm package name (e.g., "@acpfx/mic-speaker")
     pub package: &'static str,
     /// Parsed manifest
     pub manifest: NodeManifest,
@@ -65,9 +50,8 @@ pub struct NodeRegistryEntry {
 
 /// Node registry entries with their raw YAML.
 const NODE_REGISTRY_RAW: &[(&str, &str)] = &[
-    ("@acpfx/mic-sox", include_str!("../../../packages/node-mic-sox/manifest.yaml")),
     ("@acpfx/mic-file", include_str!("../../../packages/node-mic-file/manifest.yaml")),
-    ("@acpfx/mic-aec", include_str!("../../../packages/node-mic-aec/manifest.yaml")),
+    ("@acpfx/mic-speaker", include_str!("../../../packages/node-mic-speaker/manifest.yaml")),
     ("@acpfx/stt-deepgram", include_str!("../../../packages/node-stt-deepgram/manifest.yaml")),
     ("@acpfx/stt-elevenlabs", include_str!("../../../packages/node-stt-elevenlabs/manifest.yaml")),
     ("@acpfx/bridge-acpx", include_str!("../../../packages/node-bridge-acpx/manifest.yaml")),
@@ -192,12 +176,12 @@ mod tests {
     }
 
     #[test]
-    fn node_registry_has_12_nodes() {
+    fn node_registry_has_11_nodes() {
         let nodes = available_nodes();
         assert_eq!(
             nodes.len(),
-            12,
-            "Expected 12 nodes in registry, got {}",
+            11,
+            "Expected 11 nodes in registry, got {}",
             nodes.len()
         );
     }

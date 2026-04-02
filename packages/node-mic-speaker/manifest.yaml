@@ -1,4 +1,4 @@
-name: mic-aec
+name: mic-speaker
 description: Captures mic audio with acoustic echo cancellation (native Rust)
 consumes:
   - audio.chunk
@@ -18,9 +18,9 @@ arguments:
     type: number
     default: 100
     description: "Chunk duration in milliseconds"
-  speechSource:
+  speaker:
     type: string
-    default: "tts"
+    default: "player"
     description: "Node name whose audio to use as speaker reference for AEC"
   debugDir:
     type: string

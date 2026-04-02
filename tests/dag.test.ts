@@ -7,7 +7,7 @@ describe("dag v2", () => {
     const config = parseConfig(`
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
+    use: "@acpfx/mic-speaker"
     outputs: [stt]
   stt:
     use: "@acpfx/stt-elevenlabs"
@@ -31,7 +31,7 @@ nodes:
     const config = parseConfig(`
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
+    use: "@acpfx/mic-speaker"
     outputs: [stt, recorder]
   stt:
     use: "@acpfx/stt-elevenlabs"
@@ -103,7 +103,7 @@ nodes:
     const config = parseConfig(`
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
+    use: "@acpfx/mic-speaker"
     outputs: [aec]
   aec:
     use: "@acpfx/aec-speex"
@@ -132,7 +132,7 @@ nodes:
     const config = parseConfig(`
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
+    use: "@acpfx/mic-speaker"
     outputs: [stt]
   stt:
     use: "@acpfx/stt-elevenlabs"

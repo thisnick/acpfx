@@ -3,11 +3,11 @@
 /**
  * Build all packages using esbuild.
  * Bundles all npm dependencies into each output file.
- * Only node builtins and native addons (speaker) are external.
+ * Only node builtins and CJS packages are external.
  */
 
 import { buildSync } from "esbuild";
-import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
@@ -28,7 +28,7 @@ function copyManifest(yamlPath, destBase) {
 }
 
 // Native addons and CJS packages that can't be bundled into ESM
-const nativeExternal = ["speaker", "yaml"];
+const nativeExternal = ["yaml"];
 
 const commonOptions = {
   bundle: true,
@@ -40,13 +40,12 @@ const commonOptions = {
 
 // --- Node packages ---
 const nodePackages = [
-  { name: "mic-sox", external: [] },
   { name: "stt-deepgram", external: [] },
   { name: "stt-elevenlabs", external: [] },
   { name: "tts-deepgram", external: [] },
   { name: "tts-elevenlabs", external: [] },
   { name: "bridge-acpx", external: [] },
-  { name: "audio-player", external: ["speaker"] },
+  { name: "audio-player", external: [] },
   { name: "recorder", external: [] },
   { name: "mic-file", external: [] },
   { name: "play-file", external: [] },
@@ -72,7 +71,26 @@ for (const pkg of nodePackages) {
   );
 }
 
-// Copy manifests for native binary nodes
-copyManifest(join(root, "packages/node-mic-aec/manifest.yaml"), join(nodesDist, "mic-aec"));
+// --- Native binary nodes (auto-discovered via Cargo.toml in packages/node-*/) ---
+const packagesDir = join(root, "packages");
+const nativeNodes = readdirSync(packagesDir, { withFileTypes: true })
+  .filter(d => d.isDirectory() && d.name.startsWith("node-"))
+  .filter(d => existsSync(join(packagesDir, d.name, "Cargo.toml")))
+  .map(d => d.name.replace(/^node-/, ""));
+
+for (const name of nativeNodes) {
+  copyManifest(join(packagesDir, `node-${name}`, "manifest.yaml"), join(nodesDist, name));
+
+  const debugBin = join(root, "target/debug", name);
+  const releaseBin = join(root, "target/release", name);
+  const distBin = join(nodesDist, name);
+  const srcBin = existsSync(debugBin) ? debugBin : existsSync(releaseBin) ? releaseBin : null;
+  if (srcBin && !existsSync(distBin)) {
+    cpSync(srcBin, distBin);
+    console.log(`  Copied native binary: ${name}`);
+  } else if (!srcBin) {
+    console.warn(`  WARN: native binary '${name}' not found — run 'cargo build -p ${name}' first`);
+  }
+}
 
 console.log("\nBuild complete!");
