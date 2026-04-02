@@ -1,9 +1,9 @@
 nodes:
   mic:
-    use: "@acpfx/mic-aec"
+    use: "@acpfx/mic-speaker"
     settings:
       sampleRate: 16000
-      speechSource: player
+      speaker: player
     outputs: [stt]
 
   stt:
@@ -34,9 +34,6 @@ nodes:
     use: "@acpfx/audio-player"
     settings:
       speechSource: tts
-      thinkingClip: ./sounds/thinking.wav
-      toolClip: ./sounds/typing.wav
       sfxVolume: 0.3
-      noLocalPlayback: true
     outputs: [mic]
 

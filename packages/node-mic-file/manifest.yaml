@@ -7,3 +7,14 @@ emits:
   - audio.level
   - lifecycle.ready
   - lifecycle.done
+arguments:
+  path:
+    type: string
+    required: true
+    description: "Path to WAV file to play back"
+  realtime:
+    type: boolean
+    description: "Whether to play back at real-time speed"
+  chunkMs:
+    type: number
+    description: "Chunk duration in milliseconds"

@@ -1,4 +1,4 @@
-/// mic-aec node — microphone capture with OS-level echo cancellation.
+/// mic-speaker node — microphone capture with OS-level echo cancellation.
 ///
 /// Uses `sys-voice` which leverages platform-native AEC:
 ///   - macOS: CoreAudio VoiceProcessingIO
@@ -16,7 +16,7 @@
 /// Settings (via ACPFX_SETTINGS):
 ///   sampleRate?: number     — target sample rate (default: 16000)
 ///   chunkMs?: number        — chunk duration in ms (default: 100)
-///   speechSource?: string   — _from value for audio to play (default: "tts")
+///   speaker?: string         — node name whose audio is the speaker reference for AEC (default: "player")
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 use serde_json::{json, Value};
@@ -75,7 +75,7 @@ impl WavWriter {
     fn new(path: &str, sample_rate: u32) -> io::Result<Self> {
         let mut file = File::create(path)?;
         file.write_all(&[0u8; 44])?; // placeholder header
-        eprintln!("[mic-aec] Recording to {}", path);
+        eprintln!("[mic-speaker] Recording to {}", path);
         Ok(WavWriter { file, data_len: 0, sample_rate })
     }
 
@@ -105,7 +105,7 @@ impl WavWriter {
         h.extend_from_slice(b"data");
         h.extend_from_slice(&self.data_len.to_le_bytes());
         let _ = self.file.write_all(&h);
-        eprintln!("[mic-aec] WAV finalized ({} bytes)", self.data_len);
+        eprintln!("[mic-speaker] WAV finalized ({} bytes)", self.data_len);
     }
 }
 
@@ -127,9 +127,9 @@ async fn main() {
     let sample_rate = settings["sampleRate"].as_u64().unwrap_or(DEFAULT_SAMPLE_RATE as u64) as u32;
     let chunk_ms = settings["chunkMs"].as_u64().unwrap_or(DEFAULT_CHUNK_MS as u64) as u32;
     let chunk_samples = (sample_rate * chunk_ms / 1000) as usize;
-    let speech_source = settings["speechSource"]
+    let speaker = settings["speaker"]
         .as_str()
-        .unwrap_or("tts")
+        .unwrap_or("player")
         .to_string();
 
     // Debug recording
@@ -159,10 +159,10 @@ async fn main() {
     let handle = match sys_voice::CaptureHandle::new(config) {
         Ok(h) => h,
         Err(e) => {
-            eprintln!("[mic-aec] Failed to start AEC capture: {:?}", e);
+            eprintln!("[mic-speaker] Failed to start AEC capture: {:?}", e);
             let err = json!({
                 "type": "control.error",
-                "component": "mic-aec",
+                "component": "mic-speaker",
                 "message": format!("AEC capture failed: {:?}", e),
                 "fatal": true
             });
@@ -173,11 +173,11 @@ async fn main() {
     };
 
     let native_rate = handle.native_sample_rate();
-    eprintln!("[mic-aec] OS AEC capture started at {}Hz (native: {}Hz), {}ms chunks, speech from \"{}\"",
-        sample_rate, native_rate, chunk_ms, speech_source);
+    eprintln!("[mic-speaker] OS AEC capture started at {}Hz (native: {}Hz), {}ms chunks, speech from \"{}\"",
+        sample_rate, native_rate, chunk_ms, speaker);
 
     // Emit lifecycle.ready
-    let ready = json!({"type": "lifecycle.ready", "component": "mic-aec"});
+    let ready = json!({"type": "lifecycle.ready", "component": "mic-speaker"});
     writeln!(out, "{}", ready).unwrap();
     out.flush().unwrap();
 
@@ -187,15 +187,15 @@ async fn main() {
     let handle_for_playback = handle.clone();
     let interrupted = Arc::new(AtomicBool::new(false));
     let interrupted_clone = interrupted.clone();
-    let speech_source_clone = speech_source.clone();
+    let speaker_clone = speaker.clone();
 
     // Stdin thread — parse events, play speaker audio directly per-chunk
     // No local buffering — play_audio() feeds sys-voice's CoreAudio render buffer.
     // If sample_rate matches native rate, no resampling happens (no stutter).
     // Interrupt just stops sending new chunks — CoreAudio buffer is small (~20ms).
     if sample_rate != native_rate {
-        eprintln!("[mic-aec] WARNING: sample_rate {}Hz != native {}Hz — playback will resample (may stutter)", sample_rate, native_rate);
-        eprintln!("[mic-aec] Consider setting sampleRate: {} in config", native_rate);
+        eprintln!("[mic-speaker] WARNING: sample_rate {}Hz != native {}Hz — playback will resample (may stutter)", sample_rate, native_rate);
+        eprintln!("[mic-speaker] Consider setting sampleRate: {} in config", native_rate);
     }
 
     std::thread::spawn(move || {
@@ -214,20 +214,20 @@ async fn main() {
                     interrupted_clone.store(true, Ordering::Relaxed);
                     // Instantly clear sys-voice's playback buffer — speaker goes silent
                     let _ = handle_for_playback.clear_playback();
-                    eprintln!("[mic-aec] Interrupt — cleared playback buffer");
+                    eprintln!("[mic-speaker] Interrupt — cleared playback buffer");
                 } else if event_type == "audio.chunk" {
                     // No need to drop chunks — clear_playback() already emptied the buffer.
                     // Any chunk arriving now is either a straggler (plays briefly, harmless)
                     // or from the new response (should play).
                     let from = event["_from"].as_str().unwrap_or("");
-                    if from == speech_source_clone {
+                    if from == speaker_clone {
                         if let Some(data) = event["data"].as_str() {
                             let samples = base64_to_f32(data);
                             if let Ok(mut w) = playback_wav_for_stdin.lock() {
                                 if let Some(ref mut wav) = *w { wav.write_f32(&samples); }
                             }
                             if let Err(e) = handle_for_playback.play_audio(samples, sample_rate) {
-                                eprintln!("[mic-aec] play_audio error: {:?}", e);
+                                eprintln!("[mic-speaker] play_audio error: {:?}", e);
                             }
                         }
                     }
@@ -282,17 +282,17 @@ async fn main() {
                 }
             }
             Some(Err(e)) => {
-                eprintln!("[mic-aec] Capture error: {:?}", e);
+                eprintln!("[mic-speaker] Capture error: {:?}", e);
                 break;
             }
             None => {
-                eprintln!("[mic-aec] Capture channel closed");
+                eprintln!("[mic-speaker] Capture channel closed");
                 break;
             }
         }
     }
 
-    let done = json!({"type": "lifecycle.done", "component": "mic-aec"});
+    let done = json!({"type": "lifecycle.done", "component": "mic-speaker"});
     writeln!(out, "{}", done).unwrap();
     out.flush().unwrap();
 }

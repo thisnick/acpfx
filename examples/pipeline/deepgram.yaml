@@ -1,7 +1,7 @@
 nodes:
   mic:
-    use: '@acpfx/mic-sox'
-    settings: {sampleRate: 16000, channels: 1}
+    use: '@acpfx/mic-speaker'
+    settings: {speaker: player}
     outputs: [stt]
   stt:
     use: '@acpfx/stt-deepgram'
@@ -20,6 +20,5 @@ nodes:
     outputs: [player]
   player:
     use: '@acpfx/audio-player'
-    settings: {speechSource: tts, thinkingClip: ./sounds/thinking.wav, toolClip: ./sounds/typing.wav,
-      sfxVolume: 0.3}
-    outputs: []
+    settings: {speechSource: tts, sfxVolume: 0.3}
+    outputs: [mic]

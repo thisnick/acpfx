@@ -1,4 +1,4 @@
-# @acpfx/mic-aec
+# @acpfx/mic-speaker
 
 ## 0.2.4
 

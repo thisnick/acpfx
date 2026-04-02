@@ -207,13 +207,13 @@ impl NodeRunner {
             }
         });
 
-        // Stderr reader task — forward to parent stderr
-        let node_name_err = name.to_string();
+        // Stderr: drain silently. Nodes should use log.* events on stdout
+        // for structured logging. Stderr is only for crashes/panics.
         tokio::spawn(async move {
             let reader = BufReader::new(stderr);
             let mut lines = reader.lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                eprintln!("[{node_name_err}] {line}");
+            while let Ok(Some(_)) = lines.next_line().await {
+                // Drain to prevent pipe buffer from filling and blocking the child
             }
         });
 

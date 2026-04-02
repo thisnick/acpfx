@@ -42,7 +42,7 @@ jobs:
               - 'packages/schema/src/**'
               - 'packages/schema/bin/**'
               - 'packages/sys-voice/**'
-              - 'packages/node-mic-aec/src/**'
+              - 'packages/node-mic-speaker/src/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
             ts:

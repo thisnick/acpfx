@@ -7,3 +7,8 @@ consumes:
 emits:
   - lifecycle.ready
   - lifecycle.done
+arguments:
+  path:
+    type: string
+    required: true
+    description: "Output WAV file path"

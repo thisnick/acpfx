@@ -91,7 +91,7 @@ mod tests {
         let yaml = r#"
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
+    use: "@acpfx/mic-speaker"
     settings: {sampleRate: 16000}
     outputs: [stt]
   stt:
@@ -100,7 +100,7 @@ nodes:
 "#;
         let config = parse_config(yaml).unwrap();
         assert_eq!(config.nodes.len(), 2);
-        assert_eq!(config.nodes["mic"].use_, "@acpfx/mic-sox");
+        assert_eq!(config.nodes["mic"].use_, "@acpfx/mic-speaker");
         assert_eq!(config.nodes["mic"].outputs, vec!["stt"]);
     }
 
@@ -109,7 +109,7 @@ nodes:
         let yaml = r#"
 nodes:
   mic:
-    use: "@acpfx/mic-sox"
+    use: "@acpfx/mic-speaker"
     outputs: [nonexistent]
 "#;
         let err = parse_config(yaml).unwrap_err();

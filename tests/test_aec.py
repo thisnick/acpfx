@@ -151,7 +151,7 @@ class TestResult:
 class AecTestHarness:
     binary_path: str
     env: Dict = field(default_factory=dict)
-    settings: Dict = field(default_factory=lambda: {"micSource": "mic", "speakerSource": "player"})
+    settings: Dict = field(default_factory=lambda: {"speaker": "player"})
 
     def run_aec(self, speaker_samples: List[int], mic_samples: List[int]) -> List[int]:
         """

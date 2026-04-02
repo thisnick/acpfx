@@ -6,7 +6,7 @@
  * dist/
  *   orchestrator.js    — from packages/orchestrator/dist/main.js
  *   nodes/
- *     mic-sox.js       — from packages/node-mic-sox/dist/index.js
+ *     stt-deepgram.js  — from packages/node-stt-deepgram/dist/index.js
  *     ...
  */
 
@@ -29,7 +29,6 @@ if (existsSync(orchSrc)) {
 
 // Node packages: packages/node-<name>/dist/index.js -> dist/nodes/<name>.js
 const nodePackages = [
-  "mic-sox",
   "stt-deepgram",
   "stt-elevenlabs",
   "tts-deepgram",

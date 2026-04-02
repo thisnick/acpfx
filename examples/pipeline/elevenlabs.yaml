@@ -1,29 +1,33 @@
 nodes:
   mic:
-    use: '@acpfx/mic-sox'
-    settings: {sampleRate: 16000, channels: 1}
-    outputs: [stt, recorder]
+    use: "@acpfx/mic-speaker"
+    settings:
+      speaker: player
+    outputs: [stt]
+
   stt:
-    use: '@acpfx/stt-elevenlabs'
-    settings: {language: en}
+    use: "@acpfx/stt-elevenlabs"
+    settings:
+      language: en
     outputs: [bridge]
+
   bridge:
-    use: '@acpfx/bridge-acpx'
+    use: "@acpfx/bridge-acpx"
     settings:
       agent: claude
       session: voice
-      args: {approve-all: true}
-    outputs: [tts, player, recorder]
+      args:
+        approve-all: true
+    outputs: [tts]
+
   tts:
-    use: '@acpfx/tts-elevenlabs'
-    settings: {voiceId: JBFqnCBsd6RMkjVDRZzb}
+    use: "@acpfx/tts-elevenlabs"
+    settings:
+      voiceId: JBFqnCBsd6RMkjVDRZzb
     outputs: [player]
+
   player:
-    use: '@acpfx/audio-player'
-    settings: {speechSource: tts, thinkingClip: ./sounds/thinking.wav, toolClip: ./sounds/typing.wav,
-      sfxVolume: 0.3}
-    outputs: [recorder]
-  recorder:
-    use: '@acpfx/recorder'
-    settings: {outputDir: ./recordings}
-    outputs: []
+    use: "@acpfx/audio-player"
+    settings:
+      speechSource: tts
+    outputs: [mic]

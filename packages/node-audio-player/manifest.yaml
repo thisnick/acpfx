@@ -1,5 +1,5 @@
 name: audio-player
-description: Plays audio chunks through system speaker with SFX support
+description: Audio mixer with SFX — emits audio.chunk for downstream playback
 consumes:
   - audio.chunk
   - agent.thinking
@@ -13,3 +13,21 @@ emits:
   - player.status
   - lifecycle.ready
   - lifecycle.done
+arguments:
+  speechSource:
+    type: string
+    description: "Node name whose audio.chunk events are speech (for filtering)"
+  sampleRate:
+    type: number
+    default: 16000
+    description: "Audio sample rate in Hz"
+  thinkingClip:
+    type: string
+    description: "Path to thinking SFX audio clip"
+  toolClip:
+    type: string
+    description: "Path to tool-use SFX audio clip"
+  sfxVolume:
+    type: number
+    default: 0.3
+    description: "SFX volume multiplier (0-1)"

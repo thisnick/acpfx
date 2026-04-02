@@ -1,0 +1,27 @@
+name: mic-speaker
+description: Captures mic audio with acoustic echo cancellation (native Rust)
+consumes:
+  - audio.chunk
+  - control.interrupt
+emits:
+  - audio.chunk
+  - audio.level
+  - lifecycle.ready
+  - lifecycle.done
+  - control.error
+arguments:
+  sampleRate:
+    type: number
+    default: 16000
+    description: "Target sample rate in Hz"
+  chunkMs:
+    type: number
+    default: 100
+    description: "Chunk duration in milliseconds"
+  speaker:
+    type: string
+    default: "player"
+    description: "Node name whose audio to use as speaker reference for AEC"
+  debugDir:
+    type: string
+    description: "Directory to write debug WAV recordings"

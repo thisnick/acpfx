@@ -10,3 +10,19 @@ emits:
   - lifecycle.ready
   - lifecycle.done
   - control.error
+arguments:
+  voice:
+    type: string
+    default: "aura-2-apollo-en"
+    description: "Deepgram voice model name"
+  sampleRate:
+    type: number
+    default: 16000
+    description: "Audio sample rate in Hz"
+  apiKey:
+    type: string
+    description: "Deepgram API key (overrides DEEPGRAM_API_KEY env var)"
+env:
+  DEEPGRAM_API_KEY:
+    required: true
+    description: "Deepgram API key for TTS"

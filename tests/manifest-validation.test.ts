@@ -37,22 +37,6 @@ const AUDITED_CONTRACTS: Record<string, NodeContract> = {
     emits: ["*", "lifecycle.ready"],  // echoes + lifecycle.ready
   },
 
-  // packages/node-mic-sox/src/index.ts
-  // NOTE: mic-sox DOES handle control.interrupt (line 72) but it's also
-  // reasonable for it to be a source node with no declared consumes if
-  // the manifest intends for it to be wired as a pure source. However,
-  // the code DOES check for it, so we flag the discrepancy.
-  "mic-sox": {
-    consumes: ["control.interrupt"],
-    emits: [
-      "audio.chunk",
-      "audio.level",
-      "control.error",
-      "lifecycle.ready",
-      "lifecycle.done",
-    ],
-  },
-
   // packages/node-mic-file/src/index.ts
   "mic-file": {
     consumes: ["control.interrupt"],
@@ -205,9 +189,9 @@ const AUDITED_CONTRACTS: Record<string, NodeContract> = {
     ],
   },
 
-  // packages/node-mic-aec/src/main.rs (Rust)
+  // packages/node-mic-speaker/src/main.rs (Rust)
   // Receives audio.chunk to play as speaker reference, emits mic capture
-  "mic-aec": {
+  "mic-speaker": {
     consumes: [
       "audio.chunk",
       "control.interrupt",
@@ -243,9 +227,9 @@ describe("manifest validation — audited contracts", () => {
   it("audit covers all known node packages", () => {
     // Verify our audit didn't miss any node packages
     const expectedNodes = [
-      "echo", "mic-sox", "mic-file", "stt-deepgram", "stt-elevenlabs",
+      "echo", "mic-file", "stt-deepgram", "stt-elevenlabs",
       "bridge-acpx", "tts-elevenlabs", "tts-deepgram", "audio-player",
-      "play-sox", "play-file", "recorder", "mic-aec", "aec-speex",
+      "play-sox", "play-file", "recorder", "mic-speaker", "aec-speex",
     ];
     for (const name of expectedNodes) {
       assert.ok(
@@ -392,22 +376,6 @@ describe("manifest validation — audited contracts", () => {
     }
   });
 
-  it("[CRITICAL] mic-sox manifest must declare control.interrupt in consumes", () => {
-    // mic-sox source code explicitly handles control.interrupt (line 72):
-    //   if (event.type === "control.interrupt") { interrupted = true; cleanup(); }
-    // If the manifest says consumes: [], the orchestrator will never send it
-    // interrupts, and the mic will keep recording after barge-in.
-    const manifest = readManifest("mic-sox");
-    if (!manifest) return;
-
-    const consumes = manifest.consumes ?? [];
-    assert.ok(
-      consumes.includes("control.interrupt"),
-      "mic-sox manifest is missing control.interrupt in consumes — " +
-      "but source code handles it at line 72 to stop recording on interrupt",
-    );
-  });
-
   for (const [shortName, auditedContract] of Object.entries(AUDITED_CONTRACTS)) {
     if (shortName === "echo" || shortName === "recorder") continue; // wildcard consumers
 
@@ -457,13 +425,13 @@ describe("manifest validation — audited contracts", () => {
     }
   });
 
-  it("mic-aec manifest declares control.error in emits", () => {
-    // mic-aec emits control.error when AEC capture fails (line 164-170)
-    const manifest = readManifest("mic-aec");
+  it("mic-speaker manifest declares control.error in emits", () => {
+    // mic-speaker emits control.error when AEC capture fails (line 164-170)
+    const manifest = readManifest("mic-speaker");
     if (!manifest) return;
     assert.ok(
       (manifest.emits ?? []).includes("control.error"),
-      "mic-aec manifest must declare control.error in emits (emitted on AEC capture failure)",
+      "mic-speaker manifest must declare control.error in emits (emitted on AEC capture failure)",
     );
   });
 });

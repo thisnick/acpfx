@@ -9,3 +9,27 @@ emits:
   - lifecycle.ready
   - lifecycle.done
   - control.error
+arguments:
+  language:
+    type: string
+    default: "en"
+    description: "Language code for transcription"
+  model:
+    type: string
+    default: "nova-3"
+    description: "Deepgram model name"
+  utteranceEndMs:
+    type: number
+    default: 1000
+    description: "Milliseconds of silence before utterance end"
+  endpointing:
+    type: number
+    default: 300
+    description: "VAD endpointing threshold in ms"
+  apiKey:
+    type: string
+    description: "Deepgram API key (overrides DEEPGRAM_API_KEY env var)"
+env:
+  DEEPGRAM_API_KEY:
+    required: true
+    description: "Deepgram API key for STT"

@@ -151,7 +151,7 @@ function handleServerMessage(msg: Record<string, unknown>): void {
       // Clear stale partial timer — proper final arrived
       // Final transcript for this segment
       lastFinalText = transcript;
-      pendingText = transcript;
+      pendingText = pendingText ? pendingText + " " + transcript : transcript;
 
       emit({
         type: "speech.final",
@@ -165,7 +165,7 @@ function handleServerMessage(msg: Record<string, unknown>): void {
         emit({
           type: "speech.pause",
           trackId: TRACK_ID,
-          pendingText: transcript,
+          pendingText,
           silenceMs: ENDPOINTING,
         });
         pendingText = "";
