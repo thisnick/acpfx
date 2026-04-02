@@ -7,13 +7,23 @@
 
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
+import type { NodeManifest } from "./generated-manifest.js";
 
-export interface NodeManifest {
-  name: string;
-  description?: string;
-  consumes: string[];
-  emits: string[];
-}
+// Re-export the generated manifest types as the canonical definitions.
+export type {
+  NodeManifest,
+  ManifestArgument,
+  ManifestEnvField,
+  ArgumentType,
+} from "./generated-manifest.js";
+
+// Re-export the generated Zod schemas.
+export {
+  NodeManifestSchema,
+  ManifestArgumentSchema,
+  ManifestEnvFieldSchema,
+  ArgumentTypeSchema,
+} from "./generated-manifest.js";
 
 /**
  * If `--manifest` is in process.argv, read the co-located manifest.json,

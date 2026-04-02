@@ -10,6 +10,7 @@ pub mod control;
 pub mod envelope;
 pub mod lifecycle;
 pub mod log;
+pub mod manifest;
 pub mod player;
 pub mod speech;
 
@@ -21,6 +22,7 @@ pub use control::*;
 pub use envelope::OrchestratorStamp;
 pub use lifecycle::*;
 pub use log::*;
+pub use manifest::{ArgumentType, ManifestArgument, ManifestEnvField, NodeManifest};
 pub use player::*;
 pub use speech::*;
 
