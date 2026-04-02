@@ -19,9 +19,45 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
+  # ---------- Detect what changed ----------
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      ts: ${{ steps.filter.outputs.ts }}
+      schema: ${{ steps.filter.outputs.schema }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'packages/orchestrator/src/**'
+              - 'packages/schema/src/**'
+              - 'packages/schema/bin/**'
+              - 'packages/sys-voice/**'
+              - 'packages/node-mic-aec/src/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+            ts:
+              - 'packages/core/**'
+              - 'packages/node-sdk/**'
+              - 'packages/node-*/**'
+              - 'scripts/**'
+              - 'tests/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig.json'
+            schema:
+              - 'packages/schema/**'
+
   # ---------- Rust: check + clippy ----------
   rust-check:
     name: Rust check & clippy
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +73,8 @@ jobs:
   # ---------- Rust: tests ----------
   rust-test:
     name: Rust tests
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +87,8 @@ jobs:
   # ---------- TypeScript: type check + test ----------
   ts-check:
     name: TypeScript check & test
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,6 +106,8 @@ jobs:
   # ---------- Schema codegen drift check ----------
   schema-drift:
     name: Schema codegen drift check
+    needs: changes
+    if: needs.changes.outputs.schema == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
