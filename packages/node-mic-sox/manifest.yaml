@@ -8,3 +8,19 @@ emits:
   - lifecycle.ready
   - lifecycle.done
   - control.error
+arguments:
+  sampleRate:
+    type: number
+    default: 16000
+    description: "Audio sample rate in Hz"
+  channels:
+    type: number
+    default: 1
+    description: "Number of audio channels"
+  chunkMs:
+    type: number
+    default: 100
+    description: "Chunk duration in milliseconds"
+  noiseGateRms:
+    type: number
+    description: "RMS threshold below which silence is emitted"

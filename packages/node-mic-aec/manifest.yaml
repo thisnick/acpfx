@@ -9,3 +9,19 @@ emits:
   - lifecycle.ready
   - lifecycle.done
   - control.error
+arguments:
+  sampleRate:
+    type: number
+    default: 16000
+    description: "Target sample rate in Hz"
+  chunkMs:
+    type: number
+    default: 100
+    description: "Chunk duration in milliseconds"
+  speechSource:
+    type: string
+    default: "tts"
+    description: "Node name whose audio to use as speaker reference for AEC"
+  debugDir:
+    type: string
+    description: "Directory to write debug WAV recordings"

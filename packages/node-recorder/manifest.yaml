@@ -24,3 +24,7 @@ consumes:
 emits:
   - lifecycle.ready
   - lifecycle.done
+arguments:
+  outputDir:
+    type: string
+    description: "Directory to write recordings to (default: ./recordings)"

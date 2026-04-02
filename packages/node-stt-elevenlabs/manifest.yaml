@@ -10,3 +10,27 @@ emits:
   - lifecycle.ready
   - lifecycle.done
   - control.error
+arguments:
+  language:
+    type: string
+    default: "en"
+    description: "Language code for transcription"
+  apiKey:
+    type: string
+    description: "ElevenLabs API key (overrides ELEVENLABS_API_KEY env var)"
+  pauseMs:
+    type: number
+    description: "Pause duration threshold in ms"
+  vadThreshold:
+    type: number
+    description: "VAD threshold 0-1 (higher = less sensitive)"
+  minSpeechDurationMs:
+    type: number
+    description: "Minimum speech duration in ms (ignore short noise bursts)"
+  minSilenceDurationMs:
+    type: number
+    description: "Minimum silence duration in ms"
+env:
+  ELEVENLABS_API_KEY:
+    required: true
+    description: "ElevenLabs API key for STT"

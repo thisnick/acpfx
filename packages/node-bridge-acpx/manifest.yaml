@@ -15,3 +15,15 @@ emits:
   - control.error
   - lifecycle.ready
   - lifecycle.done
+additional_arguments: true
+arguments:
+  agent:
+    type: string
+    required: true
+    description: "Agent to connect to"
+  session:
+    type: string
+    description: "Session type (e.g., voice)"
+  verbose:
+    type: boolean
+    description: "Enable verbose logging"

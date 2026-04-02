@@ -10,3 +10,17 @@ emits:
   - lifecycle.ready
   - lifecycle.done
   - control.error
+arguments:
+  voiceId:
+    type: string
+    description: "ElevenLabs voice ID"
+  model:
+    type: string
+    description: "ElevenLabs model name"
+  apiKey:
+    type: string
+    description: "ElevenLabs API key (overrides ELEVENLABS_API_KEY env var)"
+env:
+  ELEVENLABS_API_KEY:
+    required: true
+    description: "ElevenLabs API key for TTS"
