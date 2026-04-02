@@ -278,10 +278,14 @@ fn render_frame(
         // except nodes with speech/agent which need more. Use 4 per node + rest for logs.
         let mut constraints: Vec<Constraint> = Vec::new();
         for manifest in &state.manifests {
-            let mut height = 3u16; // minimum: border + 1 line + border
-            if manifest.emits_category("speech") { height += 1; }
-            if manifest.emits_category("agent") { height += 5; } // status + thinking/tool + 3 text lines
-            constraints.push(Constraint::Length(height));
+            if manifest.emits_category("agent") {
+                // Agent box gets flexible height to show streamed text
+                constraints.push(Constraint::Min(5));
+            } else {
+                let mut height = 3u16; // minimum: border + 1 line + border
+                if manifest.emits_category("speech") { height += 1; }
+                constraints.push(Constraint::Length(height));
+            }
         }
         // Log panel gets remaining space, minimum 5 lines
         constraints.push(Constraint::Min(5));
@@ -388,37 +392,25 @@ fn render_frame(
                     ]));
                 }
 
-                // Streamed response text — wrap long lines, show last 5 wrapped lines
+                // Streamed response text — wrap long lines, include all (scroll handles overflow)
                 if !node_state.agent.text.is_empty() {
                     let max_width = 100usize;
-                    let mut wrapped: Vec<String> = Vec::new();
                     for raw_line in node_state.agent.text.lines() {
                         if raw_line.len() <= max_width {
-                            wrapped.push(raw_line.to_string());
+                            lines.push(Line::from(format!("  > {raw_line}")));
                         } else {
-                            // Word-wrap at max_width
                             let mut pos = 0;
                             while pos < raw_line.len() {
                                 let end = (pos + max_width).min(raw_line.len());
-                                // Try to break at a space
                                 let break_at = if end < raw_line.len() {
                                     raw_line[pos..end].rfind(' ').map(|i| pos + i + 1).unwrap_or(end)
                                 } else {
                                     end
                                 };
-                                wrapped.push(raw_line[pos..break_at].to_string());
+                                lines.push(Line::from(format!("  > {}", &raw_line[pos..break_at])));
                                 pos = break_at;
                             }
                         }
-                    }
-                    let show = 5usize;
-                    let total = wrapped.len();
-                    let display = if total > show { &wrapped[total - show..] } else { &wrapped[..] };
-                    if total > show {
-                        lines.push(Line::from(Span::styled("  ...", Style::default().fg(Color::DarkGray))));
-                    }
-                    for tl in display {
-                        lines.push(Line::from(format!("  > {tl}")));
                     }
                 }
             }
@@ -448,7 +440,11 @@ fn render_frame(
                 lines.push(Line::from(if node_state.ready { "ready" } else { "starting..." }));
             }
 
-            let paragraph = Paragraph::new(lines).block(block);
+            // Auto-scroll to bottom: if content exceeds box height, scroll down
+            let content_height = lines.len() as u16;
+            let box_height = areas[i].height.saturating_sub(2); // minus borders
+            let scroll = content_height.saturating_sub(box_height);
+            let paragraph = Paragraph::new(lines).block(block).scroll((scroll, 0));
             frame.render_widget(paragraph, areas[i]);
         }
 
