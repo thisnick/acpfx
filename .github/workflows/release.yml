@@ -24,6 +24,8 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
       hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
+      cli-published: ${{ steps.check-pkgs.outputs.cli }}
+      mic-aec-published: ${{ steps.check-pkgs.outputs.mic-aec }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -47,12 +49,22 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Check which binary packages were published
+        id: check-pkgs
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          PKGS='${{ steps.changesets.outputs.publishedPackages }}'
+          CLI=$(echo "$PKGS" | node -e "const d=require('fs').readFileSync(0,'utf8');console.log(JSON.parse(d).some(p=>p.name==='@acpfx/cli'))")
+          MIC=$(echo "$PKGS" | node -e "const d=require('fs').readFileSync(0,'utf8');console.log(JSON.parse(d).some(p=>p.name==='@acpfx/mic-aec'))")
+          echo "cli=$CLI" >> "$GITHUB_OUTPUT"
+          echo "mic-aec=$MIC" >> "$GITHUB_OUTPUT"
+          echo "Published packages: cli=$CLI mic-aec=$MIC"
 
-  # ---------- Build orchestrator for all 6 targets ----------
+  # ---------- Build orchestrator (only if @acpfx/cli was published) ----------
   build-orchestrator:
     name: Build orchestrator (${{ matrix.npm-pkg }})
     needs: changesets
-    if: needs.changesets.outputs.published == 'true'
+    if: needs.changesets.outputs.cli-published == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: true
@@ -105,11 +117,11 @@ jobs:
           name: release-orchestrator-${{ matrix.npm-pkg }}
           path: acpfx-${{ matrix.npm-pkg }}*
 
-  # ---------- Build mic-aec (all 6 platforms, native runners) ----------
+  # ---------- Build mic-aec (only if @acpfx/mic-aec was published) ----------
   build-mic-aec:
     name: Build mic-aec (${{ matrix.npm-pkg }})
     needs: changesets
-    if: needs.changesets.outputs.published == 'true'
+    if: needs.changesets.outputs.mic-aec-published == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: true
@@ -165,12 +177,12 @@ jobs:
           name: release-mic-aec-${{ matrix.npm-pkg }}
           path: mic-aec-${{ matrix.npm-pkg }}*
 
-  # ---------- GitHub Releases (one per binary package) ----------
+  # ---------- GitHub Releases ----------
   github-release:
     name: Create GitHub Releases
     runs-on: ubuntu-latest
     needs: [changesets, build-orchestrator, build-mic-aec]
-    if: needs.changesets.outputs.published == 'true'
+    if: always() && needs.changesets.outputs.published == 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -181,25 +193,24 @@ jobs:
           echo "mic_aec=$(node -p "require('./packages/node-mic-aec/package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Download release binaries
+        if: needs.build-orchestrator.result == 'success' || needs.build-mic-aec.result == 'success'
         uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release-staging/
           merge-multiple: false
 
-      - name: Collect binaries
+      - name: Create @acpfx/cli release
+        if: needs.build-orchestrator.result == 'success'
         run: |
-          mkdir -p cli-assets mic-aec-assets
+          mkdir -p cli-assets
           for dir in release-staging/release-orchestrator-*/; do
             cp "$dir"/* cli-assets/
           done
-          for dir in release-staging/release-mic-aec-*/; do
-            cp "$dir"/* mic-aec-assets/
-          done
-          echo "=== @acpfx/cli assets ===" && ls -la cli-assets/
-          echo "=== @acpfx/mic-aec assets ===" && ls -la mic-aec-assets/
+          ls -la cli-assets/
 
-      - name: Create @acpfx/cli release
+      - name: Upload @acpfx/cli release
+        if: needs.build-orchestrator.result == 'success'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "@acpfx/cli@${{ steps.versions.outputs.cli }}"
@@ -207,6 +218,16 @@ jobs:
           generate_release_notes: true
 
       - name: Create @acpfx/mic-aec release
+        if: needs.build-mic-aec.result == 'success'
+        run: |
+          mkdir -p mic-aec-assets
+          for dir in release-staging/release-mic-aec-*/; do
+            cp "$dir"/* mic-aec-assets/
+          done
+          ls -la mic-aec-assets/
+
+      - name: Upload @acpfx/mic-aec release
+        if: needs.build-mic-aec.result == 'success'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "@acpfx/mic-aec@${{ steps.versions.outputs.mic_aec }}"
