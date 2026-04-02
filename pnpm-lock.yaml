@@ -150,6 +150,8 @@ importers:
         specifier: workspace:*
         version: link:../node-sdk
 
+  packages/orchestrator: {}
+
 packages:
 
   '@babel/runtime@7.29.2':

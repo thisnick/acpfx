@@ -1,0 +1,25 @@
+{
+  "name": "acpfx",
+  "version": "0.2.0",
+  "description": "Observable audio pipeline framework — pluggable voice agent pipelines via YAML config",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thisnick/acpfx",
+    "directory": "packages/orchestrator"
+  },
+  "bin": {
+    "acpfx": "./bin/acpfx"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "scripts/"
+  ],
+  "scripts": {
+    "build:native": "cargo build --release -p acpfx-orchestrator",
+    "postinstall": "node scripts/postinstall.js"
+  }
+}

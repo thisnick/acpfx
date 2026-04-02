@@ -1,10 +1,25 @@
 {
   "name": "@acpfx/mic-aec",
   "version": "0.2.0",
+  "description": "acpfx microphone with acoustic echo cancellation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thisnick/acpfx",
+    "directory": "packages/node-mic-aec"
+  },
+  "license": "ISC",
   "bin": {
     "acpfx-mic-aec": "./bin/mic-aec"
   },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "scripts/"
+  ],
   "scripts": {
-    "build:native": "cargo build --release && mkdir -p bin && cp target/release/mic-aec bin/"
+    "build:native": "cargo build --release && mkdir -p bin && cp target/release/mic-aec bin/",
+    "postinstall": "node scripts/postinstall.js"
   }
 }
