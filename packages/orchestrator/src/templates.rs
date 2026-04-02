@@ -167,4 +167,82 @@ mod tests {
             used_by
         );
     }
+
+    // ---- Evaluator tests ----
+
+    #[test]
+    fn templates_embedded_via_include_str() {
+        // Verify templates are non-empty (include_str! worked)
+        for template in list_templates() {
+            assert!(!template.yaml.is_empty(),
+                "Template '{}' has empty yaml content", template.id);
+            assert!(!template.id.is_empty());
+            assert!(!template.label.is_empty());
+        }
+    }
+
+    #[test]
+    fn at_least_five_templates() {
+        // Plan specifies 5 templates
+        assert!(
+            list_templates().len() >= 5,
+            "Expected at least 5 templates, got {}",
+            list_templates().len()
+        );
+    }
+
+    #[test]
+    fn node_registry_has_12_nodes() {
+        let nodes = available_nodes();
+        assert_eq!(
+            nodes.len(),
+            12,
+            "Expected 12 nodes in registry, got {}",
+            nodes.len()
+        );
+    }
+
+    #[test]
+    fn node_registry_packages_are_scoped() {
+        // All packages should be @acpfx/*
+        for entry in &available_nodes() {
+            assert!(
+                entry.package.starts_with("@acpfx/"),
+                "Package '{}' should be @acpfx/ scoped",
+                entry.package
+            );
+        }
+    }
+
+    #[test]
+    fn get_template_by_id() {
+        assert!(get_template("elevenlabs").is_some());
+        assert!(get_template("deepgram").is_some());
+        assert!(get_template("nonexistent").is_none());
+    }
+
+    #[test]
+    fn templates_contain_nodes_key() {
+        // Each template YAML should have a `nodes:` key
+        for template in list_templates() {
+            let config: crate::config::PipelineConfig =
+                serde_yaml::from_str(template.yaml).unwrap();
+            assert!(
+                !config.nodes.is_empty(),
+                "Template '{}' has no nodes",
+                template.id
+            );
+        }
+    }
+
+    #[test]
+    fn extract_env_vars_both_api_keys() {
+        let nodes = available_nodes();
+        let manifests: Vec<&NodeManifest> = nodes.iter().map(|n| &n.manifest).collect();
+        let env_vars = extract_env_vars(&manifests);
+
+        let names: Vec<&str> = env_vars.iter().map(|(n, _, _, _)| n.as_str()).collect();
+        assert!(names.contains(&"DEEPGRAM_API_KEY"), "Missing DEEPGRAM_API_KEY");
+        assert!(names.contains(&"ELEVENLABS_API_KEY"), "Missing ELEVENLABS_API_KEY");
+    }
 }
