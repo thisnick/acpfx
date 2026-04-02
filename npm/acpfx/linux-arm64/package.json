@@ -1,5 +1,5 @@
 {
-  "name": "@acpfx/acpfx-linux-arm64",
+  "name": "acpfx-linux-arm64",
   "version": "0.0.0",
   "description": "acpfx pipeline orchestrator (linux arm64)",
   "repository": {

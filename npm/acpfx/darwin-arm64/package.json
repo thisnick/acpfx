@@ -1,5 +1,5 @@
 {
-  "name": "@acpfx/acpfx-darwin-arm64",
+  "name": "acpfx-darwin-arm64",
   "version": "0.0.0",
   "description": "acpfx pipeline orchestrator (darwin arm64)",
   "repository": {

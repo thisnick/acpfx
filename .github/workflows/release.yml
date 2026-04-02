@@ -64,7 +64,7 @@ jobs:
             npm-pkg: darwin-arm64
             binary: acpfx
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-14
             npm-pkg: darwin-x64
             binary: acpfx
           - target: aarch64-unknown-linux-gnu
@@ -134,7 +134,7 @@ jobs:
             npm-pkg: darwin-arm64
             binary: mic-aec
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-14
             npm-pkg: darwin-x64
             binary: mic-aec
           - target: x86_64-unknown-linux-gnu
@@ -270,10 +270,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish @acpfx/cli wrapper
-        run: npm publish npm/acpfx --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Note: the main 'acpfx' package is published by changesets (workspace package)
+      # Only platform binary packages are published here
 
       - name: Publish @acpfx/mic-aec wrapper
         run: npm publish npm/mic-aec --access public

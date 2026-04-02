@@ -1,0 +1,48 @@
+#!/usr/bin/env node
+
+"use strict";
+
+const { spawnSync } = require("child_process");
+const { join } = require("path");
+
+const PLATFORMS = {
+  "darwin arm64": "acpfx-darwin-arm64",
+  "darwin x64": "acpfx-darwin-x64",
+  "linux arm64": "acpfx-linux-arm64",
+  "linux x64": "acpfx-linux-x64",
+  "win32 arm64": "acpfx-win32-arm64",
+  "win32 x64": "acpfx-win32-x64",
+};
+
+function getBinaryPath() {
+  // Allow override via env var (for local development)
+  if (process.env.ACPFX_BINARY_PATH) {
+    return process.env.ACPFX_BINARY_PATH;
+  }
+
+  const key = `${process.platform} ${process.arch}`;
+  const pkg = PLATFORMS[key];
+  if (!pkg) {
+    throw new Error(
+      `Unsupported platform: ${process.platform} ${process.arch}.\n` +
+      `acpfx supports: ${Object.keys(PLATFORMS).join(", ")}`
+    );
+  }
+
+  const ext = process.platform === "win32" ? ".exe" : "";
+  try {
+    return join(require.resolve(`${pkg}/package.json`), "..", "bin", `acpfx${ext}`);
+  } catch {
+    throw new Error(
+      `Could not find the binary package "${pkg}" for your platform.\n` +
+      `This usually means optional dependencies were not installed.\n` +
+      `Try: npm install acpfx`
+    );
+  }
+}
+
+const binPath = getBinaryPath();
+const { status } = spawnSync(binPath, process.argv.slice(2), {
+  stdio: "inherit",
+});
+process.exitCode = status !== null ? status : 1;

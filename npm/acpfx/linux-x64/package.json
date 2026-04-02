@@ -1,5 +1,5 @@
 {
-  "name": "@acpfx/acpfx-linux-x64",
+  "name": "acpfx-linux-x64",
   "version": "0.0.0",
   "description": "acpfx pipeline orchestrator (linux x64)",
   "repository": {

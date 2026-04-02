@@ -1,5 +1,5 @@
 {
-  "name": "@acpfx/acpfx-win32-arm64",
+  "name": "acpfx-win32-arm64",
   "version": "0.0.0",
   "description": "acpfx pipeline orchestrator (win32 arm64)",
   "repository": {
