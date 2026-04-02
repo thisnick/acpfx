@@ -1,5 +1,11 @@
 # acpfx
 
+## 0.2.6
+
+### Patch Changes
+
+- ea30448: Skip binary builds when package version unchanged — only build orchestrator if @acpfx/cli was published, only build mic-aec if @acpfx/mic-aec was published
+
 ## 0.2.5
 
 ### Patch Changes
