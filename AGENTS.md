@@ -1,88 +1,109 @@
-# acpfx — Observable Audio Pipeline Framework
+# acpfx -- Observable Audio Pipeline Framework
 
 ## What is this?
 
-acpfx is a pluggable, observable audio pipeline framework. Its primary use case today is voice agents (mic → STT → LLM → TTS → speaker), but the architecture is general: any graph of audio/event processing nodes connected via NDJSON stdio.
+acpfx is a pluggable, observable audio pipeline framework for voice agents and general audio/event processing. Nodes are child processes connected via NDJSON stdio; the graph topology is defined in YAML and can include cycles. The Rust orchestrator routes events between nodes, stamping each with `ts` and `_from`.
 
 ## Core Principles
 
-### 1. No hardcoded names or architecture
-- Node names in YAML configs are user-chosen. No code should reference a specific node name (e.g., don't check `_from === "bridge"`; use `process.env.ACPFX_NODE_NAME` or settings).
-- The graph topology is defined entirely in YAML. The orchestrator is a dumb router — it doesn't know what nodes do, only how they're connected.
-- Any node can be swapped: different STT (ElevenLabs, Deepgram, Whisper), different TTS (ElevenLabs, Deepgram, native), different agents (Claude via ACP, OpenAI direct, voice-to-voice native), different I/O (mic, WebSocket, file, Twilio).
+1. **No hardcoded names or topology.** Node names in YAML are user-chosen. Code must never reference a specific node name. Use `process.env.ACPFX_NODE_NAME` for self-identification and settings for source filtering. The orchestrator is a dumb router.
 
-### 2. Everything is a node
-- Nodes are child processes that speak NDJSON on stdin/stdout and log to stderr.
-- Nodes can be TypeScript (fork), native binaries (spawn), or npm packages (npx).
-- A node's contract is declared in its `manifest.yaml` (consumes/emits lists) and enforced by the orchestrator at routing time.
-- Every node must: emit `lifecycle.ready`, process declared events on stdin, emit declared events on stdout, support the `--manifest` flag.
+2. **Everything is a node.** Nodes are child processes (TypeScript via `node`, native binaries, or `npx` packages) that speak NDJSON on stdin/stdout and log to stderr. A node's contract is declared in its `manifest.yaml`.
 
-### 3. Observable event bus
-- All events flow through the orchestrator, stamped with `ts` and `_from`.
-- Events are component-name-independent — nodes use `_from` for source identification, configured via settings (e.g., `speechSource: tts`), never hardcoded.
-- Any node can observe the full event stream (UI, recorder, WebSocket bridge, analytics).
+3. **Manifest-driven contracts.** Every node declares what it `consumes` and `emits` in a `manifest.yaml`. The orchestrator loads manifests at startup and filters events: a node only receives events whose type is in its `consumes` list. Empty consumes = permissive (accepts everything).
 
-### 4. Input/output independence
-- Input can be: local mic (sox), file playback, WebSocket stream (Twilio, browser), RTP.
-- Output can be: local speaker, file recording, WebSocket stream, multiple outputs simultaneously.
-- Recording, mixing, and routing are all just nodes in the graph.
+4. **Observable event bus.** All events flow through the orchestrator. Any node can observe the full event stream (recorder, UI, analytics). Events are category-namespaced (`audio.*`, `speech.*`, `agent.*`, etc.).
 
-### 5. Low latency end-to-end
-- True streaming: STT streams partials, LLM streams tokens, TTS streams audio chunks.
-- No buffering between stages — events flow as they arrive.
-- Barge-in: mic is ALWAYS listening. Never mute the mic. Interrupt detection triggers immediately on first speech partial.
+5. **Graph supports cycles.** The topology is a general directed graph, not a DAG. Cycles are valid and common (e.g., player -> mic for echo cancellation reference audio). The orchestrator handles cycle-aware topological ordering.
 
-### 6. Pluggable via npm
-- Each node is its own npm package (`@acpfx/<name>`).
-- Resolution: local dist → npx fallback. `npx @acpfx/stt-deepgram` just works.
-- Third-party nodes follow the same contract — publish an npm package with a `bin` entry that speaks NDJSON.
+6. **Low latency, true streaming.** STT streams partials, LLM streams tokens, TTS streams audio chunks. No buffering between stages.
 
-## Architecture Examples
+7. **Pluggable via npm.** Each node is its own package (`@acpfx/<name>`). Resolution: local `dist/` build -> npx fallback. Third-party nodes follow the same NDJSON contract.
 
-### Simple voice agent
-```
-mic → stt → bridge → tts → player
+## Running a Pipeline
+
+The orchestrator is a Rust binary (`packages/orchestrator/`):
+
+```bash
+# Via cargo (development)
+cargo run -p acpfx-orchestrator --release -- run --config acpfx.yaml
+
+# Via pnpm (after cargo build)
+pnpm start --config acpfx.yaml
+
+# With terminal dashboard UI
+pnpm start --config acpfx.yaml --ui
 ```
 
-### Voice agent with echo cancellation
-```
-mic → aec → stt → bridge → tts → player → aec (reference)
+CLI flags for `acpfx run`:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--config` | `acpfx.yaml` | Path to pipeline YAML config |
+| `--dist` | `dist` | Path to built node artifacts |
+| `--ready-timeout` | `10000` | ms to wait for each node's `lifecycle.ready` |
+| `--ui` | off | Enable ratatui terminal dashboard |
+
+## Config Format
+
+Pipeline configs are YAML files with a `nodes` map and optional `env`:
+
+```yaml
+nodes:
+  mic:
+    use: '@acpfx/mic-sox'
+    settings: {sampleRate: 16000, channels: 1}
+    outputs: [stt]
+  stt:
+    use: '@acpfx/stt-deepgram'
+    settings: {language: en, model: nova-3}
+    outputs: [bridge]
+  bridge:
+    use: '@acpfx/bridge-acpx'
+    settings:
+      agent: claude
+      session: voice
+      args: {approve-all: true}
+    outputs: [tts, player]
+  tts:
+    use: '@acpfx/tts-deepgram'
+    settings: {voice: aura-2-aries-en}
+    outputs: [player]
+  player:
+    use: '@acpfx/audio-player'
+    settings: {speechSource: tts}
+    outputs: []
+env:
+  DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
 ```
 
-### Conference call
+Each node entry has:
+- `use` -- package reference (`@acpfx/<name>`, external path, or binary)
+- `settings` -- JSON passed via `ACPFX_SETTINGS` env var
+- `outputs` -- list of node names this node sends events to
+
+With AEC (cyclic graph -- player feeds reference audio back to mic):
+
+```yaml
+nodes:
+  mic:
+    use: '@acpfx/mic-aec'
+    settings: {sampleRate: 16000, speechSource: player}
+    outputs: [stt]
+  # ... stt, bridge, tts as above ...
+  player:
+    use: '@acpfx/audio-player'
+    settings: {speechSource: tts}
+    outputs: [mic]       # <-- cycle: reference audio for AEC
 ```
-twilio-in-1 → mixer → stt → bridge → tts → twilio-out-1
-twilio-in-2 → mixer                      → twilio-out-2
-```
 
-### Recording + WebSocket streaming
-```
-mic → stt → bridge → tts → player → recorder
-                               → ws-out (browser frontend)
-```
+### Manifest files
 
-### Voice-to-voice (no STT/TTS)
-```
-mic → native-voice-agent → player
-```
-
-## Event Protocol
-
-Events are JSON objects with a `type` field. The orchestrator adds `ts` (wall clock) and `_from` (source node name). Categories:
-
-- `audio.*` — audio chunks, levels
-- `speech.*` — STT partials, finals, pause detection
-- `agent.*` — submit, delta, complete, thinking, tool_start, tool_done
-- `control.*` — interrupt, error, state
-- `lifecycle.*` — ready, done
-- `player.*` — playback status
-
-## Manifest Contract System
-
-Every node declares its contract in `manifest.yaml` at its package root:
+Co-located `manifest.yaml` at each package root:
 
 ```yaml
 name: stt-deepgram
+description: Speech-to-text via Deepgram streaming API
 consumes:
   - audio.chunk
 emits:
@@ -91,83 +112,108 @@ emits:
   - speech.pause
   - lifecycle.ready
   - lifecycle.done
-  - log
   - control.error
 ```
 
-**Manifest IS the contract.** The orchestrator loads manifests at startup and filters events: a node only receives events whose type is in its `consumes` list. This replaces ad-hoc event ignoring in node code.
+At build time, manifests are copied next to built artifacts as both `.manifest.yaml` and `.manifest.json`. The orchestrator reads the co-located manifest file. All nodes must also support `--manifest` (prints manifest JSON to stdout and exits).
 
-**Manifest retrieval:** Co-located `<name>.manifest.yaml` next to the built artifact (copied by build script). Fallback: run `<node> --manifest` which prints JSON and exits. All nodes must support `--manifest`.
+## Package Overview
 
-**Upstream dependencies are OK if declared.** A node can consume `agent.thinking` (coupling to the agent) as long as it's in the manifest. The manifest makes implicit dependencies explicit.
+### Rust crates (`packages/`)
 
-**Validation:** At startup the orchestrator warns on zero-overlap edges (A emits nothing B consumes). In strict mode (`strict: true` in YAML), missing manifests error.
+| Package | Description |
+|---------|-------------|
+| `orchestrator` | Rust CLI -- spawns nodes, routes events, manifest filtering, TUI |
+| `schema` | Canonical event type definitions; source of truth for codegen |
+| `sys-voice` | Rust crate for native audio I/O (used by mic-aec) |
+| `node-mic-aec` | Native Rust mic capture with acoustic echo cancellation |
 
-## Event Schema and Codegen
+### TypeScript node packages (`packages/node-*`)
 
-The canonical event schema is defined in Rust (`packages/schema/`). TypeScript types are generated from it:
+| Package | Consumes | Emits | Description |
+|---------|----------|-------|-------------|
+| `node-mic-sox` | `control.interrupt` | `audio.chunk`, `audio.level` | Mic capture via sox/rec |
+| `node-mic-file` | `control.interrupt` | `audio.chunk`, `audio.level` | WAV file playback as mic input |
+| `node-stt-deepgram` | `audio.chunk` | `speech.*` | Deepgram streaming STT |
+| `node-stt-elevenlabs` | `audio.chunk` | `speech.*` | ElevenLabs streaming STT |
+| `node-bridge-acpx` | `speech.partial`, `speech.pause`, `control.interrupt` | `agent.*`, `control.interrupt` | Agent bridge (Claude via ACP) |
+| `node-tts-deepgram` | `agent.delta`, `agent.complete`, `agent.tool_start`, `control.interrupt` | `audio.chunk` | Deepgram streaming TTS |
+| `node-tts-elevenlabs` | `agent.delta`, `agent.complete`, `agent.tool_start`, `control.interrupt` | `audio.chunk` | ElevenLabs streaming TTS |
+| `node-audio-player` | `audio.chunk`, `agent.*`, `control.interrupt` | `audio.chunk`, `player.status` | System speaker output with SFX |
+| `node-recorder` | all event types | `lifecycle.*` | Records events to JSONL + audio to WAV |
+| `node-play-file` | `audio.chunk`, `control.interrupt` | `lifecycle.*` | Writes audio chunks to WAV file |
+| `node-echo` | all event types | all event types | Echoes events back (testing) |
 
+### Shared TypeScript packages
+
+| Package | Description |
+|---------|-------------|
+| `core` | Generated types, Zod schemas, manifest utilities, protocol helpers |
+| `node-sdk` | Node authoring SDK: `emit()`, `log.*`, `onEvent()`, `handleManifestFlag()` |
+
+### npm distribution (`npm/`)
+
+| Directory | Description |
+|-----------|-------------|
+| `npm/acpfx` | Platform-specific orchestrator binaries (`@acpfx/cli`) |
+| `npm/mic-aec` | Platform-specific mic-aec binaries |
+
+## Event Protocol
+
+Events are JSON objects with a `type` field. The orchestrator stamps each with `ts` (epoch ms) and `_from` (source node name). See **docs/PROTOCOL.md** for the full type reference.
+
+**Categories:**
+- `audio` -- `audio.chunk`, `audio.level`
+- `speech` -- `speech.partial`, `speech.delta`, `speech.final`, `speech.pause`
+- `agent` -- `agent.submit`, `agent.delta`, `agent.complete`, `agent.thinking`, `agent.tool_start`, `agent.tool_done`
+- `control` -- `control.interrupt`, `control.state`, `control.error`
+- `lifecycle` -- `lifecycle.ready`, `lifecycle.done`
+- `log` -- `log`
+- `player` -- `player.status`
+
+**Routing rules:**
+- Data events route via configured `outputs` edges, filtered by the destination's `consumes` manifest.
+- `control.interrupt` broadcasts to all transitive downstream nodes that declare it in `consumes`.
+- `log` events broadcast to all nodes that consume them (beyond direct outputs).
+
+## Development
+
+### Build
+
+```bash
+pnpm install                              # install TS dependencies
+pnpm build                                # esbuild all TS nodes to dist/
+cargo build --release -p acpfx-orchestrator  # build orchestrator
 ```
+
+### Codegen (schema -> TypeScript)
+
+```bash
 cargo run -p acpfx-schema --bin acpfx-codegen
 ```
 
-This produces:
-- `packages/core/src/generated-types.ts` — TypeScript discriminated unions
-- `packages/core/src/generated-zod.ts` — Zod schemas for runtime validation
-- `schema.json` — JSON Schema for external tooling
+Produces `packages/core/src/generated-types.ts`, `generated-zod.ts`, and `schema.json`. Generated files are checked in. CI verifies no drift.
 
-Generated files are checked in. CI verifies no drift.
+### Testing
 
-## Control Event Routing
-
-- **Data events** (audio, speech, agent, player, log): routed via DAG edges, filtered by destination's `consumes`.
-- **`control.interrupt`**: broadcast to ALL transitive downstream nodes that declare it in `consumes`. Uses precomputed downstream sets, not just direct outputs.
-- **`control.error` / `control.state`**: routed via edges like data events (informational, not action signals).
-- STT nodes don't declare `consumes: control.interrupt` → they never receive it (no more ignore-interrupt hacks).
-
-## Structured Logging
-
-Nodes emit structured log events on stdout as part of their NDJSON stream:
-
-```json
-{"type": "log", "level": "info", "component": "stt-deepgram", "message": "Connected to Deepgram STT"}
+```bash
+cargo test --workspace      # Rust tests (schema, orchestrator, config)
+cargo clippy --workspace    # Rust lints
+pnpm check                  # TypeScript type checking
 ```
 
-Use the node-sdk helpers (`@acpfx/node-sdk`):
+### Writing a new node
 
-```typescript
-import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
-log.info("Connected");   // emits {"type":"log","level":"info",...} on stdout
-log.error("Failed");     // same, with level "error"
-```
+1. Create `packages/node-<name>/` with `src/index.ts`, `manifest.yaml`, `package.json`
+2. Use `@acpfx/node-sdk` for `emit()`, `log.*`, `onEvent()`, `handleManifestFlag()`
+3. Emit `lifecycle.ready` when initialized
+4. Process only events declared in your `consumes` manifest
+5. Add to the `nodePackages` array in `scripts/build.js`
 
-**stderr is a true error channel** — only for unexpected crashes/panics. The orchestrator does not parse or convert stderr lines.
+## Things to Avoid
 
-## Orchestrator
-
-The orchestrator is a Rust binary at `packages/orchestrator/`. Run with:
-
-```
-cargo run -p acpfx-orchestrator --release -- run --config acpfx.yaml
-```
-
-Or via `pnpm start --config acpfx.yaml`.
-
-The `--ui` flag enables a ratatui terminal dashboard that renders each node in its own bordered box with category-based widgets driven by manifests. No separate UI node needed in YAML configs.
-
-## Things to avoid
-
-- **Never mute the mic** — barge-in requires always-on listening.
-- **Never hardcode node names** — use `ACPFX_NODE_NAME` env var or settings for self-identification, settings for source filtering.
-- **Never assume a specific graph topology** — nodes should work in any valid wiring.
-- **Don't buffer when you can stream** — latency is critical for voice.
-- **Don't put business logic in the orchestrator** — it's a dumb event router.
-
-## Future directions
-
-- **Plugin system**: nodes as npm packages with a registry/discovery mechanism.
-- **Web UI**: WebSocket bridge node → browser frontend (replace or complement CLI UI).
-- **Native UI**: desktop app wrapping the pipeline.
-- **Twilio/WebRTC I/O**: phone call and browser-based voice input/output.
-- **Voice-to-voice**: native multimodal models that skip STT/TTS entirely.
-- **Example configs**: move YAML configs to `examples/` directory, keep root clean.
+- **Never hardcode node names** -- use `ACPFX_NODE_NAME` env var and settings.
+- **Never assume a specific graph topology** -- nodes should work in any valid wiring.
+- **Don't buffer when you can stream** -- latency is critical for voice.
+- **Don't put business logic in the orchestrator** -- it is a dumb event router.
+- **stderr is for crashes only** -- use `log.*` from node-sdk for structured logging on stdout.
