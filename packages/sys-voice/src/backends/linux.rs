@@ -61,6 +61,11 @@ fn run_playback(playback_rx: flume::Receiver<PlaybackCommand>) -> Result<(), Aec
                     write_samples(&playback_simple, &samples)?;
                 }
             }
+            PlaybackCommand::ClearBuffer => {
+                // PulseAudio Simple API doesn't expose direct buffer clearing.
+                // Flush is the closest equivalent — it discards buffered data.
+                let _ = playback_simple.flush();
+            }
         }
     }
 

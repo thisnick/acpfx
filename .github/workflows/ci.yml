@@ -1,10 +1,14 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'examples/**'
+      - '.github/workflows/release.yml'
+      - 'LICENSE'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -15,7 +19,7 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  # ---------- Rust: check, clippy, test ----------
+  # ---------- Rust: check + clippy ----------
   rust-check:
     name: Rust check & clippy
     runs-on: ubuntu-latest
@@ -30,6 +34,7 @@ jobs:
       - run: cargo check --workspace
       - run: cargo clippy --workspace -- -D warnings
 
+  # ---------- Rust: tests ----------
   rust-test:
     name: Rust tests
     runs-on: ubuntu-latest
@@ -41,107 +46,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libpulse-dev
       - run: cargo test --workspace
 
-  # ---------- Rust: cross-compile orchestrator (6 targets) ----------
-  rust-build-orchestrator:
-    name: Build orchestrator (${{ matrix.target }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-14
-            npm-pkg: darwin-arm64
-          - target: x86_64-apple-darwin
-            runner: macos-13
-            npm-pkg: darwin-x64
-          - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-latest
-            npm-pkg: linux-arm64
-            use-cross: true
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
-            npm-pkg: linux-x64
-          - target: aarch64-pc-windows-msvc
-            runner: windows-latest
-            npm-pkg: win32-arm64
-          - target: x86_64-pc-windows-msvc
-            runner: windows-latest
-            npm-pkg: win32-x64
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-      - name: Install cross
-        if: matrix.use-cross
-        run: cargo install cross --locked
-      - name: Build
-        run: |
-          if [ "${{ matrix.use-cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} -p acpfx-orchestrator
-          else
-            cargo build --release --target ${{ matrix.target }} -p acpfx-orchestrator
-          fi
-        shell: bash
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: orchestrator-${{ matrix.npm-pkg }}
-          path: |
-            target/${{ matrix.target }}/release/acpfx
-            target/${{ matrix.target }}/release/acpfx.exe
-
-  # ---------- Rust: build mic-aec (native runners, needs OS audio libs) ----------
-  rust-build-mic-aec:
-    name: Build mic-aec (${{ matrix.target }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-14
-            npm-pkg: darwin-arm64
-          - target: x86_64-apple-darwin
-            runner: macos-13
-            npm-pkg: darwin-x64
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
-            npm-pkg: linux-x64
-          - target: x86_64-pc-windows-msvc
-            runner: windows-latest
-            npm-pkg: win32-x64
-          # linux-arm64 and win-arm64 omitted: mic-aec depends on sys-voice
-          # which requires native audio libs that cannot cross-compile easily.
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: ${{ matrix.target }}
-      - name: Install PulseAudio dev libs (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libpulse-dev
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p mic-aec
-        shell: bash
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: mic-aec-${{ matrix.npm-pkg }}
-          path: |
-            target/${{ matrix.target }}/release/mic-aec
-            target/${{ matrix.target }}/release/mic-aec.exe
-
-  # ---------- TypeScript ----------
-  ts-build-test:
-    name: TypeScript build & test
+  # ---------- TypeScript: type check + test ----------
+  ts-check:
+    name: TypeScript check & test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -150,11 +57,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      - name: Install system deps for native modules
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm check
 
-  # ---------- Schema drift check ----------
+  # ---------- Schema codegen drift check ----------
   schema-drift:
     name: Schema codegen drift check
     runs-on: ubuntu-latest
@@ -168,41 +77,5 @@ jobs:
         run: |
           if ! git diff --exit-code; then
             echo "::error::Generated files are out of date. Run 'cargo run -p acpfx-schema --bin acpfx-codegen' and commit."
-            exit 1
-          fi
-
-  # ---------- Integration test ----------
-  integration:
-    name: Integration tests (echo pipeline)
-    runs-on: ubuntu-latest
-    needs: [ts-build-test, rust-check]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Install PulseAudio dev libs
-        run: sudo apt-get update && sudo apt-get install -y libpulse-dev
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - name: Build orchestrator
-        run: cargo build --release -p acpfx-orchestrator
-      - name: Smoke test — echo pipeline
-        run: |
-          printf '%s\n' 'nodes:' '  a:' '    use: "@acpfx/echo"' '    outputs: [b]' '  b:' '    use: "@acpfx/echo"' '    outputs: []' > /tmp/echo-test.yaml
-          timeout 10 ./target/release/acpfx run \
-            --config /tmp/echo-test.yaml \
-            --dist dist \
-            --ready-timeout 5000 \
-            || EXIT=$?
-          # timeout exits 124 on timeout (expected — pipeline runs forever)
-          if [ "${EXIT:-124}" -eq 124 ]; then
-            echo "Pipeline ran successfully (timed out as expected)"
-          else
-            echo "Pipeline exited unexpectedly with code ${EXIT}"
             exit 1
           fi

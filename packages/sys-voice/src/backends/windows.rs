@@ -229,6 +229,11 @@ fn playback_loop(playback_rx: flume::Receiver<PlaybackCommand>) -> Result<(), Ae
                     );
                 }
             }
+            PlaybackCommand::ClearBuffer => {
+                // Stop and restart the stream to discard buffered audio.
+                let _ = audio_client.stop_stream();
+                let _ = audio_client.start_stream();
+            }
         }
     }
 

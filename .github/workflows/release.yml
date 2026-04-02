@@ -2,18 +2,56 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
 
 permissions:
   contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ---------- Changesets: version or publish ----------
+  changesets:
+    name: Changesets — version or publish
+    runs-on: ubuntu-latest
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
+      hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install system deps for native modules
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - run: pnpm install --frozen-lockfile
+      - name: Create release PR or publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          title: "chore: version packages"
+          commit: "chore: version packages"
+          publish: pnpm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
   # ---------- Build orchestrator for all 6 targets ----------
   build-orchestrator:
     name: Build orchestrator (${{ matrix.npm-pkg }})
+    needs: changesets
+    if: needs.changesets.outputs.published == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: true
@@ -82,6 +120,8 @@ jobs:
   # ---------- Build mic-aec (native runners only) ----------
   build-mic-aec:
     name: Build mic-aec (${{ matrix.npm-pkg }})
+    needs: changesets
+    if: needs.changesets.outputs.published == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: true
@@ -137,7 +177,8 @@ jobs:
   publish-npm:
     name: Publish npm packages
     runs-on: ubuntu-latest
-    needs: [build-orchestrator, build-mic-aec]
+    needs: [changesets, build-orchestrator, build-mic-aec]
+    if: needs.changesets.outputs.published == 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -146,9 +187,9 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - name: Extract version from tag
+      - name: Extract version from changesets
         id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - name: Download all npm package artifacts
         uses: actions/download-artifact@v4
@@ -240,7 +281,8 @@ jobs:
   github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [build-orchestrator, build-mic-aec]
+    needs: [changesets, build-orchestrator, build-mic-aec]
+    if: needs.changesets.outputs.published == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -273,5 +315,6 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.changesets.outputs.publishedPackages && fromJson(needs.changesets.outputs.publishedPackages)[0].version || '' }}
           files: release-assets/*
           generate_release_notes: true
