@@ -11,13 +11,17 @@
  * Settings (via ACPFX_SETTINGS):
  *   speechSource?: string   — _from value identifying speech audio (default: "tts")
  *   sampleRate?: number     — sample rate (default: 16000)
- *   thinkingClip?: string   — path to WAV file for thinking sound
- *   toolClip?: string       — path to WAV file for tool use sound
+ *   thinkingClip?: string   — path to WAV file for thinking sound (default: bundled)
+ *   toolClip?: string       — path to WAV file for tool use sound (default: bundled)
  *   sfxVolume?: number      — 0.0-1.0 gain for SFX (default: 0.3)
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 handleManifestFlag();
 
@@ -34,6 +38,21 @@ const SPEECH_SOURCE = settings.speechSource ?? "tts";
 const SAMPLE_RATE = settings.sampleRate ?? 16000;
 const SFX_VOLUME = settings.sfxVolume ?? 0.3;
 const BYTES_PER_SAMPLE = 2;
+
+// ---- Resolve bundled sounds ----
+
+/** Find a bundled sound file. Checks relative to the script, then common locations. */
+function findBundledSound(filename: string): string | null {
+  const candidates = [
+    join(__dirname, "..", "sounds", filename),       // dev: src/../sounds/
+    join(__dirname, "sounds", filename),             // dist: next to bundled .js
+    join(__dirname, "..", "..", "sounds", filename),  // npm package layout
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
 
 // ---- Audio helpers ----
 
@@ -254,13 +273,16 @@ function handleEvent(event: Record<string, unknown>): void {
 // ---- Main ----
 
 function main(): void {
-  if (settings.thinkingClip) {
-    thinkingPcm = loadWavPcm(settings.thinkingClip);
-    if (thinkingPcm) log.info(`Loaded thinking clip: ${settings.thinkingClip} (${thinkingPcm.length} bytes)`);
+  const thinkingPath = settings.thinkingClip ?? findBundledSound("thinking.wav");
+  const toolPath = settings.toolClip ?? findBundledSound("typing.wav");
+
+  if (thinkingPath) {
+    thinkingPcm = loadWavPcm(thinkingPath);
+    if (thinkingPcm) log.info(`Loaded thinking clip: ${thinkingPath} (${thinkingPcm.length} bytes)`);
   }
-  if (settings.toolClip) {
-    toolPcm = loadWavPcm(settings.toolClip);
-    if (toolPcm) log.info(`Loaded tool clip: ${settings.toolClip} (${toolPcm.length} bytes)`);
+  if (toolPath) {
+    toolPcm = loadWavPcm(toolPath);
+    if (toolPcm) log.info(`Loaded tool clip: ${toolPath} (${toolPcm.length} bytes)`);
   }
 
   emit({ type: "lifecycle.ready", component: "audio-player" });

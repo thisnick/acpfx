@@ -425,8 +425,10 @@ fn finish_pipeline(
             output.print_line(&format!("    Status: {}", status));
 
             if in_system || in_project || in_global {
-                let keep = input.read_line("    Keep current value? [Y/n]: ")?;
-                if keep.eq_ignore_ascii_case("n") || keep.eq_ignore_ascii_case("no") {
+                output.print_line("    Keep current value?");
+                let keep_options = &["Yes, keep it", "No, enter a new value"];
+                let keep = select_menu(input, output, keep_options)?;
+                if keep == Some(1) {
                     let value =
                         input.read_line(&format!("    Enter new value for {}: ", name))?;
                     if !value.is_empty() {
@@ -450,12 +452,7 @@ fn finish_pipeline(
                     }
                 }
             } else {
-                let prompt_text = if *required {
-                    format!("    Enter value for {}: ", name)
-                } else {
-                    format!("    Enter value for {} (or press Enter to skip): ", name)
-                };
-                let value = input.read_line(&prompt_text)?;
+                let value = input.read_line(&format!("    Enter value for {}: ", name))?;
                 if !value.is_empty() {
                     let store_options = &[
                         "Global (~/.acpfx/config.json)",

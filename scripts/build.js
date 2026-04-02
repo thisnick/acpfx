@@ -71,6 +71,17 @@ for (const pkg of nodePackages) {
   );
 }
 
+// Copy bundled sounds for audio-player
+const soundsSrc = join(root, "packages/node-audio-player/sounds");
+const soundsDist = join(nodesDist, "sounds");
+if (existsSync(soundsSrc)) {
+  mkdirSync(soundsDist, { recursive: true });
+  for (const f of readdirSync(soundsSrc).filter(f => f.endsWith(".wav"))) {
+    cpSync(join(soundsSrc, f), join(soundsDist, f));
+  }
+  console.log("  Copied bundled sounds to dist/nodes/sounds/");
+}
+
 // --- Native binary nodes (auto-discovered via Cargo.toml in packages/node-*/) ---
 const packagesDir = join(root, "packages");
 const nativeNodes = readdirSync(packagesDir, { withFileTypes: true })

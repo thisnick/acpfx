@@ -34,8 +34,6 @@ nodes:
     use: "@acpfx/audio-player"
     settings:
       speechSource: tts
-      thinkingClip: ./sounds/thinking.wav
-      toolClip: ./sounds/typing.wav
       sfxVolume: 0.3
     outputs: [mic]
 
