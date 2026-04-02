@@ -1,6 +1,6 @@
 {
   "name": "acpfx",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Observable audio pipeline framework — pluggable voice agent pipelines via YAML config",
   "license": "MIT",
   "repository": {
