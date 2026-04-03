@@ -12,7 +12,7 @@ use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
-    style,
+    style::{self, Attribute, Color, Stylize},
     terminal::{self, ClearType},
 };
 
@@ -112,6 +112,12 @@ impl InputSource for MockInput {
 pub trait OutputSink {
     fn clear_screen(&mut self);
     fn print_line(&mut self, text: &str);
+    /// Print a line with bold text.
+    fn print_bold(&mut self, text: &str);
+    /// Print a line with a specific color.
+    fn print_colored(&mut self, text: &str, color: Color);
+    /// Print a line with dim/muted text.
+    fn print_dim(&mut self, text: &str);
     fn move_up(&mut self, lines: u16);
 }
 
@@ -140,6 +146,30 @@ impl OutputSink for TerminalOutput {
 
     fn print_line(&mut self, text: &str) {
         execute!(self.stdout, style::Print(text), style::Print("\r\n")).ok();
+    }
+
+    fn print_bold(&mut self, text: &str) {
+        execute!(
+            self.stdout,
+            style::Print(text.bold()),
+            style::Print("\r\n")
+        ).ok();
+    }
+
+    fn print_colored(&mut self, text: &str, color: Color) {
+        execute!(
+            self.stdout,
+            style::Print(text.with(color)),
+            style::Print("\r\n")
+        ).ok();
+    }
+
+    fn print_dim(&mut self, text: &str) {
+        execute!(
+            self.stdout,
+            style::Print(text.attribute(Attribute::Dim)),
+            style::Print("\r\n")
+        ).ok();
     }
 
     fn move_up(&mut self, lines: u16) {
@@ -174,6 +204,18 @@ impl OutputSink for CapturedOutput {
         self.lines.push(text.to_string());
     }
 
+    fn print_bold(&mut self, text: &str) {
+        self.lines.push(text.to_string());
+    }
+
+    fn print_colored(&mut self, text: &str, _color: Color) {
+        self.lines.push(text.to_string());
+    }
+
+    fn print_dim(&mut self, text: &str) {
+        self.lines.push(text.to_string());
+    }
+
     fn move_up(&mut self, _lines: u16) {}
 }
 
@@ -203,7 +245,7 @@ pub fn run_onboard_with(
         output.print_line("  No pipeline configured. Let's set one up!\n");
     }
 
-    output.print_line("  How would you like to start?\n");
+    output.print_bold("  How would you like to start?\n");
 
     let choices = &["Start from a template", "Build from scratch"];
     let choice = select_menu(input, output, choices)?;
@@ -222,7 +264,7 @@ fn template_flow(
     output: &mut dyn OutputSink,
 ) -> Result<Option<OnboardResult>, String> {
     output.clear_screen();
-    output.print_line("\n  Choose a template:\n");
+    output.print_bold("\n  Choose a template:\n");
 
     let templates = templates::list_templates();
     let labels: Vec<&str> = templates.iter().map(|t| t.label).collect();
@@ -238,7 +280,7 @@ fn template_flow(
 
     // Show template details
     output.clear_screen();
-    output.print_line(&format!("\n  Pipeline: {}\n", template.label));
+    output.print_bold(&format!("\n  Pipeline: {}\n", template.label));
     output.print_line("\n  Nodes:");
     for (name, node) in &config.nodes {
         output.print_line(&format!("    {:<12} {}", name, node.use_));
@@ -253,7 +295,7 @@ fn build_flow(
     output: &mut dyn OutputSink,
 ) -> Result<Option<OnboardResult>, String> {
     output.clear_screen();
-    output.print_line("\n  Pipeline builder\n");
+    output.print_bold("\n  Pipeline builder\n");
     output.print_line("  Add nodes to your pipeline step by step.\n");
 
     let available = templates::available_nodes();
@@ -262,7 +304,7 @@ fn build_flow(
 
     loop {
         output.clear_screen();
-        output.print_line("\n  Pipeline builder\n");
+        output.print_bold("\n  Pipeline builder\n");
 
         if !nodes.is_empty() {
             output.print_line("  Current nodes:");
@@ -394,7 +436,7 @@ fn finish_pipeline(
 
     if !env_vars.is_empty() {
         output.clear_screen();
-        output.print_line("\n  Environment Variables\n");
+        output.print_bold("\n  Environment Variables\n");
         output.print_line("  Your pipeline needs these environment variables:\n");
 
         for (name, required, desc, used_by) in &env_vars {
@@ -417,15 +459,16 @@ fn finish_pipeline(
                 "not set"
             };
 
-            output.print_line(&format!("  {}{}", name, req_label));
+            output.print_bold(&format!("  {}{}", name, req_label));
             if !desc.is_empty() {
-                output.print_line(&format!("    {}", desc));
+                output.print_dim(&format!("    {}", desc));
             }
-            output.print_line(&format!("    Used by: {}", used_by.join(", ")));
-            output.print_line(&format!("    Status: {}", status));
+            output.print_dim(&format!("    Used by: {}", used_by.join(", ")));
+            let status_color = if status == "not set" { Color::Yellow } else { Color::Green };
+            output.print_colored(&format!("    Status: {}\n", status), status_color);
 
             if in_system || in_project || in_global {
-                output.print_line("    Keep current value?");
+                output.print_bold("    Keep current value?\n");
                 let keep_options = &["Yes, keep it", "No, enter a new value"];
                 let keep = select_menu(input, output, keep_options)?;
                 if keep == Some(1) {
@@ -436,7 +479,7 @@ fn finish_pipeline(
                             "Global (~/.acpfx/config.json)",
                             "Project (.acpfx/config.json)",
                         ];
-                        output.print_line("\n    Where to store?");
+                        output.print_line("\n    Where to store?\n");
                         let store_choice = select_menu(input, output, store_options)?;
                         match store_choice {
                             Some(0) => {
@@ -452,7 +495,7 @@ fn finish_pipeline(
                     }
                 }
             } else {
-                let value = input.read_line(&format!("    Enter value for {}: ", name))?;
+                let value = input.read_line(&format!("\n    Enter value for {}: ", name))?;
                 if !value.is_empty() {
                     let store_options = &[
                         "Global (~/.acpfx/config.json)",
@@ -494,7 +537,7 @@ fn finish_pipeline(
 
     // Step 5: Save pipeline
     output.clear_screen();
-    output.print_line("\n  Save your pipeline\n");
+    output.print_bold("\n  Save your pipeline\n");
 
     let pipeline_name = input.read_line(&format!("  Name [{}]: ", default_name))?;
     let pipeline_name = if pipeline_name.is_empty() {
@@ -545,15 +588,15 @@ fn finish_pipeline(
 
     // Step 6: Done
     output.clear_screen();
-    output.print_line(&format!(
+    output.print_colored(&format!(
         "\n  Pipeline saved to {}",
         pipeline_path.display()
-    ));
+    ), Color::Green);
     if set_default == Some(0) {
-        output.print_line("  Set as default pipeline");
+        output.print_colored("  Set as default pipeline", Color::Green);
     }
 
-    output.print_line("\n  Run your pipeline now?");
+    output.print_bold("\n  Run your pipeline now?\n");
     let run_choices = &["Yes", "No"];
     let run_now = select_menu(input, output, run_choices)?;
 
@@ -568,11 +611,11 @@ fn finish_pipeline(
 
 fn print_header(output: &mut dyn OutputSink) {
     output.print_line("");
-    output.print_line("  Welcome to acpfx!");
+    output.print_bold("  Welcome to acpfx!");
     output.print_line("");
-    output.print_line("  acpfx is a pluggable audio pipeline framework");
-    output.print_line("  for voice agents. Let's set up your first");
-    output.print_line("  pipeline.");
+    output.print_dim("  acpfx is a pluggable audio pipeline framework");
+    output.print_dim("  for voice agents. Let's set up your first");
+    output.print_dim("  pipeline.");
     output.print_line("");
 }
 
@@ -587,9 +630,9 @@ fn select_menu(
     loop {
         for (i, item) in items.iter().enumerate() {
             if i == selected {
-                output.print_line(&format!("  > {}", item));
+                output.print_colored(&format!("  > {}", item), Color::Cyan);
             } else {
-                output.print_line(&format!("    {}", item));
+                output.print_dim(&format!("    {}", item));
             }
         }
 
