@@ -172,10 +172,11 @@ jobs:
       - name: Build
         run: |
           FEATURES=""
-          if [[ "${{ matrix.target }}" == *apple* ]]; then
+          CARGO_TOML="${{ matrix.pkg_dir }}/Cargo.toml"
+          if [[ "${{ matrix.target }}" == *apple* ]] && grep -q 'metal' "$CARGO_TOML" 2>/dev/null; then
             FEATURES="--features metal"
           fi
-          if [[ "${{ matrix.gpu }}" == "cuda" ]]; then
+          if [[ "${{ matrix.gpu }}" == "cuda" ]] && grep -q 'cuda' "$CARGO_TOML" 2>/dev/null; then
             FEATURES="--features cuda"
           fi
           cargo build --release --target ${{ matrix.target }} -p ${{ matrix.cargo_pkg }} $FEATURES
