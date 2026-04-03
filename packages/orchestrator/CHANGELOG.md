@@ -1,5 +1,11 @@
 # acpfx
 
+## 0.4.5
+
+### Patch Changes
+
+- c520c3f: Add Windows uv install instructions to error message. Clarify --dist flag is dev only.
+
 ## 0.4.4
 
 ### Patch Changes
