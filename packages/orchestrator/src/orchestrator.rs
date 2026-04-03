@@ -128,7 +128,8 @@ impl Orchestrator {
                     Err(_) => None,
                 }
             } else {
-                None
+                // Fallback: run the node with --acpfx-manifest to get manifest JSON
+                fetch_manifest_via_flag(&resolved)
             };
 
             if let Some(m) = manifest {
@@ -440,6 +441,36 @@ impl Orchestrator {
 
 /// Validate YAML config `settings` against the manifest's declared `arguments`.
 /// Emits warnings on stderr for mismatches (does not abort the pipeline).
+/// Fallback: run the node with --acpfx-manifest and parse stdout JSON.
+/// Used when no co-located manifest file exists (e.g., npx-resolved nodes).
+fn fetch_manifest_via_flag(resolved: &ResolvedNode) -> Option<NodeManifest> {
+    use std::process::Command;
+
+    let mut cmd = Command::new(&resolved.command);
+    cmd.args(&resolved.args)
+        .arg("--acpfx-manifest")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+
+    let output = match cmd.output() {
+        Ok(o) => o,
+        Err(_) => return None,
+    };
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let line = stdout.trim();
+    if line.is_empty() {
+        return None;
+    }
+
+    serde_json::from_str(line).ok()
+}
+
 fn validate_settings(
     node_name: &str,
     settings: Option<&serde_json::Value>,
