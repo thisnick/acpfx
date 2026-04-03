@@ -7,7 +7,6 @@ const path = require("path");
 
 const SUPPORTED_PLATFORMS = {
   "darwin arm64": "acpfx-darwin-arm64",
-  "darwin x64": "acpfx-darwin-x64",
   "linux arm64": "acpfx-linux-arm64",
   "linux x64": "acpfx-linux-x64",
   "win32 arm64": "acpfx-win32-arm64.exe",
