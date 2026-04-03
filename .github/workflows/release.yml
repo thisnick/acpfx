@@ -207,7 +207,7 @@ jobs:
           name: release-${{ matrix.platform }}
           path: "*-${{ matrix.platform }}*"
 
-  # ---------- Build CUDA variants (Windows x64 only — Linux CUDA toolkit install is broken on GH runners) ----------
+  # ---------- Build CUDA variants ----------
   build-cuda:
     name: Build native CUDA (${{ matrix.platform }})
     needs: changesets
@@ -217,9 +217,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            platform: linux-x64
+            cuda_method: local
           - target: x86_64-pc-windows-msvc
             runner: windows-latest
             platform: win32-x64
+            cuda_method: network
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -228,17 +233,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.target }}-cuda
+      - name: Install system libs (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpulse-dev cmake
       - name: Install CUDA toolkit
+        id: cuda-toolkit
         uses: Jimver/cuda-toolkit@v0.2.35
         with:
-          cuda: '12.4.0'
-          method: network
+          cuda: '12.6.3'
+          method: ${{ matrix.cuda_method }}
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "thrust", "nvrtc", "nvrtc_dev"]'
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Build CUDA packages
         env:
-          # Skip nvidia-smi GPU detection (no GPU on CI runners)
-          # Target Turing (75) for broad compatibility with RTX 20-series and newer
           CUDA_COMPUTE_CAP: "75"
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         shell: bash
         run: |
           PKGS='${{ needs.changesets.outputs.native-packages }}'
@@ -254,12 +266,15 @@ jobs:
         shell: bash
         run: |
           PKGS='${{ needs.changesets.outputs.native-packages }}'
+          EXT=""
+          if [[ "${{ matrix.target }}" == *windows* ]]; then EXT=".exe"; fi
+
           echo "$PKGS" | node -e "
             const pkgs=JSON.parse(require('fs').readFileSync(0,'utf8'));
             pkgs.filter(p=>p.has_cuda).forEach(p=>console.log(p.binary_name+' '+p.npm_name+' '+p.version));
           " | while read binary_name npm_name version; do
-            src="target/${{ matrix.target }}/release/${binary_name}.exe"
-            dst="${binary_name}-${{ matrix.platform }}-cuda.exe"
+            src="target/${{ matrix.target }}/release/${binary_name}${EXT}"
+            dst="${binary_name}-${{ matrix.platform }}-cuda${EXT}"
             if [ -f "$src" ]; then
               cp "$src" "$dst"
               echo "Collected: $dst"
@@ -271,9 +286,6 @@ jobs:
         with:
           name: release-${{ matrix.platform }}-cuda
           path: "*-${{ matrix.platform }}-cuda*"
-
-  # NOTE: Linux CUDA builds disabled — Ubuntu 24.04 GH runners can't install cuda-12-4 via apt.
-  # Postinstall falls back to CPU binaries on Linux.
 
   # ---------- GitHub Releases ----------
   github-release:

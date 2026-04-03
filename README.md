@@ -144,5 +144,21 @@ cargo run -p acpfx-schema --bin acpfx-codegen   # regenerate types from schema
 
 - Node.js 22+, pnpm
 - Rust (via rustup)
-- API keys for STT/TTS providers (Deepgram, ElevenLabs)
-- acpx (`npx acpx@latest`) — for the ACP agent bridge
+- API keys for STT/TTS providers (Deepgram, ElevenLabs) -- or use local STT/TTS nodes
+- acpx (`npx acpx@latest`) -- for the ACP agent bridge
+
+## Credits
+
+acpfx builds on the work of these open source projects:
+
+- **[Kyutai moshi](https://github.com/kyutai-labs/moshi)** -- Mimi neural audio codec, streaming STT/TTS models (MIT license)
+- **[Kyutai delayed-streams-modeling](https://github.com/kyutai-labs/delayed-streams-modeling)** -- STT and TTS model architectures and weights
+- **[Kyutai Pocket TTS](https://github.com/kyutai-labs/pocket-tts)** -- Lightweight ~100M parameter TTS model
+- **[babybirdprd/pocket-tts](https://github.com/babybirdprd/pocket-tts)** -- Rust/Candle port of Pocket TTS
+- **[Hugging Face Candle](https://github.com/huggingface/candle)** -- Rust ML framework used for on-device STT and TTS inference
+- **[Deepgram](https://deepgram.com)** -- Cloud STT/TTS API (used by node-stt-deepgram, node-tts-deepgram)
+- **[ElevenLabs](https://elevenlabs.io)** -- Cloud STT/TTS API (used by node-stt-elevenlabs, node-tts-elevenlabs)
+
+## License
+
+[ISC](LICENSE)
