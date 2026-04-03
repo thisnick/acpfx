@@ -1,5 +1,16 @@
 # @acpfx/node-sdk
 
+## 0.3.0
+
+### Minor Changes
+
+- 0e6838e: Add local on-device STT and TTS nodes (no API keys required). Introduces --acpfx-\* flag convention with setup phase for first-time model downloads, dynamic release pipeline with dual CPU/CUDA builds, MLX acceleration on Mac, and TUI improvements for speech event display.
+
+### Patch Changes
+
+- Updated dependencies [0e6838e]
+  - @acpfx/core@0.4.0
+
 ## 0.2.1
 
 ### Patch Changes

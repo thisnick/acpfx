@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/tts-deepgram",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "bin": {
     "acpfx-tts-deepgram": "./dist/index.js"
