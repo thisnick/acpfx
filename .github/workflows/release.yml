@@ -240,7 +240,8 @@ jobs:
 
       - name: Build CUDA packages
         env:
-          CUDA_COMPUTE_CAP: "75"
+          # Ampere (80) minimum — Turing (75) doesn't support bf16 WMMA needed by candle-kernels
+          CUDA_COMPUTE_CAP: "80"
           CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         shell: pwsh
         run: |

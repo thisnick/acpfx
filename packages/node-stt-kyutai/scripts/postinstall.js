@@ -13,12 +13,15 @@ const SUPPORTED_PLATFORMS = {
   "win32 x64": "stt-kyutai-win32-x64.exe",
 };
 
-function hasNvidiaGpu() {
+function getCudaComputeCap() {
   try {
-    require("child_process").execSync("nvidia-smi", { stdio: "ignore" });
-    return true;
+    const output = require("child_process")
+      .execSync("nvidia-smi --query-gpu=compute_cap --format=csv,noheader", { stdio: ["pipe", "pipe", "ignore"] })
+      .toString().trim();
+    // "8.6" -> 86, "7.5" -> 75
+    return parseInt(output.replace(".", ""), 10);
   } catch {
-    return false;
+    return 0;
   }
 }
 
@@ -32,8 +35,8 @@ function getBinaryName() {
     );
   }
 
-  // Try CUDA variant on Linux/Windows when an NVIDIA GPU is present
-  if ((process.platform === "linux" || process.platform === "win32") && hasNvidiaGpu()) {
+  // Try CUDA variant on Linux/Windows when an NVIDIA Ampere+ GPU is present (compute cap >= 8.0)
+  if ((process.platform === "linux" || process.platform === "win32") && getCudaComputeCap() >= 80) {
     return base.replace(/(\.\w+)?$/, "-cuda$1");
   }
   return base;

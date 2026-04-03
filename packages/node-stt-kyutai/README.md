@@ -6,7 +6,7 @@ Local speech-to-text via Kyutai moshi. Runs entirely on-device using Rust and Ca
 
 This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
-The postinstall script downloads a prebuilt binary for your platform. Supported: macOS (Apple Silicon with Metal), Linux (x86_64, optional CUDA).
+The postinstall script downloads a prebuilt binary for your platform. On Linux/Windows with an NVIDIA GPU (Ampere or newer, compute capability 8.0+), a CUDA-accelerated binary is downloaded automatically. Otherwise falls back to CPU.
 
 ## Manifest
 
@@ -35,12 +35,22 @@ nodes:
     outputs: [bridge]
 ```
 
+## GPU Acceleration
+
+| Platform | Acceleration | Requirement |
+|----------|-------------|-------------|
+| macOS | Metal | Apple Silicon (automatic) |
+| Linux/Windows | CUDA | NVIDIA Ampere+ (RTX 3090, A100, etc.) |
+| All | CPU | Fallback, works everywhere |
+
 ## Building from Source
 
 ```bash
 cargo build --release -p node-stt-kyutai
 # With Metal (macOS):
 cargo build --release -p node-stt-kyutai --features metal
+# With CUDA (Linux/Windows, requires CUDA toolkit):
+cargo build --release -p node-stt-kyutai --features cuda
 ```
 
 ## External Links
