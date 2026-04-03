@@ -438,6 +438,10 @@ class MlxBackend(TtsBackend):
         )
         for entry in entries:
             self.state.entries.append(entry)
+        # Reset end_step if new entries arrived — prevents premature termination
+        # when streaming words with gaps between deltas
+        if self.state.end_step is not None:
+            self.state.end_step = None
 
     def step(self) -> bool:
         mx = self.mx
@@ -601,6 +605,9 @@ class PyTorchBackend(TtsBackend):
         )
         for entry in entries:
             self._state.entries.append(entry)
+        # Reset end_step if new entries arrived — prevents premature termination
+        if self._state.end_step is not None:
+            self._state.end_step = None
 
     def step(self) -> bool:
         import torch
@@ -785,13 +792,17 @@ def main():
                 finish_generation()
                 continue
 
-            # Run one generation step
+            # Run one generation step — keep stepping even if entries are
+            # temporarily exhausted (the model's delay pipeline still has audio
+            # to produce). Only stop on explicit agent.complete/tool_start.
             if not backend.is_done():
                 backend.step()
             else:
-                # No pending entries — wait briefly for more input
+                # Entries exhausted and delay flushed — wait for more words
+                # or agent.complete. Use a longer timeout since LLM token
+                # generation can have gaps.
                 try:
-                    event = input_q.get(timeout=0.05)
+                    event = input_q.get(timeout=0.5)
                     input_q.put(event)  # put it back for next iteration
                 except queue.Empty:
                     pass

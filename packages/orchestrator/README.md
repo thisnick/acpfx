@@ -84,7 +84,7 @@ Before spawning nodes, the orchestrator runs a setup check:
 | [@acpfx/mic-file](../node-mic-file/README.md) | TS | WAV file playback as mic input |
 | [@acpfx/stt-deepgram](../node-stt-deepgram/README.md) | TS | [Deepgram](https://deepgram.com) streaming STT |
 | [@acpfx/stt-elevenlabs](../node-stt-elevenlabs/README.md) | TS | [ElevenLabs](https://elevenlabs.io) streaming STT |
-| [@acpfx/stt-kyutai](../node-stt-kyutai/README.md) | Rust | Local STT via [Kyutai moshi](https://github.com/kyutai-labs/delayed-streams-modeling) |
+| [@acpfx/stt-kyutai](../node-stt-kyutai/README.md) | Python | Local STT via [Kyutai moshi](https://github.com/kyutai-labs/delayed-streams-modeling) (MLX on Mac, PyTorch+CUDA on Linux) |
 | [@acpfx/bridge-acpx](../node-bridge-acpx/README.md) | TS | Agent bridge (Claude via [acpx](https://github.com/anthropics/acpx)) |
 | [@acpfx/tts-deepgram](../node-tts-deepgram/README.md) | TS | [Deepgram](https://deepgram.com) streaming TTS |
 | [@acpfx/tts-elevenlabs](../node-tts-elevenlabs/README.md) | TS | [ElevenLabs](https://elevenlabs.io) streaming TTS |
