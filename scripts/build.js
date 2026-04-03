@@ -125,7 +125,7 @@ for (const name of pythonNodes) {
     const wrapper = [
       `#!/usr/bin/env bash`,
       `if ! command -v uv &>/dev/null; then`,
-      `  echo '{"type":"error","message":"uv is required but not installed. Install it: curl -LsSf https://astral.sh/uv/install.sh | sh"}' >&1`,
+      `  echo '{"type":"error","message":"uv is required but not installed. Install: curl -LsSf https://astral.sh/uv/install.sh | sh (macOS/Linux) or powershell -c \\\"irm https://astral.sh/uv/install.ps1 | iex\\\" (Windows)"}' >&1`,
       `  exit 1`,
       `fi`,
       `exec uv run --python ">=3.10" "$(cd "$(dirname "$0")" && pwd)/${pyEntry}" "$@"`,
