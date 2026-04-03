@@ -207,87 +207,18 @@ jobs:
           name: release-${{ matrix.platform }}
           path: "*-${{ matrix.platform }}*"
 
-  # ---------- Build CUDA variants ----------
-  build-cuda:
-    name: Build native CUDA (${{ matrix.platform }})
-    needs: changesets
-    if: needs.changesets.outputs.native-any == 'true' && needs.changesets.outputs.needs-cuda == 'true'
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # NOTE: Linux CUDA disabled — Jimver/cuda-toolkit fails on Ubuntu 24.04.
-        # Postinstall falls back to CPU on Linux.
-        include:
-          - target: x86_64-pc-windows-msvc
-            runner: windows-latest
-            platform: win32-x64
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: release-${{ matrix.target }}-cuda
-      - name: Install CUDA toolkit
-        uses: Jimver/cuda-toolkit@v0.2.35
-        with:
-          cuda: '12.6.3'
-          method: network
-      - name: Set up MSVC
-        uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Build CUDA packages
-        env:
-          # Ampere (80) minimum — Turing (75) doesn't support bf16 WMMA needed by candle-kernels
-          CUDA_COMPUTE_CAP: "80"
-          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
-        shell: pwsh
-        run: |
-          $pkgs = '${{ needs.changesets.outputs.native-packages }}' | node -e "
-            const pkgs=JSON.parse(require('fs').readFileSync(0,'utf8'));
-            pkgs.filter(p=>p.has_cuda).forEach(p=>console.log(p.cargo_pkg));
-          "
-          foreach ($pkg in $pkgs -split "`n") {
-            $pkg = $pkg.Trim()
-            if ($pkg) {
-              Write-Host "Building $pkg with --features cuda"
-              cargo build --release --target ${{ matrix.target }} --features cuda -p $pkg
-              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            }
-          }
-
-      - name: Collect CUDA binaries
-        shell: pwsh
-        run: |
-          $pkgs = '${{ needs.changesets.outputs.native-packages }}' | node -e "
-            const pkgs=JSON.parse(require('fs').readFileSync(0,'utf8'));
-            pkgs.filter(p=>p.has_cuda).forEach(p=>console.log(p.binary_name));
-          "
-          foreach ($line in $pkgs -split "`n") {
-            $binary_name = $line.Trim()
-            if ($binary_name) {
-              $src = "target/${{ matrix.target }}/release/${binary_name}.exe"
-              $dst = "${binary_name}-${{ matrix.platform }}-cuda.exe"
-              if (Test-Path $src) {
-                Copy-Item $src $dst
-                Write-Host "Collected: $dst"
-              }
-            }
-          }
-
-      - name: Upload CUDA binaries
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-${{ matrix.platform }}-cuda
-          path: "*-${{ matrix.platform }}-cuda*"
+  # NOTE: CUDA CI builds disabled.
+  # - Linux: Jimver/cuda-toolkit fails on Ubuntu 24.04 (cuda-12-x package not found)
+  # - Windows: CRT mismatch between candle-kernels (/MT) and sentencepiece-sys (/MD)
+  # Postinstall falls back to CPU binaries. Users can build CUDA locally:
+  #   cargo build --release --features cuda -p node-stt-kyutai
+  #   cargo build --release --features cuda -p node-tts-pocket
 
   # ---------- GitHub Releases ----------
   github-release:
     name: Create GitHub Releases
     runs-on: ubuntu-latest
-    needs: [changesets, build-platform, build-cuda]
+    needs: [changesets, build-platform]
     if: always() && needs.changesets.outputs.native-any == 'true' && needs.build-platform.result == 'success'
     steps:
       - uses: actions/checkout@v6

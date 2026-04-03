@@ -1,12 +1,12 @@
 # @acpfx/stt-kyutai
 
-Local speech-to-text via Kyutai moshi. Runs entirely on-device using Rust and Candle -- no API key needed.
+Local speech-to-text via Kyutai moshi. Runs entirely on-device -- no API key needed. Uses MLX on macOS (Apple Silicon) and PyTorch on Linux/Windows (CUDA when available).
 
 ## Usage
 
 This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
-The postinstall script downloads a prebuilt binary for your platform. On Linux/Windows with an NVIDIA GPU (Ampere or newer, compute capability 8.0+), a CUDA-accelerated binary is downloaded automatically. Otherwise falls back to CPU.
+Requires [uv](https://docs.astral.sh/uv/) for Python dependency management. GPU acceleration is auto-detected at runtime.
 
 ## Manifest
 
@@ -37,21 +37,11 @@ nodes:
 
 ## GPU Acceleration
 
-| Platform | Acceleration | Requirement |
-|----------|-------------|-------------|
-| macOS | Metal | Apple Silicon (automatic) |
-| Linux/Windows | CUDA | NVIDIA Ampere+ (RTX 3090, A100, etc.) |
+| Platform | Acceleration | How |
+|----------|-------------|-----|
+| macOS | MLX (Apple Silicon) | Automatic, with int8 quantization |
+| Linux/Windows | CUDA (PyTorch) | Automatic when NVIDIA GPU detected |
 | All | CPU | Fallback, works everywhere |
-
-## Building from Source
-
-```bash
-cargo build --release -p node-stt-kyutai
-# With Metal (macOS):
-cargo build --release -p node-stt-kyutai --features metal
-# With CUDA (Linux/Windows, requires CUDA toolkit):
-cargo build --release -p node-stt-kyutai --features cuda
-```
 
 ## External Links
 
