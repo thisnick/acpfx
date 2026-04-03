@@ -1,5 +1,15 @@
 # acpfx
 
+## 0.5.0
+
+### Minor Changes
+
+- 3354da7: Per-component configuration in onboarding TUI: edit node arguments, manage connections, edit/rename/delete existing pipelines with backtracking navigation
+
+### Patch Changes
+
+- d71ad78: Convert stt-kyutai from Rust/Candle to Python with MLX (macOS) and PyTorch (Linux/Windows) backends. Auto-detects GPU at runtime — no compile-time CUDA issues. Same TtsBackend/SttBackend DRY architecture as tts-kyutai.
+
 ## 0.4.5
 
 ### Patch Changes
