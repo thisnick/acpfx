@@ -1,5 +1,5 @@
 /**
- * Manifest utilities and acpfx flag handling for nodes.
+ * Manifest types, Zod schemas, and acpfx flag handling for nodes.
  *
  * Call `handleAcpfxFlags()` at the top of your node's entry point.
  * It handles all `--acpfx-*` convention flags:
@@ -10,25 +10,64 @@
 
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import type { NodeManifest } from "./generated-manifest.js";
+import { z } from "zod";
 
-// Re-export the generated manifest types as the canonical definitions.
-export type {
-  NodeManifest,
-  ManifestArgument,
-  ManifestEnvField,
-  ArgumentType,
-} from "./generated-manifest.js";
+// ---- Manifest Types ----
 
-// Re-export the generated Zod schemas.
-export {
-  NodeManifestSchema,
-  ManifestArgumentSchema,
-  ManifestEnvFieldSchema,
-  ArgumentTypeSchema,
-} from "./generated-manifest.js";
+export type ArgumentType = "string" | "number" | "boolean";
 
-// Re-export acpfx flag protocol types.
+export interface ManifestArgument {
+  type: ArgumentType;
+  default?: unknown;
+  description?: string;
+  required?: boolean;
+  enum?: unknown[];
+}
+
+export interface ManifestEnvField {
+  required?: boolean;
+  description?: string;
+}
+
+export interface NodeManifest {
+  name: string;
+  description?: string;
+  consumes: string[];
+  emits: string[];
+  arguments?: Record<string, ManifestArgument>;
+  additional_arguments?: boolean;
+  env?: Record<string, ManifestEnvField>;
+}
+
+// ---- Manifest Zod Schemas ----
+
+export const ArgumentTypeSchema = z.enum(["string", "number", "boolean"]);
+
+export const ManifestArgumentSchema = z.object({
+  type: ArgumentTypeSchema,
+  default: z.unknown().optional(),
+  description: z.string().optional(),
+  required: z.boolean().optional(),
+  enum: z.array(z.unknown()).optional(),
+});
+
+export const ManifestEnvFieldSchema = z.object({
+  required: z.boolean().optional(),
+  description: z.string().optional(),
+});
+
+export const NodeManifestSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  consumes: z.array(z.string()),
+  emits: z.array(z.string()),
+  arguments: z.record(z.string(), ManifestArgumentSchema).optional(),
+  additional_arguments: z.boolean().optional(),
+  env: z.record(z.string(), ManifestEnvFieldSchema).optional(),
+});
+
+// ---- acpfx Flag Protocol Types ----
+
 export type {
   SetupCheckResponse,
   SetupProgress,
@@ -41,22 +80,16 @@ export {
   UnsupportedFlagResponseSchema,
 } from "./acpfx-flags.js";
 
+// ---- Flag Handling ----
+
 /**
  * Handle all `--acpfx-*` convention flags.
  *
  * Must be called at the top of every node's entry point (before any async work).
- * Handles:
- *   --acpfx-manifest       Read co-located manifest.json, print to stdout, exit(0)
- *   --acpfx-setup-check    Print {"needed": false} and exit(0) (TS nodes don't need setup)
- *   --acpfx-*  (unknown)   Print {"unsupported": true, "flag": "..."} and exit(0)
- *
  * Also supports legacy `--manifest` for backward compatibility.
  */
 export function handleAcpfxFlags(manifestPath?: string): void {
-  // Find any --acpfx-* flag
   const acpfxFlag = process.argv.find((a) => a.startsWith("--acpfx-"));
-
-  // Legacy support: --manifest (without prefix)
   const legacyManifest = process.argv.includes("--manifest");
 
   if (!acpfxFlag && !legacyManifest) return;
@@ -69,13 +102,11 @@ export function handleAcpfxFlags(manifestPath?: string): void {
       break;
 
     case "--acpfx-setup-check":
-      // TS nodes don't need setup (no model downloads)
       process.stdout.write(JSON.stringify({ needed: false }) + "\n");
       process.exit(0);
       break;
 
     default:
-      // Unrecognized --acpfx-* flag → forward compatibility response
       process.stdout.write(
         JSON.stringify({ unsupported: true, flag }) + "\n"
       );
@@ -92,11 +123,6 @@ export function handleManifestFlag(manifestPath?: string): void {
 
 /**
  * Print the co-located manifest JSON to stdout and exit.
- *
- * Resolution order:
- * 1. Explicit `manifestPath` if provided
- * 2. `<script-base>.manifest.json` (bundled: dist/nodes/foo.js -> foo.manifest.json)
- * 3. `manifest.json` in the script's directory
  */
 function printManifest(manifestPath?: string): void {
   if (!manifestPath) {
