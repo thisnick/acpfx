@@ -1,65 +1,110 @@
 # @acpfx/cli
 
-The acpfx orchestrator. A Rust binary that spawns pipeline nodes as child processes, routes NDJSON events between them according to the YAML config, and optionally displays a real-time terminal dashboard (ratatui TUI).
+The acpfx orchestrator — spawns pipeline nodes as child processes, routes NDJSON events between them, runs first-time setup (model downloads), and displays a real-time terminal dashboard.
 
 ## Install
 
 ```bash
-npm install @acpfx/cli
+npx @acpfx/cli@latest onboard
 ```
 
-The postinstall script downloads a prebuilt binary for your platform.
+The onboarding wizard walks you through choosing a pipeline template, configuring API keys, and running your first pipeline. A prebuilt binary is downloaded for your platform.
 
 ## Usage
 
 ```bash
-# Run a pipeline
-acpfx run --config pipeline.yaml
+# Run a pipeline by name (resolved from .acpfx/pipelines/ or ~/.acpfx/pipelines/)
+acpfx run deepgram
+acpfx run local-gpu
 
-# Run with terminal dashboard
-acpfx run --config pipeline.yaml --ui
+# Run with explicit config path
+acpfx run --config path/to/pipeline.yaml
 
-# Onboarding wizard
+# Run headless (no TUI, logs to stderr)
+acpfx run deepgram --headless
+
+# Interactive onboarding
 acpfx onboard
+
+# Manage configuration
+acpfx config set env.DEEPGRAM_API_KEY sk-...
+acpfx config get defaultPipeline
+acpfx config set defaultPipeline deepgram --global
+
+# List and create pipelines
+acpfx pipelines
+acpfx pipelines create
 ```
 
-## CLI Flags
+## Pipeline Resolution
+
+When you run `acpfx run <name>`, the pipeline is resolved in this order:
+
+1. **Direct path** — if `<name>` contains `/` or ends with `.yaml`, load as file path
+2. **Project-local** — `.acpfx/pipelines/<name>.yaml`
+3. **Global** — `~/.acpfx/pipelines/<name>.yaml`
+4. **Bundled** — `examples/pipeline/<name>.yaml` (dev builds only)
+
+If no pipeline is specified and no default is configured, the onboarding wizard runs automatically.
+
+## CLI Flags (`acpfx run`)
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--config` | `examples/pipeline/elevenlabs.yaml` | Path to pipeline YAML config |
+| `<pipeline>` | | Pipeline name or path (positional) |
+| `--config` | | Explicit path to YAML config (overrides positional) |
 | `--dist` | `dist` | Path to built node artifacts |
 | `--ready-timeout` | `10000` | ms to wait for each node's `lifecycle.ready` |
-| `--ui` | off | Enable ratatui terminal dashboard |
+| `--headless` | off | Disable TUI, log events to stderr |
+| `--setup-timeout` | `600000` | ms for node setup phase (model downloads) |
+| `--skip-setup` | off | Skip the `--acpfx-setup-check` phase |
 
 ## Node Resolution
 
-When the orchestrator encounters a `use: "@acpfx/<name>"` entry in the pipeline YAML, it resolves the node in this order:
+When the orchestrator encounters `use: "@acpfx/<name>"` in pipeline YAML, it resolves the node binary:
 
-1. **Local JS bundle:** `dist/nodes/<name>.js` -- run via `node`
-2. **Local native binary:** `dist/nodes/<name>` -- spawn directly
-3. **npx fallback:** `npx -y @acpfx/<name>@latest` -- downloads and runs the latest published version
+1. **Local JS bundle** — `dist/nodes/<name>.js` → run via `node`
+2. **Local native binary** — `dist/nodes/<name>` → spawn directly
+3. **npx fallback** — `npx -y @acpfx/<name>@latest` → download and run latest published version
 
-Users configure which nodes to use in their pipeline YAML files. See the [Config Format](#config-format) section above for examples.
+## Setup Phase
+
+Before spawning nodes, the orchestrator runs a setup check:
+
+1. For each node, runs `<binary> --acpfx-setup-check` (5s timeout)
+2. If any node reports `{"needed": true}`, runs `<binary> --acpfx-setup` to download models
+3. Progress is displayed to stderr; auth errors show clear instructions (e.g., `huggingface-cli login`)
+4. Skip with `--skip-setup`
 
 ## Available Nodes
 
-| Package | Description |
-|---------|-------------|
-| [@acpfx/mic-speaker](../node-mic-speaker/README.md) | Native mic capture with acoustic echo cancellation |
-| [@acpfx/mic-file](../node-mic-file/README.md) | WAV file playback as mic input (testing) |
-| [@acpfx/stt-deepgram](../node-stt-deepgram/README.md) | Deepgram streaming STT |
-| [@acpfx/stt-elevenlabs](../node-stt-elevenlabs/README.md) | ElevenLabs streaming STT |
-| [@acpfx/stt-kyutai](../node-stt-kyutai/README.md) | Local on-device STT via Kyutai |
-| [@acpfx/bridge-acpx](../node-bridge-acpx/README.md) | Agent bridge (Claude via ACP) |
-| [@acpfx/tts-deepgram](../node-tts-deepgram/README.md) | Deepgram streaming TTS |
-| [@acpfx/tts-elevenlabs](../node-tts-elevenlabs/README.md) | ElevenLabs streaming TTS |
-| [@acpfx/tts-kyutai](../node-tts-kyutai/README.md) | Local on-device TTS via Kyutai |
-| [@acpfx/tts-pocket](../node-tts-pocket/README.md) | Local lightweight TTS via Pocket TTS |
-| [@acpfx/audio-player](../node-audio-player/README.md) | System speaker output with SFX |
-| [@acpfx/recorder](../node-recorder/README.md) | Records events to JSONL + audio to WAV |
-| [@acpfx/play-file](../node-play-file/README.md) | Writes audio chunks to WAV file |
-| [@acpfx/echo](../node-echo/README.md) | Echoes events back (testing) |
+| Package | Type | Description |
+|---------|------|-------------|
+| [@acpfx/mic-speaker](../node-mic-speaker/README.md) | Rust | Native mic capture with AEC |
+| [@acpfx/mic-file](../node-mic-file/README.md) | TS | WAV file playback as mic input |
+| [@acpfx/stt-deepgram](../node-stt-deepgram/README.md) | TS | [Deepgram](https://deepgram.com) streaming STT |
+| [@acpfx/stt-elevenlabs](../node-stt-elevenlabs/README.md) | TS | [ElevenLabs](https://elevenlabs.io) streaming STT |
+| [@acpfx/stt-kyutai](../node-stt-kyutai/README.md) | Rust | Local STT via [Kyutai moshi](https://github.com/kyutai-labs/delayed-streams-modeling) |
+| [@acpfx/bridge-acpx](../node-bridge-acpx/README.md) | TS | Agent bridge (Claude via [acpx](https://github.com/anthropics/acpx)) |
+| [@acpfx/tts-deepgram](../node-tts-deepgram/README.md) | TS | [Deepgram](https://deepgram.com) streaming TTS |
+| [@acpfx/tts-elevenlabs](../node-tts-elevenlabs/README.md) | TS | [ElevenLabs](https://elevenlabs.io) streaming TTS |
+| [@acpfx/tts-kyutai](../node-tts-kyutai/README.md) | Python | Local TTS via [Kyutai moshi](https://kyutai.org) (MLX on Mac, PyTorch+CUDA on Linux) |
+| [@acpfx/tts-pocket](../node-tts-pocket/README.md) | Rust | Local lightweight TTS via [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) |
+| [@acpfx/audio-player](../node-audio-player/README.md) | TS | Audio mixer with SFX |
+| [@acpfx/recorder](../node-recorder/README.md) | TS | Records events + audio to files |
+| [@acpfx/play-file](../node-play-file/README.md) | TS | Writes audio chunks to WAV |
+| [@acpfx/echo](../node-echo/README.md) | TS | Echoes events back (testing) |
+
+## Pipeline Templates
+
+Built-in templates available via `acpfx onboard`:
+
+| Name | STT | TTS | Requires |
+|------|-----|-----|----------|
+| `deepgram` | Deepgram | Deepgram | `DEEPGRAM_API_KEY` |
+| `elevenlabs` | ElevenLabs | ElevenLabs | `ELEVENLABS_API_KEY` |
+| `local` | Kyutai (on-device) | Pocket TTS (CPU) | No API key |
+| `local-gpu` | Kyutai (on-device) | Kyutai TTS (GPU) | No API key |
 
 ## Building from Source
 
