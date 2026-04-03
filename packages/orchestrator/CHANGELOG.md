@@ -1,5 +1,11 @@
 # acpfx
 
+## 0.4.4
+
+### Patch Changes
+
+- 30d2161: Fix npx resolution to always use @latest. Re-enable CUDA builds for Linux and Windows. Add package READMEs, LICENSE, and credits.
+
 ## 0.4.3
 
 ### Patch Changes
