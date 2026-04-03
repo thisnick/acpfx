@@ -150,25 +150,37 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.target }}
-      - name: Install PulseAudio dev libs (Linux)
+      - name: Install system libs (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libpulse-dev
+        run: sudo apt-get update && sudo apt-get install -y libpulse-dev cmake
+      - name: Install system libs (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake
 
-      - name: Build workspace (CPU)
-        run: cargo build --release --target ${{ matrix.target }} --workspace
-        shell: bash
-
-      - name: Build Metal variants (macOS only)
-        if: contains(matrix.target, 'apple')
+      - name: Build published packages
+        env:
+          # Fix for newer CMake rejecting old cmake_minimum_required in audiopus_sys
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         shell: bash
         run: |
           PKGS='${{ needs.changesets.outputs.native-packages }}'
+          IS_DARWIN=${{ contains(matrix.target, 'apple') }}
+
           echo "$PKGS" | node -e "
             const pkgs=JSON.parse(require('fs').readFileSync(0,'utf8'));
-            pkgs.filter(p=>p.has_metal).forEach(p=>console.log(p.cargo_pkg));
-          " | while read pkg; do
-            echo "Building $pkg with --features metal"
-            cargo build --release --target ${{ matrix.target }} --features metal -p "$pkg"
+            pkgs.forEach(p=>{
+              const isDarwin='$IS_DARWIN'==='true';
+              const features=(isDarwin && p.has_metal)?'metal':'';
+              console.log(p.cargo_pkg+' '+features);
+            });
+          " | while read pkg features; do
+            if [ -n "$features" ]; then
+              echo "Building $pkg with --features $features"
+              cargo build --release --target ${{ matrix.target }} --features "$features" -p "$pkg"
+            else
+              echo "Building $pkg"
+              cargo build --release --target ${{ matrix.target }} -p "$pkg"
+            fi
           done
 
       - name: Collect published binaries
@@ -225,11 +237,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.target }}-cuda
-      - name: Install PulseAudio dev libs (Linux)
+      - name: Install system libs (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libpulse-dev
+        run: sudo apt-get update && sudo apt-get install -y libpulse-dev cmake
       - name: Install CUDA toolkit
-        uses: Jimver/cuda-toolkit@v0.2.14
+        uses: Jimver/cuda-toolkit@v0.2.35
         with:
           cuda: '12.4.0'
           method: network

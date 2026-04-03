@@ -191,7 +191,7 @@ fn playback_loop(playback_rx: flume::Receiver<PlaybackCommand>) -> Result<(), Ae
             .map_err(|e| AecError::BackendError(format!("get_mixformat: {e:?}")))?,
     };
 
-    let native_rate = render_format.get_samplespersec();
+    let _native_rate = render_format.get_samplespersec();
     let native_channels = render_format.get_nchannels() as usize;
 
     let stream_mode = StreamMode::EventsShared {
