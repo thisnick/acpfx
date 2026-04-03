@@ -1,5 +1,11 @@
 # @acpfx/stt-kyutai
 
+## 0.2.5
+
+### Patch Changes
+
+- 10d738d: Fix Windows CUDA build: use pwsh instead of bash to avoid Git's link.exe shadowing MSVC linker. Drop Linux CUDA (toolkit install broken on Ubuntu 24.04 GH runners).
+
 ## 0.2.4
 
 ### Patch Changes
