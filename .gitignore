@@ -15,8 +15,9 @@ eval/e2e/
 aec-debug/
 debug.log
 mic-debug/
-# Downloaded platform binaries (postinstall downloads these)
+# Downloaded/built platform binaries (postinstall downloads these)
 packages/node-mic-speaker/bin/mic-speaker-*
+packages/node-mic-speaker/bin/mic-aec-*
 # Downloaded platform binaries (postinstall downloads these)
 packages/orchestrator/bin/acpfx-*
 packages/node-mic-aec/
