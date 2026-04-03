@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/bridge-acpx",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "bin": {
     "acpfx-bridge-acpx": "./dist/index.js"
