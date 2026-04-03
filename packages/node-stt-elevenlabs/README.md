@@ -2,11 +2,9 @@
 
 Speech-to-text via ElevenLabs streaming API. Streams partial and delta transcriptions in real time.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/stt-elevenlabs
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 Requires an `ELEVENLABS_API_KEY` environment variable.
 
@@ -37,6 +35,11 @@ nodes:
 env:
   ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
 ```
+
+## External Links
+
+- [ElevenLabs](https://elevenlabs.io) -- AI voice platform
+- [ElevenLabs API Docs](https://elevenlabs.io/docs/api-reference) -- API reference
 
 ## License
 

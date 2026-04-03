@@ -2,11 +2,9 @@
 
 Plays back a WAV file as if it were microphone input. Useful for testing and development without a live microphone.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/mic-file
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 ## Manifest
 

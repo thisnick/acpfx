@@ -2,11 +2,9 @@
 
 Local text-to-speech via Pocket TTS. A lightweight ~100M parameter model that runs on-device, including on CPU -- no API key needed.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/tts-pocket
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 The postinstall script downloads a prebuilt binary for your platform. Supported: macOS (Apple Silicon with Metal), Linux (x86_64, optional CUDA).
 
@@ -40,6 +38,11 @@ cargo build --release -p node-tts-pocket
 # With Metal (macOS):
 cargo build --release -p node-tts-pocket --features metal
 ```
+
+## External Links
+
+- [Pocket TTS (Kyutai)](https://github.com/kyutai-labs/pocket-tts) -- Original Pocket TTS model
+- [Pocket TTS (Rust port)](https://github.com/babybirdprd/pocket-tts) -- Rust/Candle implementation used by this node
 
 ## License
 

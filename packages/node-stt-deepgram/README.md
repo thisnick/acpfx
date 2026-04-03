@@ -2,11 +2,9 @@
 
 Speech-to-text via Deepgram streaming API. Streams partial transcriptions in real time with configurable VAD and endpointing.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/stt-deepgram
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 Requires a `DEEPGRAM_API_KEY` environment variable.
 
@@ -36,6 +34,11 @@ nodes:
 env:
   DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
 ```
+
+## External Links
+
+- [Deepgram](https://deepgram.com) -- Speech AI platform
+- [Deepgram Developer Docs](https://developers.deepgram.com) -- API reference and guides
 
 ## License
 

@@ -40,7 +40,7 @@ pub struct ResolvedNode {
 /// For @acpfx/<name>:
 ///   1. Local JS:     dist/nodes/<name>.js  -> fork via `node`
 ///   2. Local binary: dist/nodes/<name>     -> spawn directly
-///   3. npx fallback: npx -y @acpfx/<name>  -> spawn
+///   3. npx fallback: npx -y @acpfx/<name>@latest  -> spawn
 ///
 /// For external paths:
 ///   - .js/.mjs -> fork via `node`
@@ -72,7 +72,7 @@ pub fn resolve_node(use_: &str, dist_dir: &Path) -> ResolvedNode {
         // 3. npx fallback
         return ResolvedNode {
             command: "npx".into(),
-            args: vec!["-y".into(), use_.into()],
+            args: vec!["-y".into(), format!("{}@latest", use_)],
             launch_type: LaunchType::Spawn,
         };
     }

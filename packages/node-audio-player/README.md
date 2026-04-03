@@ -2,11 +2,9 @@
 
 Audio mixer with SFX support. Plays speech audio through the system speaker, with optional sound effects for agent thinking and tool use.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/audio-player
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 ## Manifest
 

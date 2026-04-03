@@ -19,3 +19,4 @@ mic-debug/
 packages/node-mic-speaker/bin/mic-speaker-*
 # Downloaded platform binaries (postinstall downloads these)
 packages/orchestrator/bin/acpfx-*
+packages/node-mic-aec/

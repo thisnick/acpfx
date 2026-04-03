@@ -2,11 +2,9 @@
 
 Records all pipeline events to JSONL and audio tracks to WAV files. Observes the full event stream for debugging and analysis.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/recorder
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 ## Manifest
 

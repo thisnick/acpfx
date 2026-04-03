@@ -2,11 +2,9 @@
 
 Text-to-speech via Deepgram streaming API. Converts agent text deltas into audio chunks in real time.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/tts-deepgram
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 Requires a `DEEPGRAM_API_KEY` environment variable.
 
@@ -34,6 +32,11 @@ nodes:
 env:
   DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
 ```
+
+## External Links
+
+- [Deepgram](https://deepgram.com) -- Speech AI platform
+- [Deepgram Developer Docs](https://developers.deepgram.com) -- API reference and guides
 
 ## License
 
