@@ -1,5 +1,11 @@
 # @acpfx/stt-kyutai
 
+## 0.2.6
+
+### Patch Changes
+
+- 04b5165: CUDA builds now target Ampere (compute capability 8.0+) instead of Turing (7.5) to support bf16 WMMA required by candle-kernels. Documented GPU requirements in READMEs.
+
 ## 0.2.5
 
 ### Patch Changes

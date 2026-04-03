@@ -1,5 +1,11 @@
 # @acpfx/tts-kyutai
 
+## 0.2.1
+
+### Patch Changes
+
+- c520c3f: Add Windows uv install instructions to error message. Clarify --dist flag is dev only.
+
 ## 0.2.0
 
 ### Minor Changes

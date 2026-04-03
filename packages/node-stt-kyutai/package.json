@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/stt-kyutai",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Local STT via Kyutai moshi (on-device, Rust/Candle)",
   "repository": {
     "type": "git",
