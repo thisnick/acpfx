@@ -53,7 +53,7 @@ If no pipeline is specified and no default is configured, the onboarding wizard 
 |------|---------|-------------|
 | `<pipeline>` | | Pipeline name or path (positional) |
 | `--config` | | Explicit path to YAML config (overrides positional) |
-| `--dist` | `dist` | Path to built node artifacts |
+| `--dist` | `dist` | Path to built node artifacts (dev only) |
 | `--ready-timeout` | `10000` | ms to wait for each node's `lifecycle.ready` |
 | `--headless` | off | Disable TUI, log events to stderr |
 | `--setup-timeout` | `600000` | ms for node setup phase (model downloads) |
