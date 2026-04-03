@@ -1,7 +1,12 @@
 ---
+"@acpfx/cli": minor
+"@acpfx/core": minor
+"@acpfx/node-sdk": minor
+"@acpfx/mic-speaker": minor
+"@acpfx/audio-player": minor
 "@acpfx/stt-kyutai": minor
-"@acpfx/tts-pocket": minor
 "@acpfx/tts-kyutai": minor
+"@acpfx/tts-pocket": minor
 ---
 
-Add local on-device STT and TTS nodes using Kyutai's moshi and pocket-tts (Rust/Candle). No API keys required — models run locally with CUDA, Metal, or CPU fallback.
+Add local on-device STT and TTS nodes (no API keys required). Introduces --acpfx-* flag convention with setup phase for first-time model downloads, dynamic release pipeline with dual CPU/CUDA builds, MLX acceleration on Mac, and TUI improvements for speech event display.
