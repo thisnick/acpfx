@@ -76,7 +76,7 @@ See `examples/pipeline/` for more configurations (Deepgram, ElevenLabs, with/wit
 |---------|-------------|
 | `packages/orchestrator` | Rust orchestrator — event routing, manifest filtering, ratatui TUI |
 | `packages/schema` | Canonical event types (source of truth), codegen to TypeScript + Zod |
-| `packages/sys-voice` | Native audio I/O with OS-level AEC |
+| `packages/sys-voice` | Native audio I/O with OS-level AEC (based on [sys-voice](https://github.com/tigy32/sys-voice)) |
 | `packages/node-mic-speaker` | Mic capture with acoustic echo cancellation |
 
 ### TypeScript Nodes

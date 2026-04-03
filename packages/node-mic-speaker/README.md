@@ -44,7 +44,7 @@ cargo build --release -p mic-speaker
 
 ## Credits
 
-Built on [sys-voice](../sys-voice/), a Rust crate for native audio I/O with acoustic echo cancellation.
+Built on [sys-voice](https://github.com/tigy32/sys-voice), a Rust crate for native audio I/O with acoustic echo cancellation.
 
 ## License
 
