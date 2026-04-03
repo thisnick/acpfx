@@ -7,8 +7,9 @@ const path = require("path");
 
 const SUPPORTED_PLATFORMS = {
   "darwin arm64": "mic-speaker-darwin-arm64",
-  "darwin x64": "mic-speaker-darwin-x64",
+  "linux arm64": "mic-speaker-linux-arm64",
   "linux x64": "mic-speaker-linux-x64",
+  "win32 arm64": "mic-speaker-win32-arm64.exe",
   "win32 x64": "mic-speaker-win32-x64.exe",
 };
 

@@ -7,8 +7,9 @@ const path = require("path");
 
 const SUPPORTED_PLATFORMS = {
   "darwin arm64": "tts-pocket-darwin-arm64",
-  "darwin x64": "tts-pocket-darwin-x64",
+  "linux arm64": "tts-pocket-linux-arm64",
   "linux x64": "tts-pocket-linux-x64",
+  "win32 arm64": "tts-pocket-win32-arm64.exe",
   "win32 x64": "tts-pocket-win32-x64.exe",
 };
 
