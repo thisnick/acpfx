@@ -199,7 +199,12 @@ Produces `packages/core/src/generated-types.ts`, `generated-zod.ts`, and `schema
 cargo test --workspace      # Rust tests (schema, orchestrator, config)
 cargo clippy --workspace    # Rust lints
 pnpm check                  # TypeScript type checking
+
+# Integration tests (shell scripts using dummy nodes)
+./tests/dummy-node/run-tests.sh   # Orchestrator setup phase, manifest fallback, flag handling
 ```
+
+Integration tests use `tests/dummy-node/dummy-node.sh` — a shell script that implements the `--acpfx-*` flag protocol. Tests verify setup checks, manifest loading via `--acpfx-manifest` fallback (production/npx code path), and unknown flag handling.
 
 ### Writing a new node
 
