@@ -1,0 +1,25 @@
+{
+  "name": "@acpfx/stt-kyutai",
+  "version": "0.1.0",
+  "description": "Local STT via Kyutai moshi (on-device, Rust/Candle)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thisnick/acpfx",
+    "directory": "packages/node-stt-kyutai"
+  },
+  "license": "ISC",
+  "bin": {
+    "acpfx-stt-kyutai": "./bin/stt-kyutai"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "scripts/"
+  ],
+  "scripts": {
+    "build:native": "cargo build --release -p node-stt-kyutai && mkdir -p bin && cp target/release/stt-kyutai bin/",
+    "postinstall": "node scripts/postinstall.js"
+  }
+}

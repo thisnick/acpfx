@@ -24,8 +24,8 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
       hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
-      cli-published: ${{ steps.check-pkgs.outputs.cli }}
-      mic-speaker-published: ${{ steps.check-pkgs.outputs.mic-speaker }}
+      native-matrix: ${{ steps.discover.outputs.matrix }}
+      native-any: ${{ steps.discover.outputs.any }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -49,108 +49,109 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: Check which binary packages were published
-        id: check-pkgs
+
+      - name: Discover published native packages
+        id: discover
         if: steps.changesets.outputs.published == 'true'
+        shell: bash
         run: |
-          PKGS='${{ steps.changesets.outputs.publishedPackages }}'
-          CLI=$(echo "$PKGS" | node -e "const d=require('fs').readFileSync(0,'utf8');console.log(JSON.parse(d).some(p=>p.name==='@acpfx/cli'))")
-          MIC=$(echo "$PKGS" | node -e "const d=require('fs').readFileSync(0,'utf8');console.log(JSON.parse(d).some(p=>p.name==='@acpfx/mic-speaker'))")
-          echo "cli=$CLI" >> "$GITHUB_OUTPUT"
-          echo "mic-speaker=$MIC" >> "$GITHUB_OUTPUT"
-          echo "Published packages: cli=$CLI mic-speaker=$MIC"
+          PUBLISHED='${{ steps.changesets.outputs.publishedPackages }}'
 
-  # ---------- Build orchestrator (only if @acpfx/cli was published) ----------
-  build-orchestrator:
-    name: Build orchestrator (${{ matrix.npm-pkg }})
+          # Scan all packages/*/Cargo.toml that have a [[bin]] section
+          # and a sibling package.json (i.e., npm-publishable native crates).
+          MATRIX="[]"
+          for cargo_toml in packages/*/Cargo.toml; do
+            pkg_dir="$(dirname "$cargo_toml")"
+            pkg_json="$pkg_dir/package.json"
+
+            # Skip crates without a package.json (pure Rust libs like schema, sys-voice)
+            [ -f "$pkg_json" ] || continue
+
+            # Extract the [[bin]] name from Cargo.toml
+            binary_name=$(grep -A1 '^\[\[bin\]\]' "$cargo_toml" | grep '^name' | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+            [ -n "$binary_name" ] || continue
+
+            # Extract npm package name and cargo package name
+            npm_name=$(node -p "require('./$pkg_json').name")
+            cargo_pkg=$(grep '^name' "$cargo_toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+
+            # Check if this npm package was actually published in this release
+            was_published=$(echo "$PUBLISHED" | node -e "
+              const d=require('fs').readFileSync(0,'utf8');
+              const pkgs=JSON.parse(d);
+              const match=pkgs.find(p=>p.name==='$npm_name');
+              if(match) console.log(match.version);
+              else console.log('');
+            ")
+
+            if [ -n "$was_published" ]; then
+              echo "Found published native package: $npm_name v$was_published (cargo=$cargo_pkg, bin=$binary_name)"
+              MATRIX=$(echo "$MATRIX" | node -e "
+                const d=require('fs').readFileSync(0,'utf8');
+                const arr=JSON.parse(d);
+                arr.push({
+                  npm_name: '$npm_name',
+                  cargo_pkg: '$cargo_pkg',
+                  binary_name: '$binary_name',
+                  version: '$was_published',
+                  pkg_dir: '$pkg_dir'
+                });
+                console.log(JSON.stringify(arr));
+              ")
+            fi
+          done
+
+          echo "Discovered native packages: $MATRIX"
+
+          if [ "$MATRIX" = "[]" ]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "matrix={}" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            echo "matrix={\"include\":$(echo "$MATRIX" | node -e "
+              const d=require('fs').readFileSync(0,'utf8');
+              const pkgs=JSON.parse(d);
+              const targets=[
+                {target:'aarch64-apple-darwin',runner:'macos-14',platform:'darwin-arm64',gpus:['']},
+                {target:'x86_64-apple-darwin',runner:'macos-15-intel',platform:'darwin-x64',gpus:['']},
+                {target:'aarch64-unknown-linux-gnu',runner:'ubuntu-24.04-arm',platform:'linux-arm64',gpus:['','cuda']},
+                {target:'x86_64-unknown-linux-gnu',runner:'ubuntu-latest',platform:'linux-x64',gpus:['','cuda']},
+                {target:'aarch64-pc-windows-msvc',runner:'windows-11-arm',platform:'win32-arm64',gpus:['','cuda']},
+                {target:'x86_64-pc-windows-msvc',runner:'windows-latest',platform:'win32-x64',gpus:['','cuda']}
+              ];
+              const matrix=[];
+              for(const pkg of pkgs){
+                for(const t of targets){
+                  const isWindows=t.target.includes('windows');
+                  for(const gpu of t.gpus){
+                    matrix.push({
+                      npm_name:pkg.npm_name,
+                      cargo_pkg:pkg.cargo_pkg,
+                      binary_name:pkg.binary_name,
+                      version:pkg.version,
+                      pkg_dir:pkg.pkg_dir,
+                      target:t.target,
+                      runner:t.runner,
+                      platform:t.platform,
+                      gpu:gpu,
+                      binary:pkg.binary_name+(isWindows?'.exe':'')
+                    });
+                  }
+                }
+              }
+              console.log(JSON.stringify(matrix));
+            ")}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---------- Build native binaries (dynamic matrix) ----------
+  build-native:
+    name: Build ${{ matrix.binary_name }} (${{ matrix.platform }}${{ matrix.gpu && '-' || '' }}${{ matrix.gpu }})
     needs: changesets
-    if: needs.changesets.outputs.cli-published == 'true'
+    if: needs.changesets.outputs.native-any == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: true
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-14
-            npm-pkg: darwin-arm64
-            binary: acpfx
-          - target: x86_64-apple-darwin
-            runner: macos-15-intel
-            npm-pkg: darwin-x64
-            binary: acpfx
-          - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-24.04-arm
-            npm-pkg: linux-arm64
-            binary: acpfx
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
-            npm-pkg: linux-x64
-            binary: acpfx
-          - target: aarch64-pc-windows-msvc
-            runner: windows-11-arm
-            npm-pkg: win32-arm64
-            binary: acpfx.exe
-          - target: x86_64-pc-windows-msvc
-            runner: windows-latest
-            npm-pkg: win32-x64
-            binary: acpfx.exe
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: release-${{ matrix.target }}
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p acpfx-orchestrator
-        shell: bash
-      - name: Rename binary for release
-        run: |
-          ext=""
-          if [[ "${{ matrix.binary }}" == *.exe ]]; then ext=".exe"; fi
-          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "acpfx-${{ matrix.npm-pkg }}${ext}"
-        shell: bash
-      - name: Upload binary for GitHub Release
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-orchestrator-${{ matrix.npm-pkg }}
-          path: acpfx-${{ matrix.npm-pkg }}*
-
-  # ---------- Build mic-speaker (only if @acpfx/mic-speaker was published) ----------
-  build-mic-speaker:
-    name: Build mic-speaker (${{ matrix.npm-pkg }})
-    needs: changesets
-    if: needs.changesets.outputs.mic-speaker-published == 'true'
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: true
-      matrix:
-        include:
-          - target: aarch64-apple-darwin
-            runner: macos-14
-            npm-pkg: darwin-arm64
-            binary: mic-speaker
-          - target: x86_64-apple-darwin
-            runner: macos-15-intel
-            npm-pkg: darwin-x64
-            binary: mic-speaker
-          - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-24.04-arm
-            npm-pkg: linux-arm64
-            binary: mic-speaker
-          - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-latest
-            npm-pkg: linux-x64
-            binary: mic-speaker
-          - target: aarch64-pc-windows-msvc
-            runner: windows-11-arm
-            npm-pkg: win32-arm64
-            binary: mic-speaker.exe
-          - target: x86_64-pc-windows-msvc
-            runner: windows-latest
-            npm-pkg: win32-x64
-            binary: mic-speaker.exe
+      matrix: ${{ fromJSON(needs.changesets.outputs.native-matrix) }}
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -162,74 +163,96 @@ jobs:
       - name: Install PulseAudio dev libs (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libpulse-dev
+      - name: Install CUDA toolkit
+        if: matrix.gpu == 'cuda'
+        uses: Jimver/cuda-toolkit@v0.2.14
+        with:
+          cuda: '12.4.0'
+          method: network
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} -p mic-speaker
+        run: |
+          FEATURES=""
+          if [[ "${{ matrix.target }}" == *apple* ]]; then
+            FEATURES="--features metal"
+          fi
+          if [[ "${{ matrix.gpu }}" == "cuda" ]]; then
+            FEATURES="--features cuda"
+          fi
+          cargo build --release --target ${{ matrix.target }} -p ${{ matrix.cargo_pkg }} $FEATURES
         shell: bash
       - name: Rename binary for release
         run: |
           ext=""
           if [[ "${{ matrix.binary }}" == *.exe ]]; then ext=".exe"; fi
-          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "mic-speaker-${{ matrix.npm-pkg }}${ext}"
+          SUFFIX="${{ matrix.gpu && format('-{0}', matrix.gpu) || '' }}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.binary_name }}-${{ matrix.platform }}${SUFFIX}${ext}"
         shell: bash
       - name: Upload binary for GitHub Release
         uses: actions/upload-artifact@v7
         with:
-          name: release-mic-speaker-${{ matrix.npm-pkg }}
-          path: mic-speaker-${{ matrix.npm-pkg }}*
+          name: release-${{ matrix.binary_name }}-${{ matrix.platform }}${{ matrix.gpu && format('-{0}', matrix.gpu) || '' }}
+          path: ${{ matrix.binary_name }}-${{ matrix.platform }}*
 
   # ---------- GitHub Releases ----------
   github-release:
     name: Create GitHub Releases
     runs-on: ubuntu-latest
-    needs: [changesets, build-orchestrator, build-mic-speaker]
-    if: always() && needs.changesets.outputs.published == 'true'
+    needs: [changesets, build-native]
+    if: always() && needs.changesets.outputs.native-any == 'true' && needs.build-native.result == 'success'
     steps:
       - uses: actions/checkout@v6
 
-      - name: Extract versions
-        id: versions
-        run: |
-          echo "cli=$(node -p "require('./packages/orchestrator/package.json').version")" >> "$GITHUB_OUTPUT"
-          echo "mic_speaker=$(node -p "require('./packages/node-mic-speaker/package.json').version")" >> "$GITHUB_OUTPUT"
-
       - name: Download release binaries
-        if: needs.build-orchestrator.result == 'success' || needs.build-mic-speaker.result == 'success'
         uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: release-staging/
           merge-multiple: false
 
-      - name: Create @acpfx/cli release
-        if: needs.build-orchestrator.result == 'success'
+      - name: Create GitHub releases for each native package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NATIVE_MATRIX: ${{ needs.changesets.outputs.native-matrix }}
         run: |
-          mkdir -p cli-assets
-          for dir in release-staging/release-orchestrator-*/; do
-            cp "$dir"/* cli-assets/
+          # Extract unique packages from the matrix
+          PACKAGES=$(echo "$NATIVE_MATRIX" | node -e "
+            const d=require('fs').readFileSync(0,'utf8');
+            const matrix=JSON.parse(d);
+            const seen=new Set();
+            const pkgs=[];
+            for(const m of matrix.include){
+              const key=m.npm_name;
+              if(!seen.has(key)){
+                seen.add(key);
+                pkgs.push({npm_name:m.npm_name,binary_name:m.binary_name,version:m.version});
+              }
+            }
+            console.log(JSON.stringify(pkgs));
+          ")
+
+          echo "Creating releases for: $PACKAGES"
+
+          echo "$PACKAGES" | node -e "
+            const d=require('fs').readFileSync(0,'utf8');
+            const pkgs=JSON.parse(d);
+            for(const p of pkgs){
+              console.log(p.npm_name + ' ' + p.binary_name + ' ' + p.version);
+            }
+          " | while read npm_name binary_name version; do
+            TAG="${npm_name}@${version}"
+            echo "Creating release: $TAG"
+
+            # Collect assets for this package
+            mkdir -p "assets-${binary_name}"
+            for dir in release-staging/release-${binary_name}-*/; do
+              [ -d "$dir" ] && cp "$dir"/* "assets-${binary_name}/"
+            done
+
+            ls -la "assets-${binary_name}/"
+
+            # Create the GitHub release
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --generate-notes \
+              "assets-${binary_name}"/*
           done
-          ls -la cli-assets/
-
-      - name: Upload @acpfx/cli release
-        if: needs.build-orchestrator.result == 'success'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "@acpfx/cli@${{ steps.versions.outputs.cli }}"
-          files: cli-assets/*
-          generate_release_notes: true
-
-      - name: Create @acpfx/mic-speaker release
-        if: needs.build-mic-speaker.result == 'success'
-        run: |
-          mkdir -p mic-speaker-assets
-          for dir in release-staging/release-mic-speaker-*/; do
-            cp "$dir"/* mic-speaker-assets/
-          done
-          ls -la mic-speaker-assets/
-
-      - name: Upload @acpfx/mic-speaker release
-        if: needs.build-mic-speaker.result == 'success'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "@acpfx/mic-speaker@${{ steps.versions.outputs.mic_speaker }}"
-          files: mic-speaker-assets/*
-          generate_release_notes: true

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.js",
-    "build:native": "cargo build -p acpfx-orchestrator",
+    "build:native": "node -e \"const p=process.platform;const f=p==='darwin'?'metal':'';const c='cargo build --workspace'+(f?' --features '+f:'');require('child_process').execSync(c,{stdio:'inherit'})\"",
     "check": "tsc --noEmit",
     "test": "node --test dist/tests/**/*.test.js",
     "start": "./target/debug/acpfx run",

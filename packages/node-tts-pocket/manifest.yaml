@@ -1,0 +1,24 @@
+name: tts-pocket
+description: Local text-to-speech via Pocket TTS (on-device, CPU-capable)
+consumes:
+  - agent.delta
+  - agent.complete
+  - agent.tool_start
+  - control.interrupt
+emits:
+  - audio.chunk
+  - lifecycle.ready
+  - lifecycle.done
+  - log
+arguments:
+  voice:
+    type: string
+    description: "Voice name or path to WAV/safetensors file for voice cloning"
+  temperature:
+    type: number
+    default: 0.7
+    description: "Generation temperature (0 = deterministic)"
+  variant:
+    type: string
+    default: "b6369a24"
+    description: "Model variant/config name"

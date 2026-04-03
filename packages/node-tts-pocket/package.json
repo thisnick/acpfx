@@ -1,0 +1,25 @@
+{
+  "name": "@acpfx/tts-pocket",
+  "version": "0.1.0",
+  "description": "Local TTS via Pocket TTS (on-device, Rust/Candle, CPU-capable)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thisnick/acpfx",
+    "directory": "packages/node-tts-pocket"
+  },
+  "license": "ISC",
+  "bin": {
+    "acpfx-tts-pocket": "./bin/tts-pocket"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "scripts/"
+  ],
+  "scripts": {
+    "build:native": "cargo build --release -p node-tts-pocket && mkdir -p bin && cp target/release/tts-pocket bin/",
+    "postinstall": "node scripts/postinstall.js"
+  }
+}

@@ -1,0 +1,5 @@
+nodes:
+  dummy:
+    use: './tests/dummy-node/dummy-node.sh'
+    settings: {}
+    outputs: []

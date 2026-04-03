@@ -526,6 +526,47 @@ fn generate_manifest_types() -> String {
     out.push_str("  arguments: z.record(z.string(), ManifestArgumentSchema).optional(),\n");
     out.push_str("  additional_arguments: z.boolean().optional(),\n");
     out.push_str("  env: z.record(z.string(), ManifestEnvFieldSchema).optional(),\n");
+    out.push_str("});\n\n");
+
+    // -- acpfx flag protocol types --
+
+    out.push_str("// ---- acpfx Flag Protocol Types ----\n\n");
+
+    // SetupCheckResponse
+    out.push_str("/** Response from `--acpfx-setup-check`. */\n");
+    out.push_str("export interface SetupCheckResponse {\n");
+    out.push_str("  needed: boolean;\n");
+    out.push_str("  description?: string;\n");
+    out.push_str("}\n\n");
+
+    out.push_str("export const SetupCheckResponseSchema = z.object({\n");
+    out.push_str("  needed: z.boolean(),\n");
+    out.push_str("  description: z.string().optional(),\n");
+    out.push_str("});\n\n");
+
+    // SetupProgress
+    out.push_str("/** Progress line from `--acpfx-setup` (NDJSON on stdout). */\n");
+    out.push_str("export type SetupProgress =\n");
+    out.push_str("  | { type: \"progress\"; message: string; pct?: number }\n");
+    out.push_str("  | { type: \"complete\"; message: string }\n");
+    out.push_str("  | { type: \"error\"; message: string };\n\n");
+
+    out.push_str("export const SetupProgressSchema = z.discriminatedUnion(\"type\", [\n");
+    out.push_str("  z.object({ type: z.literal(\"progress\"), message: z.string(), pct: z.number().optional() }),\n");
+    out.push_str("  z.object({ type: z.literal(\"complete\"), message: z.string() }),\n");
+    out.push_str("  z.object({ type: z.literal(\"error\"), message: z.string() }),\n");
+    out.push_str("]);\n\n");
+
+    // UnsupportedFlagResponse
+    out.push_str("/** Response for unrecognized `--acpfx-*` flags (forward compatibility). */\n");
+    out.push_str("export interface UnsupportedFlagResponse {\n");
+    out.push_str("  unsupported: boolean;\n");
+    out.push_str("  flag: string;\n");
+    out.push_str("}\n\n");
+
+    out.push_str("export const UnsupportedFlagResponseSchema = z.object({\n");
+    out.push_str("  unsupported: z.boolean(),\n");
+    out.push_str("  flag: z.string(),\n");
     out.push_str("});\n");
 
     out

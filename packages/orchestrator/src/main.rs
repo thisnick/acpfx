@@ -44,6 +44,14 @@ enum Commands {
         /// Disable terminal dashboard UI (UI is on by default)
         #[arg(long)]
         headless: bool,
+
+        /// Timeout (ms) for node setup phase (model downloads, etc.)
+        #[arg(long, default_value_t = 600000)]
+        setup_timeout: u64,
+
+        /// Skip the setup check phase
+        #[arg(long)]
+        skip_setup: bool,
     },
 
     /// Show or modify configuration
@@ -98,6 +106,8 @@ async fn main() {
             dist,
             ready_timeout,
             headless,
+            setup_timeout,
+            skip_setup,
         } => {
             // Resolve pipeline path
             let config_path = if let Some(name) = config.or(pipeline) {
@@ -150,6 +160,8 @@ async fn main() {
                     });
 
             orch.set_ready_timeout(ready_timeout);
+            orch.set_setup_timeout(setup_timeout);
+            orch.set_skip_setup(skip_setup);
 
             // Handle SIGINT for clean shutdown
             let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);

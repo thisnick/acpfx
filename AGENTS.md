@@ -203,11 +203,25 @@ pnpm check                  # TypeScript type checking
 
 ### Writing a new node
 
+Two paths depending on language:
+
+**TypeScript node** (see `packages/node-stt-deepgram/` as example):
 1. Create `packages/node-<name>/` with `src/index.ts`, `manifest.yaml`, `package.json`
 2. Use `@acpfx/node-sdk` for `emit()`, `log.*`, `onEvent()`, `handleManifestFlag()`
-3. Emit `lifecycle.ready` when initialized
-4. Process only events declared in your `consumes` manifest
-5. Add to the `nodePackages` array in `scripts/build.js`
+3. Add to `nodePackages` in `scripts/build.js`
+
+**Rust native node** (see `packages/node-stt-kyutai/` as example):
+1. Create `packages/node-<name>/` with `Cargo.toml`, `src/main.rs`, `manifest.yaml`, `package.json`, `scripts/postinstall.js`
+2. Speak NDJSON on stdin/stdout directly (no SDK — see `packages/node-stt-kyutai/src/main.rs` for the pattern)
+3. Add to workspace `members` in root `Cargo.toml`
+4. Build script auto-discovers native nodes via `Cargo.toml` presence
+
+**Both types must:**
+- Declare `consumes`/`emits` in `manifest.yaml` with typed `arguments` and `env` (see `packages/node-stt-deepgram/manifest.yaml` for full schema)
+- Support `--manifest` flag (print manifest JSON to stdout, exit)
+- Emit `lifecycle.ready` when initialized, `lifecycle.done` on exit
+- Add entry to node registry in `packages/orchestrator/src/templates.rs` (`NODE_REGISTRY_RAW`)
+- Add `package.json` with `"bin"` field pointing to built artifact (see `packages/node-mic-speaker/package.json` for Rust pattern)
 
 ## Pull Requests
 

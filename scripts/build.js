@@ -96,11 +96,43 @@ for (const name of nativeNodes) {
   const releaseBin = join(root, "target/release", name);
   const distBin = join(nodesDist, name);
   const srcBin = existsSync(debugBin) ? debugBin : existsSync(releaseBin) ? releaseBin : null;
-  if (srcBin && !existsSync(distBin)) {
+  if (srcBin) {
     cpSync(srcBin, distBin);
     console.log(`  Copied native binary: ${name}`);
-  } else if (!srcBin) {
+  } else {
     console.warn(`  WARN: native binary '${name}' not found — run 'cargo build -p ${name}' first`);
+  }
+}
+
+// --- Python/shell wrapper nodes (have bin/<name> but no Cargo.toml) ---
+const pythonNodes = readdirSync(packagesDir, { withFileTypes: true })
+  .filter(d => d.isDirectory() && d.name.startsWith("node-"))
+  .filter(d => !existsSync(join(packagesDir, d.name, "Cargo.toml")))  // not a native binary
+  .filter(d => !existsSync(join(packagesDir, d.name, "src", "index.ts")))  // not a TS node
+  .filter(d => existsSync(join(packagesDir, d.name, "bin")))  // has a bin/ dir with shell wrapper
+  .filter(d => existsSync(join(packagesDir, d.name, "src")))  // has src/ dir
+  .map(d => d.name.replace(/^node-/, ""));
+
+for (const name of pythonNodes) {
+  copyManifest(join(packagesDir, `node-${name}`, "manifest.yaml"), join(nodesDist, name));
+
+  // Generate a dist-specific shell wrapper that points to co-located .py
+  const pyFiles = readdirSync(join(packagesDir, `node-${name}`, "src"))
+    .filter(f => f.endsWith(".py"));
+  if (pyFiles.length > 0) {
+    const pyEntry = pyFiles[0];
+    cpSync(join(packagesDir, `node-${name}`, "src", pyEntry), join(nodesDist, pyEntry));
+    const wrapper = [
+      `#!/usr/bin/env bash`,
+      `if ! command -v uv &>/dev/null; then`,
+      `  echo '{"type":"error","message":"uv is required but not installed. Install it: curl -LsSf https://astral.sh/uv/install.sh | sh"}' >&1`,
+      `  exit 1`,
+      `fi`,
+      `exec uv run --python ">=3.10" "$(cd "$(dirname "$0")" && pwd)/${pyEntry}" "$@"`,
+      ``
+    ].join("\n");
+    writeFileSync(join(nodesDist, name), wrapper, { mode: 0o755 });
+    console.log(`  Copied Python node: ${name} (${pyEntry})`);
   }
 }
 

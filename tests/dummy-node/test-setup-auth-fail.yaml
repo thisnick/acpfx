@@ -1,0 +1,8 @@
+nodes:
+  dummy:
+    use: './tests/dummy-node/dummy-node.sh'
+    settings: {}
+    outputs: []
+env:
+  DUMMY_SETUP_NEEDED: "true"
+  DUMMY_SETUP_AUTH_FAIL: "true"

@@ -27,6 +27,16 @@ const TEMPLATES: &[Template] = &[
         label: "Deepgram (STT + TTS)",
         yaml: include_str!("../../../examples/pipeline/deepgram.yaml"),
     },
+    Template {
+        id: "local",
+        label: "Local (Kyutai STT + Pocket TTS, no API key)",
+        yaml: include_str!("../../../examples/pipeline/local.yaml"),
+    },
+    Template {
+        id: "local-gpu",
+        label: "Local GPU (Kyutai STT + TTS, no API key)",
+        yaml: include_str!("../../../examples/pipeline/local-gpu.yaml"),
+    },
 ];
 
 /// Get all templates.
@@ -61,6 +71,9 @@ const NODE_REGISTRY_RAW: &[(&str, &str)] = &[
     ("@acpfx/recorder", include_str!("../../../packages/node-recorder/manifest.yaml")),
     ("@acpfx/play-file", include_str!("../../../packages/node-play-file/manifest.yaml")),
     ("@acpfx/echo", include_str!("../../../packages/node-echo/manifest.yaml")),
+    ("@acpfx/stt-kyutai", include_str!("../../../packages/node-stt-kyutai/manifest.yaml")),
+    ("@acpfx/tts-pocket", include_str!("../../../packages/node-tts-pocket/manifest.yaml")),
+    ("@acpfx/tts-kyutai", include_str!("../../../packages/node-tts-kyutai/manifest.yaml")),
 ];
 
 /// Parse and return all node registry entries.
@@ -166,21 +179,21 @@ mod tests {
     }
 
     #[test]
-    fn at_least_two_templates() {
+    fn at_least_four_templates() {
         assert!(
-            list_templates().len() >= 2,
-            "Expected at least 2 templates, got {}",
+            list_templates().len() >= 4,
+            "Expected at least 4 templates, got {}",
             list_templates().len()
         );
     }
 
     #[test]
-    fn node_registry_has_11_nodes() {
+    fn node_registry_has_14_nodes() {
         let nodes = available_nodes();
         assert_eq!(
             nodes.len(),
-            11,
-            "Expected 11 nodes in registry, got {}",
+            14,
+            "Expected 14 nodes in registry, got {}",
             nodes.len()
         );
     }

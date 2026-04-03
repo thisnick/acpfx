@@ -42,7 +42,8 @@ jobs:
               - 'packages/schema/src/**'
               - 'packages/schema/bin/**'
               - 'packages/sys-voice/**'
-              - 'packages/node-mic-speaker/src/**'
+              - 'packages/node-*/src/**'
+              - 'packages/node-*/Cargo.toml'
               - 'Cargo.toml'
               - 'Cargo.lock'
             ts:
@@ -87,6 +88,10 @@ jobs:
       - name: Install PulseAudio dev libs
         run: sudo apt-get update && sudo apt-get install -y libpulse-dev
       - run: cargo test --workspace
+      - name: Integration tests (orchestrator setup phase)
+        run: |
+          cargo build -p acpfx-orchestrator
+          ./tests/dummy-node/run-tests.sh
 
   # ---------- TypeScript: type check + test ----------
   ts-check:

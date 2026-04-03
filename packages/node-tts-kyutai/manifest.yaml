@@ -1,0 +1,25 @@
+name: tts-kyutai
+description: Local text-to-speech via Kyutai moshi (on-device, GPU, high quality)
+consumes:
+  - agent.delta
+  - agent.complete
+  - agent.tool_start
+  - control.interrupt
+emits:
+  - audio.chunk
+  - lifecycle.ready
+  - lifecycle.done
+  - log
+arguments:
+  model:
+    type: string
+    default: "kyutai/tts-1.6b-en_fr"
+    description: "HuggingFace model ID for TTS"
+  voice:
+    type: string
+    default: "expresso/ex03-ex01_happy_001_channel1_334s.wav"
+    description: "Voice name from the voice repo, or path to a .safetensors file"
+  device:
+    type: string
+    default: "auto"
+    description: "Compute device: auto, cpu, cuda, or metal"

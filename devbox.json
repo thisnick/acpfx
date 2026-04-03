@@ -3,11 +3,12 @@
   "packages": [
     "sox@latest",
     "speexdsp@latest",
-    "rustup@latest"
+    "rustup@latest",
+    "uv@latest"
   ],
   "shell": {
     "init_hook": [
-      "echo 'Welcome to devbox!' > /dev/null"
+      "rustup default stable > /dev/null 2>&1"
     ],
     "scripts": {
       "test": [
