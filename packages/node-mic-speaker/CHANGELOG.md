@@ -1,5 +1,11 @@
 # @acpfx/mic-speaker
 
+## 0.4.1
+
+### Patch Changes
+
+- ee63a45: Fix release pipeline: only pass --features metal/cuda to packages that declare them.
+
 ## 0.4.0
 
 ### Minor Changes
