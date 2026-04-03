@@ -1,5 +1,15 @@
 # @acpfx/stt-kyutai
 
+## 0.3.0
+
+### Minor Changes
+
+- d71ad78: Convert stt-kyutai from Rust/Candle to Python with MLX (macOS) and PyTorch (Linux/Windows) backends. Auto-detects GPU at runtime — no compile-time CUDA issues. Same TtsBackend/SttBackend DRY architecture as tts-kyutai.
+
+### Patch Changes
+
+- d71ad78: Disable CUDA CI builds (Linux: toolkit install broken, Windows: CRT mismatch). Postinstall falls back to CPU. Users can build CUDA locally.
+
 ## 0.2.6
 
 ### Patch Changes

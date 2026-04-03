@@ -1,5 +1,11 @@
 # @acpfx/tts-pocket
 
+## 0.2.7
+
+### Patch Changes
+
+- d71ad78: Disable CUDA CI builds (Linux: toolkit install broken, Windows: CRT mismatch). Postinstall falls back to CPU. Users can build CUDA locally.
+
 ## 0.2.6
 
 ### Patch Changes
