@@ -90,7 +90,13 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-# Test 7: Unknown --acpfx-* flag returns unsupported response
+# Test 7: Manifest loaded via --acpfx-manifest fallback (no co-located file)
+# The dummy node has no .manifest.yaml next to it, so the orchestrator
+# should fall back to running dummy-node.sh --acpfx-manifest
+run_test "manifest via --acpfx-manifest fallback" "All nodes ready" "no manifest for" \
+    "$SCRIPT_DIR/test-no-setup.yaml"
+
+# Test 8: Unknown --acpfx-* flag returns unsupported response
 echo -n "TEST: unknown --acpfx-* flag ... "
 response=$("$SCRIPT_DIR/dummy-node.sh" --acpfx-future-flag 2>&1)
 if echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['unsupported']==True; assert d['flag']=='--acpfx-future-flag'" 2>/dev/null; then
