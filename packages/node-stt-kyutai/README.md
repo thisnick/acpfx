@@ -2,11 +2,9 @@
 
 Local speech-to-text via Kyutai moshi. Runs entirely on-device using Rust and Candle -- no API key needed.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/stt-kyutai
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 The postinstall script downloads a prebuilt binary for your platform. Supported: macOS (Apple Silicon with Metal), Linux (x86_64, optional CUDA).
 
@@ -44,6 +42,11 @@ cargo build --release -p node-stt-kyutai
 # With Metal (macOS):
 cargo build --release -p node-stt-kyutai --features metal
 ```
+
+## External Links
+
+- [Kyutai](https://kyutai.org) -- Open-weight AI research lab
+- [Delayed Streams Modeling](https://github.com/kyutai-labs/delayed-streams-modeling) -- Kyutai's streaming speech model architecture
 
 ## License
 

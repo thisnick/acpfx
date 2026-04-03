@@ -2,11 +2,9 @@
 
 Echoes all received events back. A passthrough node useful for testing and debugging pipeline wiring.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/echo
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 ## Manifest
 

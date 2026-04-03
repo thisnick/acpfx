@@ -2,13 +2,11 @@
 
 Agent bridge connecting speech events to Claude via ACP (Agent Control Protocol). Forwards transcribed speech to the agent and streams back responses as deltas.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/bridge-acpx
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
-Requires `acpx` to be available (`npx acpx@latest`).
+Requires [acpx](https://github.com/anthropics/acpx) to be available (`npx acpx@latest`).
 
 ## Manifest
 
@@ -37,6 +35,10 @@ nodes:
       args: { approve-all: true }
     outputs: [tts, player]
 ```
+
+## Credits
+
+This node connects to Claude via [acpx](https://github.com/anthropics/acpx), an Agent Communication Protocol (ACP) CLI by Anthropic.
 
 ## License
 

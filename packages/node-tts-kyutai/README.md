@@ -2,11 +2,11 @@
 
 Local text-to-speech via Kyutai moshi. Runs on-device with GPU acceleration for high-quality voice synthesis -- no API key needed.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/tts-kyutai
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
+
+Uses MLX acceleration on Apple Silicon Macs for fast on-device inference.
 
 ## Manifest
 
@@ -30,6 +30,11 @@ nodes:
     settings: { voice: "expresso/ex03-ex01_happy_001_channel1_334s.wav", device: auto }
     outputs: [player]
 ```
+
+## External Links
+
+- [Kyutai](https://kyutai.org) -- Open-weight AI research lab
+- [Delayed Streams Modeling](https://github.com/kyutai-labs/delayed-streams-modeling) -- Kyutai's streaming speech model architecture
 
 ## License
 

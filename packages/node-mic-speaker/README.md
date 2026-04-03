@@ -2,11 +2,9 @@
 
 Native microphone capture with acoustic echo cancellation (AEC). Uses OS-level audio APIs via Rust for low-latency capture and speaker reference for echo cancellation.
 
-## Install
+## Usage
 
-```bash
-npm install @acpfx/mic-speaker
-```
+This package is a pipeline node for [@acpfx/cli](../orchestrator/README.md). See the CLI package for installation and usage.
 
 The postinstall script downloads a prebuilt binary for your platform. Supported: macOS (Apple Silicon), Linux (x86_64).
 
@@ -43,6 +41,10 @@ nodes:
 ```bash
 cargo build --release -p mic-speaker
 ```
+
+## Credits
+
+Built on [sys-voice](../sys-voice/), a Rust crate for native audio I/O with acoustic echo cancellation.
 
 ## License
 
