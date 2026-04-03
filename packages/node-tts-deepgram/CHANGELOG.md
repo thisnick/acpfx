@@ -1,5 +1,11 @@
 # @acpfx/tts-deepgram
 
+## 0.2.3
+
+### Patch Changes
+
+- 0045e6e: Fix npm publishing: each package now builds its own dist/index.js + manifest.json via prepack, so npx resolution works correctly
+
 ## 0.2.2
 
 ### Patch Changes
