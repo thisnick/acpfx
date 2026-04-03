@@ -133,7 +133,7 @@ async fn main() {
                             std::process::exit(0);
                         }
                         Ok(None) => {
-                            eprintln!("[acpfx] Onboarding cancelled.");
+                            eprintln!("[acpfx] Onboarding finished.");
                             std::process::exit(0);
                         }
                         Err(e) => {
@@ -351,7 +351,7 @@ async fn main() {
                     }
                 }
                 Ok(None) => {
-                    eprintln!("Onboarding cancelled.");
+                    eprintln!("Onboarding finished.");
                 }
                 Err(e) => {
                     eprintln!("[acpfx] Onboarding error: {e}");
