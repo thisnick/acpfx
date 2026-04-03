@@ -24,8 +24,9 @@ jobs:
       published: ${{ steps.changesets.outputs.published }}
       publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
       hasChangesets: ${{ steps.changesets.outputs.hasChangesets }}
-      native-matrix: ${{ steps.discover.outputs.matrix }}
+      native-packages: ${{ steps.discover.outputs.packages }}
       native-any: ${{ steps.discover.outputs.any }}
+      needs-cuda: ${{ steps.discover.outputs.needs_cuda }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -59,23 +60,20 @@ jobs:
 
           # Scan all packages/*/Cargo.toml that have a [[bin]] section
           # and a sibling package.json (i.e., npm-publishable native crates).
-          MATRIX="[]"
+          PACKAGES="[]"
+          NEEDS_CUDA=false
           for cargo_toml in packages/*/Cargo.toml; do
             pkg_dir="$(dirname "$cargo_toml")"
             pkg_json="$pkg_dir/package.json"
 
-            # Skip crates without a package.json (pure Rust libs like schema, sys-voice)
             [ -f "$pkg_json" ] || continue
 
-            # Extract the [[bin]] name from Cargo.toml
             binary_name=$(grep -A1 '^\[\[bin\]\]' "$cargo_toml" | grep '^name' | head -1 | sed 's/.*= *"\(.*\)"/\1/')
             [ -n "$binary_name" ] || continue
 
-            # Extract npm package name and cargo package name
             npm_name=$(node -p "require('./$pkg_json').name")
             cargo_pkg=$(grep '^name' "$cargo_toml" | head -1 | sed 's/.*= *"\(.*\)"/\1/')
 
-            # Check if this npm package was actually published in this release
             was_published=$(echo "$PUBLISHED" | node -e "
               const d=require('fs').readFileSync(0,'utf8');
               const pkgs=JSON.parse(d);
@@ -85,73 +83,65 @@ jobs:
             ")
 
             if [ -n "$was_published" ]; then
-              echo "Found published native package: $npm_name v$was_published (cargo=$cargo_pkg, bin=$binary_name)"
-              MATRIX=$(echo "$MATRIX" | node -e "
+              has_metal=false
+              has_cuda=false
+              if grep -q 'metal' "$cargo_toml" 2>/dev/null; then has_metal=true; fi
+              if grep -q 'cuda' "$cargo_toml" 2>/dev/null; then has_cuda=true; NEEDS_CUDA=true; fi
+
+              echo "Found: $npm_name v$was_published (bin=$binary_name, metal=$has_metal, cuda=$has_cuda)"
+              PACKAGES=$(echo "$PACKAGES" | node -e "
                 const d=require('fs').readFileSync(0,'utf8');
                 const arr=JSON.parse(d);
                 arr.push({
-                  npm_name: '$npm_name',
-                  cargo_pkg: '$cargo_pkg',
-                  binary_name: '$binary_name',
-                  version: '$was_published',
-                  pkg_dir: '$pkg_dir'
+                  npm_name:'$npm_name',cargo_pkg:'$cargo_pkg',
+                  binary_name:'$binary_name',version:'$was_published',
+                  has_metal:$has_metal,has_cuda:$has_cuda
                 });
                 console.log(JSON.stringify(arr));
               ")
             fi
           done
 
-          echo "Discovered native packages: $MATRIX"
+          echo "Discovered: $PACKAGES"
 
-          if [ "$MATRIX" = "[]" ]; then
+          if [ "$PACKAGES" = "[]" ]; then
             echo "any=false" >> "$GITHUB_OUTPUT"
-            echo "matrix={}" >> "$GITHUB_OUTPUT"
+            echo "packages=[]" >> "$GITHUB_OUTPUT"
+            echo "needs_cuda=false" >> "$GITHUB_OUTPUT"
           else
             echo "any=true" >> "$GITHUB_OUTPUT"
-            echo "matrix={\"include\":$(echo "$MATRIX" | node -e "
-              const d=require('fs').readFileSync(0,'utf8');
-              const pkgs=JSON.parse(d);
-              const targets=[
-                {target:'aarch64-apple-darwin',runner:'macos-14',platform:'darwin-arm64',gpus:['']},
-                {target:'x86_64-apple-darwin',runner:'macos-15-intel',platform:'darwin-x64',gpus:['']},
-                {target:'aarch64-unknown-linux-gnu',runner:'ubuntu-24.04-arm',platform:'linux-arm64',gpus:['','cuda']},
-                {target:'x86_64-unknown-linux-gnu',runner:'ubuntu-latest',platform:'linux-x64',gpus:['','cuda']},
-                {target:'aarch64-pc-windows-msvc',runner:'windows-11-arm',platform:'win32-arm64',gpus:['','cuda']},
-                {target:'x86_64-pc-windows-msvc',runner:'windows-latest',platform:'win32-x64',gpus:['','cuda']}
-              ];
-              const matrix=[];
-              for(const pkg of pkgs){
-                for(const t of targets){
-                  const isWindows=t.target.includes('windows');
-                  for(const gpu of t.gpus){
-                    matrix.push({
-                      npm_name:pkg.npm_name,
-                      cargo_pkg:pkg.cargo_pkg,
-                      binary_name:pkg.binary_name,
-                      version:pkg.version,
-                      pkg_dir:pkg.pkg_dir,
-                      target:t.target,
-                      runner:t.runner,
-                      platform:t.platform,
-                      gpu:gpu,
-                      binary:pkg.binary_name+(isWindows?'.exe':'')
-                    });
-                  }
-                }
-              }
-              console.log(JSON.stringify(matrix));
-            ")}" >> "$GITHUB_OUTPUT"
+            echo "packages=$PACKAGES" >> "$GITHUB_OUTPUT"
+            echo "needs_cuda=$NEEDS_CUDA" >> "$GITHUB_OUTPUT"
           fi
 
-  # ---------- Build native binaries (dynamic matrix) ----------
-  build-native:
-    name: Build ${{ matrix.binary_name }} (${{ matrix.platform }}${{ matrix.gpu && '-' || '' }}${{ matrix.gpu }})
+  # ---------- Build all native binaries per platform ----------
+  build-platform:
+    name: Build native (${{ matrix.platform }})
     needs: changesets
     if: needs.changesets.outputs.native-any == 'true'
     runs-on: ${{ matrix.runner }}
     strategy:
-      fail-fast: true
-      matrix: ${{ fromJSON(needs.changesets.outputs.native-matrix) }}
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            platform: darwin-arm64
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+            platform: darwin-x64
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            platform: linux-arm64
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            platform: linux-x64
+          - target: aarch64-pc-windows-msvc
+            runner: windows-11-arm
+            platform: win32-arm64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            platform: win32-x64
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
@@ -163,43 +153,130 @@ jobs:
       - name: Install PulseAudio dev libs (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libpulse-dev
+
+      - name: Build workspace (CPU)
+        run: cargo build --release --target ${{ matrix.target }} --workspace
+        shell: bash
+
+      - name: Build Metal variants (macOS only)
+        if: contains(matrix.target, 'apple')
+        shell: bash
+        run: |
+          PKGS='${{ needs.changesets.outputs.native-packages }}'
+          echo "$PKGS" | node -e "
+            const pkgs=JSON.parse(require('fs').readFileSync(0,'utf8'));
+            pkgs.filter(p=>p.has_metal).forEach(p=>console.log(p.cargo_pkg));
+          " | while read pkg; do
+            echo "Building $pkg with --features metal"
+            cargo build --release --target ${{ matrix.target }} --features metal -p "$pkg"
+          done
+
+      - name: Collect published binaries
+        shell: bash
+        run: |
+          PKGS='${{ needs.changesets.outputs.native-packages }}'
+          EXT=""
+          if [[ "${{ matrix.target }}" == *windows* ]]; then EXT=".exe"; fi
+
+          echo "$PKGS" | node -e "
+            const pkgs=JSON.parse(require('fs').readFileSync(0,'utf8'));
+            pkgs.forEach(p=>console.log(p.binary_name+' '+p.npm_name+' '+p.version));
+          " | while read binary_name npm_name version; do
+            src="target/${{ matrix.target }}/release/${binary_name}${EXT}"
+            dst="${binary_name}-${{ matrix.platform }}${EXT}"
+            if [ -f "$src" ]; then
+              cp "$src" "$dst"
+              echo "Collected: $dst"
+            else
+              echo "WARN: $src not found"
+            fi
+          done
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.platform }}
+          path: "*-${{ matrix.platform }}*"
+
+  # ---------- Build CUDA variants (Linux/Windows only, if any package needs it) ----------
+  build-cuda:
+    name: Build native CUDA (${{ matrix.platform }})
+    needs: changesets
+    if: needs.changesets.outputs.native-any == 'true' && needs.changesets.outputs.needs-cuda == 'true'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+            platform: linux-arm64
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            platform: linux-x64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            platform: win32-x64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}-cuda
+      - name: Install PulseAudio dev libs (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libpulse-dev
       - name: Install CUDA toolkit
-        if: matrix.gpu == 'cuda'
         uses: Jimver/cuda-toolkit@v0.2.14
         with:
           cuda: '12.4.0'
           method: network
-      - name: Build
-        run: |
-          FEATURES=""
-          CARGO_TOML="${{ matrix.pkg_dir }}/Cargo.toml"
-          if [[ "${{ matrix.target }}" == *apple* ]] && grep -q 'metal' "$CARGO_TOML" 2>/dev/null; then
-            FEATURES="--features metal"
-          fi
-          if [[ "${{ matrix.gpu }}" == "cuda" ]] && grep -q 'cuda' "$CARGO_TOML" 2>/dev/null; then
-            FEATURES="--features cuda"
-          fi
-          cargo build --release --target ${{ matrix.target }} -p ${{ matrix.cargo_pkg }} $FEATURES
+
+      - name: Build CUDA packages
         shell: bash
-      - name: Rename binary for release
         run: |
-          ext=""
-          if [[ "${{ matrix.binary }}" == *.exe ]]; then ext=".exe"; fi
-          SUFFIX="${{ matrix.gpu && format('-{0}', matrix.gpu) || '' }}"
-          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "${{ matrix.binary_name }}-${{ matrix.platform }}${SUFFIX}${ext}"
+          PKGS='${{ needs.changesets.outputs.native-packages }}'
+          echo "$PKGS" | node -e "
+            const pkgs=JSON.parse(require('fs').readFileSync(0,'utf8'));
+            pkgs.filter(p=>p.has_cuda).forEach(p=>console.log(p.cargo_pkg));
+          " | while read pkg; do
+            echo "Building $pkg with --features cuda"
+            cargo build --release --target ${{ matrix.target }} --features cuda -p "$pkg"
+          done
+
+      - name: Collect CUDA binaries
         shell: bash
-      - name: Upload binary for GitHub Release
+        run: |
+          PKGS='${{ needs.changesets.outputs.native-packages }}'
+          EXT=""
+          if [[ "${{ matrix.target }}" == *windows* ]]; then EXT=".exe"; fi
+
+          echo "$PKGS" | node -e "
+            const pkgs=JSON.parse(require('fs').readFileSync(0,'utf8'));
+            pkgs.filter(p=>p.has_cuda).forEach(p=>console.log(p.binary_name+' '+p.npm_name+' '+p.version));
+          " | while read binary_name npm_name version; do
+            src="target/${{ matrix.target }}/release/${binary_name}${EXT}"
+            dst="${binary_name}-${{ matrix.platform }}-cuda${EXT}"
+            if [ -f "$src" ]; then
+              cp "$src" "$dst"
+              echo "Collected: $dst"
+            fi
+          done
+
+      - name: Upload CUDA binaries
         uses: actions/upload-artifact@v7
         with:
-          name: release-${{ matrix.binary_name }}-${{ matrix.platform }}${{ matrix.gpu && format('-{0}', matrix.gpu) || '' }}
-          path: ${{ matrix.binary_name }}-${{ matrix.platform }}*
+          name: release-${{ matrix.platform }}-cuda
+          path: "*-${{ matrix.platform }}-cuda*"
 
   # ---------- GitHub Releases ----------
   github-release:
     name: Create GitHub Releases
     runs-on: ubuntu-latest
-    needs: [changesets, build-native]
-    if: always() && needs.changesets.outputs.native-any == 'true' && needs.build-native.result == 'success'
+    needs: [changesets, build-platform, build-cuda]
+    if: always() && needs.changesets.outputs.native-any == 'true' && (needs.build-platform.result == 'success' || needs.build-platform.result == 'skipped')
     steps:
       - uses: actions/checkout@v6
 
@@ -213,47 +290,30 @@ jobs:
       - name: Create GitHub releases for each native package
         env:
           GH_TOKEN: ${{ github.token }}
-          NATIVE_MATRIX: ${{ needs.changesets.outputs.native-matrix }}
+          NATIVE_PACKAGES: ${{ needs.changesets.outputs.native-packages }}
         run: |
-          # Extract unique packages from the matrix
-          PACKAGES=$(echo "$NATIVE_MATRIX" | node -e "
-            const d=require('fs').readFileSync(0,'utf8');
-            const matrix=JSON.parse(d);
-            const seen=new Set();
-            const pkgs=[];
-            for(const m of matrix.include){
-              const key=m.npm_name;
-              if(!seen.has(key)){
-                seen.add(key);
-                pkgs.push({npm_name:m.npm_name,binary_name:m.binary_name,version:m.version});
-              }
-            }
-            console.log(JSON.stringify(pkgs));
-          ")
-
-          echo "Creating releases for: $PACKAGES"
-
-          echo "$PACKAGES" | node -e "
-            const d=require('fs').readFileSync(0,'utf8');
-            const pkgs=JSON.parse(d);
-            for(const p of pkgs){
-              console.log(p.npm_name + ' ' + p.binary_name + ' ' + p.version);
-            }
+          echo "$NATIVE_PACKAGES" | node -e "
+            const pkgs=JSON.parse(require('fs').readFileSync(0,'utf8'));
+            pkgs.forEach(p=>console.log(p.npm_name+' '+p.binary_name+' '+p.version));
           " | while read npm_name binary_name version; do
             TAG="${npm_name}@${version}"
             echo "Creating release: $TAG"
 
-            # Collect assets for this package
+            # Collect all binaries for this package from all platform artifacts
             mkdir -p "assets-${binary_name}"
-            for dir in release-staging/release-${binary_name}-*/; do
-              [ -d "$dir" ] && cp "$dir"/* "assets-${binary_name}/"
+            for dir in release-staging/release-*/; do
+              for f in "$dir"${binary_name}-*; do
+                [ -f "$f" ] && cp "$f" "assets-${binary_name}/"
+              done
             done
 
-            ls -la "assets-${binary_name}/"
-
-            # Create the GitHub release
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --generate-notes \
-              "assets-${binary_name}"/*
+            if [ -d "assets-${binary_name}" ] && [ "$(ls -A "assets-${binary_name}")" ]; then
+              ls -la "assets-${binary_name}/"
+              gh release create "$TAG" \
+                --title "$TAG" \
+                --generate-notes \
+                "assets-${binary_name}"/*
+            else
+              echo "WARN: No binaries found for $binary_name"
+            fi
           done
