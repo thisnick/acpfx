@@ -1,5 +1,11 @@
 # acpfx
 
+## 0.4.2
+
+### Patch Changes
+
+- d717712: Fix release pipeline: only pass --features metal/cuda to packages that declare them.
+
 ## 0.4.1
 
 ### Patch Changes
