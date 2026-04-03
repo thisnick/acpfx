@@ -15,11 +15,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::sync::mpsc;
 
-use acpfx_schema::manifest::NodeManifest;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
+
+use acpfx_schema::manifest::{NodeManifest, SetupCheckResponse, SetupProgress};
 
 use crate::config::{load_config, parse_config, PipelineConfig};
 use crate::dag::{build_dag, node_consumes_event, Dag};
-use crate::node_runner::{resolve_node, NodeEvent, NodeRunner};
+use crate::node_runner::{resolve_node, NodeEvent, NodeRunner, ResolvedNode};
 
 pub struct Orchestrator {
     config: PipelineConfig,
@@ -29,6 +32,8 @@ pub struct Orchestrator {
     event_rx: Option<mpsc::Receiver<(String, NodeEvent)>>,
     dist_dir: PathBuf,
     ready_timeout_ms: u64,
+    setup_timeout_ms: u64,
+    skip_setup: bool,
     stopped: bool,
 }
 
@@ -59,12 +64,22 @@ impl Orchestrator {
             event_rx: Some(event_rx),
             dist_dir: dist_dir.to_path_buf(),
             ready_timeout_ms: 10000,
+            setup_timeout_ms: 600000,
+            skip_setup: false,
             stopped: false,
         }
     }
 
     pub fn set_ready_timeout(&mut self, ms: u64) {
         self.ready_timeout_ms = ms;
+    }
+
+    pub fn set_setup_timeout(&mut self, ms: u64) {
+        self.setup_timeout_ms = ms;
+    }
+
+    pub fn set_skip_setup(&mut self, skip: bool) {
+        self.skip_setup = skip;
     }
 
     /// Get manifest data for all nodes (for UI rendering).
@@ -168,9 +183,91 @@ impl Orchestrator {
         }
     }
 
-    /// Start the pipeline: load manifests, spawn all nodes, wait for ready, begin routing.
+    /// Check which nodes need first-time setup (e.g., model downloads).
+    /// Runs `--acpfx-setup-check` on all nodes in parallel with a 5s timeout.
+    async fn run_setup_checks(&self) -> Vec<SetupNeeded> {
+        let mut handles = Vec::new();
+
+        for (name, dag_node) in &self.dag.nodes {
+            let resolved = resolve_node(&dag_node.use_, &self.dist_dir);
+            let node_name = name.clone();
+            let settings = dag_node.settings.clone();
+            let env = self.config.env.clone();
+
+            handles.push(tokio::spawn(async move {
+                let result = tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    run_setup_check_process(&node_name, &resolved, settings.as_ref(), &env),
+                )
+                .await;
+
+                match result {
+                    Ok(Some(resp)) if resp.needed => Some(SetupNeeded {
+                        node_name,
+                        description: resp.description.unwrap_or_default(),
+                        resolved,
+                    }),
+                    _ => None,
+                }
+            }));
+        }
+
+        let mut needs_setup = Vec::new();
+        for handle in handles {
+            if let Ok(Some(needed)) = handle.await {
+                needs_setup.push(needed);
+            }
+        }
+        needs_setup
+    }
+
+    /// Run setup for nodes that need it (e.g., download models).
+    /// Spawns `--acpfx-setup` on each node in parallel, streaming progress to stderr.
+    async fn run_setup(&self, nodes: &[SetupNeeded]) -> Result<(), String> {
+        let mut handles = Vec::new();
+
+        for needed in nodes {
+            let node_name = needed.node_name.clone();
+            let resolved = needed.resolved.clone();
+            let settings = self.dag.nodes.get(&needed.node_name)
+                .and_then(|n| n.settings.clone());
+            let env = self.config.env.clone();
+            let timeout_ms = self.setup_timeout_ms;
+
+            handles.push(tokio::spawn(async move {
+                run_setup_process(&node_name, &resolved, settings.as_ref(), &env, timeout_ms).await
+            }));
+        }
+
+        for handle in handles {
+            match handle.await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => return Err(e),
+                Err(e) => return Err(format!("Setup task panicked: {e}")),
+            }
+        }
+        Ok(())
+    }
+
+    /// Start the pipeline: load manifests, run setup if needed, spawn all nodes, wait for ready, begin routing.
     pub async fn start(&mut self) -> Result<(), String> {
         self.load_manifests();
+
+        // Run setup phase unless skipped
+        if !self.skip_setup {
+            let needs_setup = self.run_setup_checks().await;
+            if !needs_setup.is_empty() {
+                eprintln!(
+                    "[acpfx] First-time setup required for: {}",
+                    needs_setup.iter().map(|s| s.node_name.as_str()).collect::<Vec<_>>().join(", ")
+                );
+                for s in &needs_setup {
+                    eprintln!("[{}] {}", s.node_name, s.description);
+                }
+                self.run_setup(&needs_setup).await?;
+                eprintln!("[acpfx] Setup complete.");
+            }
+        }
 
         // Spawn nodes in topological order
         let order = self.dag.order.clone();
@@ -419,4 +516,147 @@ fn json_type_name(v: &serde_json::Value) -> &'static str {
         serde_json::Value::Array(_) => "array",
         serde_json::Value::Object(_) => "object",
     }
+}
+
+/// A node that needs first-time setup.
+struct SetupNeeded {
+    node_name: String,
+    description: String,
+    resolved: ResolvedNode,
+}
+
+/// Spawn `--acpfx-setup-check` for a node and parse the response.
+async fn run_setup_check_process(
+    node_name: &str,
+    resolved: &ResolvedNode,
+    settings: Option<&serde_json::Value>,
+    env: &BTreeMap<String, String>,
+) -> Option<SetupCheckResponse> {
+    let mut cmd = Command::new(&resolved.command);
+    cmd.args(&resolved.args)
+        .arg("--acpfx-setup-check")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+
+    cmd.env("ACPFX_NODE_NAME", node_name);
+    if let Some(s) = settings {
+        cmd.env("ACPFX_SETTINGS", serde_json::to_string(s).unwrap_or_default());
+    }
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[orchestrator] setup-check spawn failed for '{}': {}", node_name, e);
+            return None;
+        }
+    };
+    let stdout = child.stdout.take()?;
+    let mut reader = BufReader::new(stdout);
+    let mut line = String::new();
+    if let Err(e) = reader.read_line(&mut line).await {
+        eprintln!("[orchestrator] setup-check read failed for '{}': {}", node_name, e);
+        let _ = child.wait().await;
+        return None;
+    }
+    let _ = child.wait().await;
+
+    match serde_json::from_str::<SetupCheckResponse>(line.trim()) {
+        Ok(resp) => Some(resp),
+        Err(e) => {
+            eprintln!("[orchestrator] setup-check parse failed for '{}': {} (got: {:?})", node_name, e, line.trim());
+            None
+        }
+    }
+}
+
+/// Spawn `--acpfx-setup` for a node, stream progress lines to stderr.
+async fn run_setup_process(
+    node_name: &str,
+    resolved: &ResolvedNode,
+    settings: Option<&serde_json::Value>,
+    env: &BTreeMap<String, String>,
+    timeout_ms: u64,
+) -> Result<(), String> {
+    let mut cmd = Command::new(&resolved.command);
+    cmd.args(&resolved.args)
+        .arg("--acpfx-setup")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+
+    cmd.env("ACPFX_NODE_NAME", node_name);
+    if let Some(s) = settings {
+        cmd.env("ACPFX_SETTINGS", serde_json::to_string(s).unwrap_or_default());
+    }
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| {
+        format!("Failed to spawn setup for '{node_name}': {e}")
+    })?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        format!("No stdout for setup of '{node_name}'")
+    })?;
+
+    let node = node_name.to_string();
+    let read_task = async {
+        let reader = BufReader::new(stdout);
+        let mut lines = reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if line.trim().is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<SetupProgress>(line.trim()) {
+                Ok(SetupProgress::Progress { message, pct }) => {
+                    eprintln!(
+                        "[{node}] {message}{}",
+                        pct.map(|p| format!(" {}%", p)).unwrap_or_default()
+                    );
+                }
+                Ok(SetupProgress::Complete { message }) => {
+                    eprintln!("[{node}] {message}");
+                }
+                Ok(SetupProgress::Error { message }) => {
+                    return Err(format!("Setup failed for '{node}': {message}"));
+                }
+                Err(_) => {
+                    // Ignore unparseable lines
+                }
+            }
+        }
+        Ok(())
+    };
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(timeout_ms),
+        read_task,
+    )
+    .await;
+
+    match result {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return Err(e),
+        Err(_) => {
+            let _ = child.kill().await;
+            return Err(format!("Setup timed out for '{node_name}' after {timeout_ms}ms"));
+        }
+    }
+
+    let status = child.wait().await.map_err(|e| {
+        format!("Failed to wait for setup of '{node_name}': {e}")
+    })?;
+
+    if !status.success() {
+        return Err(format!(
+            "Setup for '{node_name}' exited with code {}",
+            status.code().unwrap_or(-1)
+        ));
+    }
+
+    Ok(())
 }

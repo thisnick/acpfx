@@ -1,0 +1,24 @@
+name: stt-kyutai
+description: Local speech-to-text via Kyutai moshi (on-device, no API key needed)
+consumes:
+  - audio.chunk
+emits:
+  - speech.partial
+  - speech.final
+  - speech.pause
+  - lifecycle.ready
+  - lifecycle.done
+  - log
+arguments:
+  model:
+    type: string
+    default: "kyutai/stt-1b-en_fr-candle"
+    description: "HuggingFace model ID for STT"
+  language:
+    type: string
+    default: "en"
+    description: "Language code for transcription"
+  device:
+    type: string
+    default: "auto"
+    description: "Compute device: auto, cpu, cuda, or metal"

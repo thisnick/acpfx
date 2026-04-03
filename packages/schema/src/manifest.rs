@@ -105,6 +105,50 @@ impl NodeManifest {
     }
 }
 
+// ---- acpfx flag protocol types ----
+// These are the structured payloads for --acpfx-* convention flags.
+
+/// Response from `--acpfx-setup-check`.
+///
+/// Nodes emit this as a single JSON line on stdout to indicate whether
+/// first-time setup (e.g., model download) is needed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetupCheckResponse {
+    pub needed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Progress line from `--acpfx-setup` (NDJSON on stdout).
+///
+/// Nodes emit one of these per line during setup. The orchestrator
+/// parses them for progress display.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum SetupProgress {
+    Progress {
+        message: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pct: Option<u8>,
+    },
+    Complete {
+        message: String,
+    },
+    Error {
+        message: String,
+    },
+}
+
+/// Response for unrecognized `--acpfx-*` flags (forward compatibility).
+///
+/// Nodes that receive an `--acpfx-*` flag they don't understand should
+/// emit this and exit 0, rather than failing or ignoring the flag.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnsupportedFlagResponse {
+    pub unsupported: bool,
+    pub flag: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,10 +355,13 @@ emits: []
         let expected_nodes = [
             "node-stt-deepgram",
             "node-stt-elevenlabs",
+            "node-stt-kyutai",
             "node-mic-file",
             "node-bridge-acpx",
             "node-tts-deepgram",
             "node-tts-elevenlabs",
+            "node-tts-kyutai",
+            "node-tts-pocket",
             "node-audio-player",
             "node-recorder",
             "node-play-file",

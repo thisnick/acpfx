@@ -22,11 +22,61 @@ use base64::Engine;
 use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{self, BufRead, Seek, SeekFrom, Write};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 const DEFAULT_SAMPLE_RATE: u32 = 16000;
 const DEFAULT_CHUNK_MS: u32 = 100;
+
+/// Print manifest JSON to stdout and exit.
+fn handle_manifest() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let exe_dir = exe.parent().unwrap_or(Path::new("."));
+
+    // Try .manifest.json next to binary
+    let json_path = exe_dir.join("mic-speaker.manifest.json");
+    if json_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&json_path) {
+            println!("{}", content);
+            std::process::exit(0);
+        }
+    }
+
+    // Fallback: emit inline manifest
+    let manifest = json!({
+        "name": "mic-speaker",
+        "description": "Microphone capture with OS-level acoustic echo cancellation and speaker playback",
+        "consumes": ["audio.chunk", "control.interrupt"],
+        "emits": ["audio.chunk", "audio.level", "lifecycle.ready", "lifecycle.done", "control.error"]
+    });
+    println!("{}", manifest);
+    std::process::exit(0);
+}
+
+/// Handle --acpfx-* convention flags (and legacy --manifest) before normal startup.
+fn handle_acpfx_flags() {
+    let acpfx_flag = std::env::args().find(|a| a.starts_with("--acpfx-"));
+    let legacy_manifest = std::env::args().any(|a| a == "--manifest");
+
+    let flag = match acpfx_flag.or(if legacy_manifest { Some("--acpfx-manifest".to_string()) } else { None }) {
+        Some(f) => f,
+        None => return,
+    };
+
+    match flag.as_str() {
+        "--acpfx-manifest" => handle_manifest(),
+        "--acpfx-setup-check" => {
+            // mic-speaker has no setup requirements (no model downloads)
+            println!("{}", json!({"needed": false}));
+            std::process::exit(0);
+        }
+        _ => {
+            println!("{}", json!({"unsupported": true, "flag": flag}));
+            std::process::exit(0);
+        }
+    }
+}
 
 fn samples_to_base64(samples: &[f32]) -> String {
     let bytes: Vec<u8> = samples
@@ -117,6 +167,9 @@ impl Drop for WavWriter {
 
 #[tokio::main]
 async fn main() {
+    // Handle --acpfx-* flags before normal startup
+    handle_acpfx_flags();
+
     let settings_str = std::env::var("ACPFX_SETTINGS").unwrap_or_default();
     let settings: Value = if settings_str.is_empty() {
         json!({})

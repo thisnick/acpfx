@@ -10,6 +10,7 @@ tmp-test-*/
 *.DS_Store
 eval/e2e/
 *.wav
+!packages/node-audio-player/sounds/*.wav
 *.mp3
 aec-debug/
 debug.log

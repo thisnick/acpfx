@@ -165,8 +165,13 @@ impl UiState {
                 node.interrupted = false; // clear on new speech
             }
             "speech.final" => {
-                node.speech.text = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                // Don't overwrite text — partial already has the full accumulation.
+                // Final only confirms a segment; the partial text is the best display.
                 node.speech.state = "final".into();
+            }
+            "speech.pause" => {
+                node.speech.text = event.get("pendingText").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                node.speech.state = "pause".into();
             }
 
             "agent.submit" => {

@@ -6,10 +6,10 @@ const fs = require("fs");
 const path = require("path");
 
 const SUPPORTED_PLATFORMS = {
-  "darwin arm64": "mic-speaker-darwin-arm64",
-  "darwin x64": "mic-speaker-darwin-x64",
-  "linux x64": "mic-speaker-linux-x64",
-  "win32 x64": "mic-speaker-win32-x64.exe",
+  "darwin arm64": "tts-pocket-darwin-arm64",
+  "darwin x64": "tts-pocket-darwin-x64",
+  "linux x64": "tts-pocket-linux-x64",
+  "win32 x64": "tts-pocket-win32-x64.exe",
 };
 
 function hasNvidiaGpu() {
@@ -42,8 +42,7 @@ function fetch(url) {
   return new Promise((resolve, reject) => {
     const lib = url.startsWith("https") ? https : http;
     lib
-      .get(url, { headers: { "User-Agent": "mic-speaker-postinstall" } }, (res) => {
-        // Follow redirects (GitHub releases redirect to S3)
+      .get(url, { headers: { "User-Agent": "tts-pocket-postinstall" } }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           return fetch(res.headers.location).then(resolve, reject);
         }
@@ -68,14 +67,13 @@ async function main() {
   const binDir = path.join(__dirname, "..", "bin");
   const destPath = path.join(binDir, binaryName);
 
-  // Skip if binary already exists (e.g. local dev with pre-built binary)
   if (fs.existsSync(destPath)) {
-    console.log(`mic-speaker: binary already exists at ${destPath}, skipping download.`);
+    console.log(`tts-pocket: binary already exists at ${destPath}, skipping download.`);
     return;
   }
 
-  const url = `https://github.com/thisnick/acpfx/releases/download/%40acpfx/mic-speaker%40${version}/${binaryName}`;
-  console.log(`mic-speaker: downloading ${binaryName} from GitHub Releases...`);
+  const url = `https://github.com/thisnick/acpfx/releases/download/%40acpfx/tts-pocket%40${version}/${binaryName}`;
+  console.log(`tts-pocket: downloading ${binaryName} from GitHub Releases...`);
   console.log(`  ${url}`);
 
   let data;
@@ -85,29 +83,24 @@ async function main() {
     // If CUDA variant failed, fall back to CPU binary
     const cpuName = SUPPORTED_PLATFORMS[`${process.platform} ${process.arch}`];
     if (binaryName !== cpuName) {
-      console.log(`mic-speaker: CUDA binary not available, falling back to CPU variant...`);
-      const cpuUrl = `https://github.com/thisnick/acpfx/releases/download/%40acpfx/mic-speaker%40${version}/${cpuName}`;
+      console.log(`tts-pocket: CUDA binary not available, falling back to CPU variant...`);
+      const cpuUrl = `https://github.com/thisnick/acpfx/releases/download/%40acpfx/tts-pocket%40${version}/${cpuName}`;
       console.log(`  ${cpuUrl}`);
       data = await fetch(cpuUrl);
     } else {
       throw err;
     }
   }
-
-  // Ensure bin/ directory exists
   fs.mkdirSync(binDir, { recursive: true });
-
   fs.writeFileSync(destPath, data);
   fs.chmodSync(destPath, 0o755);
-
-  console.log(`mic-speaker: installed ${binaryName} (${(data.length / 1024 / 1024).toFixed(1)} MB)`);
+  console.log(`tts-pocket: installed ${binaryName} (${(data.length / 1024 / 1024).toFixed(1)} MB)`);
 }
 
 main().catch((err) => {
-  console.warn(`mic-speaker: postinstall failed — ${err.message}`);
+  console.warn(`tts-pocket: postinstall failed — ${err.message}`);
   console.warn(
-    "mic-speaker: the native binary could not be downloaded. " +
-      "You can build locally with: cargo build --release -p mic-speaker"
+    "tts-pocket: the native binary could not be downloaded. " +
+      "You can build locally with: cargo build --release -p node-tts-pocket"
   );
-  // Don't exit with error — allow npm install to succeed
 });

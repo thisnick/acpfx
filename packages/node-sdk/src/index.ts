@@ -1,16 +1,16 @@
 /**
  * Node SDK — shared helpers for acpfx TS nodes.
  *
- * Provides emit(), log(), onEvent(), and handleManifestFlag().
+ * Provides emit(), log(), onEvent(), and handleAcpfxFlags().
  * log() emits structured log events on stdout (not stderr).
  */
 
 import { createInterface, type Interface } from "node:readline";
 /**
- * Re-export handleManifestFlag from core — handles the --manifest flag.
- * If --manifest is in process.argv, prints the manifest as JSON and exits.
+ * Re-export handleAcpfxFlags from core — handles all --acpfx-* convention flags.
+ * Call at the top of your node's entry point before any async work.
  */
-export { handleManifestFlag } from "@acpfx/core";
+export { handleAcpfxFlags, handleManifestFlag } from "@acpfx/core";
 
 const NODE_NAME = process.env.ACPFX_NODE_NAME ?? "unknown";
 

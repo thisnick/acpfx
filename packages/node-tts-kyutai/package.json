@@ -1,0 +1,19 @@
+{
+  "name": "@acpfx/tts-kyutai",
+  "version": "0.1.0",
+  "description": "Local TTS via Kyutai moshi (on-device, GPU, Python/uv)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thisnick/acpfx",
+    "directory": "packages/node-tts-kyutai"
+  },
+  "license": "ISC",
+  "bin": {
+    "acpfx-tts-kyutai": "./bin/tts-kyutai"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "manifest.yaml"
+  ]
+}

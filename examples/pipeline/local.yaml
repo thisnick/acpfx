@@ -1,0 +1,24 @@
+nodes:
+  mic:
+    use: '@acpfx/mic-speaker'
+    settings: {speaker: player}
+    outputs: [stt]
+  stt:
+    use: '@acpfx/stt-kyutai'
+    settings: {model: 'kyutai/stt-1b-en_fr-candle', language: en, device: auto}
+    outputs: [bridge]
+  bridge:
+    use: '@acpfx/bridge-acpx'
+    settings:
+      agent: claude
+      session: voice
+      args: {approve-all: true}
+    outputs: [tts, player]
+  tts:
+    use: '@acpfx/tts-pocket'
+    settings: {voice: alba}
+    outputs: [player]
+  player:
+    use: '@acpfx/audio-player'
+    settings: {speechSource: tts}
+    outputs: [mic]

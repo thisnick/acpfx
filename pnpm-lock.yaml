@@ -120,6 +120,8 @@ importers:
         specifier: workspace:*
         version: link:../node-sdk
 
+  packages/node-stt-kyutai: {}
+
   packages/node-tts-deepgram:
     dependencies:
       '@acpfx/core':
@@ -137,6 +139,10 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+
+  packages/node-tts-kyutai: {}
+
+  packages/node-tts-pocket: {}
 
   packages/orchestrator: {}
 
