@@ -22,34 +22,19 @@ use base64::Engine;
 use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{self, BufRead, Seek, SeekFrom, Write};
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 const DEFAULT_SAMPLE_RATE: u32 = 16000;
 const DEFAULT_CHUNK_MS: u32 = 100;
 
+/// Manifest YAML embedded at compile time — single source of truth.
+const MANIFEST_YAML: &str = include_str!("../manifest.yaml");
+
 /// Print manifest JSON to stdout and exit.
 fn handle_manifest() {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let exe_dir = exe.parent().unwrap_or(Path::new("."));
-
-    // Try .manifest.json next to binary
-    let json_path = exe_dir.join("mic-speaker.manifest.json");
-    if json_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&json_path) {
-            println!("{}", content);
-            std::process::exit(0);
-        }
-    }
-
-    // Fallback: emit inline manifest
-    let manifest = json!({
-        "name": "mic-speaker",
-        "description": "Microphone capture with OS-level acoustic echo cancellation and speaker playback",
-        "consumes": ["audio.chunk", "control.interrupt"],
-        "emits": ["audio.chunk", "audio.level", "lifecycle.ready", "lifecycle.done", "control.error"]
-    });
+    let manifest: serde_json::Value = serde_yaml::from_str(MANIFEST_YAML)
+        .expect("embedded manifest.yaml is invalid");
     println!("{}", manifest);
     std::process::exit(0);
 }
