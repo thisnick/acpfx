@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/audio-player",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "type": "module",
   "bin": {
     "acpfx-audio-player": "./dist/index.js"
