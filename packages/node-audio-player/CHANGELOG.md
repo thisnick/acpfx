@@ -1,5 +1,11 @@
 # @acpfx/audio-player
 
+## 0.3.3
+
+### Patch Changes
+
+- 44bd51c: Fix npx: bundle all deps (except yaml CJS) so transitive deps like zod are available at runtime
+
 ## 0.3.2
 
 ### Patch Changes

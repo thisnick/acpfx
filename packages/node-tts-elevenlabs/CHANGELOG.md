@@ -1,5 +1,11 @@
 # @acpfx/tts-elevenlabs
 
+## 0.2.5
+
+### Patch Changes
+
+- 44bd51c: Fix npx: bundle all deps (except yaml CJS) so transitive deps like zod are available at runtime
+
 ## 0.2.4
 
 ### Patch Changes
