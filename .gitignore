@@ -18,6 +18,7 @@ mic-debug/
 # Downloaded/built platform binaries (postinstall downloads these)
 packages/node-mic-speaker/bin/mic-speaker-*
 packages/node-mic-speaker/bin/mic-aec-*
+packages/node-tts-pocket/bin/tts-pocket-*
 # Downloaded platform binaries (postinstall downloads these)
 packages/orchestrator/bin/acpfx-*
 packages/node-mic-aec/
