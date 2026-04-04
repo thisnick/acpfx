@@ -1,5 +1,11 @@
 # @acpfx/stt-kyutai
 
+## 0.3.1
+
+### Patch Changes
+
+- 13d47a9: Fix manifest lookup in Python nodes: use os.path.realpath + load manifest.yaml from package root instead of hardcoded inline JSON
+
 ## 0.3.0
 
 ### Minor Changes
