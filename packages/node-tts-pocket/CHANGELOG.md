@@ -1,5 +1,11 @@
 # @acpfx/tts-pocket
 
+## 0.2.8
+
+### Patch Changes
+
+- 05c4208: Embed manifest.yaml via include_str in native binaries (no hardcoded inline). Fix realpathSync for npx symlink manifest resolution. Remove speaker dep from audio-player.
+
 ## 0.2.7
 
 ### Patch Changes

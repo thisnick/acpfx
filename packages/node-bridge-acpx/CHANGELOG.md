@@ -1,5 +1,14 @@
 # @acpfx/bridge-acpx
 
+## 0.2.6
+
+### Patch Changes
+
+- 05c4208: Embed manifest.yaml via include_str in native binaries (no hardcoded inline). Fix realpathSync for npx symlink manifest resolution. Remove speaker dep from audio-player.
+- Updated dependencies [05c4208]
+  - @acpfx/core@0.4.1
+  - @acpfx/node-sdk@0.3.1
+
 ## 0.2.5
 
 ### Patch Changes

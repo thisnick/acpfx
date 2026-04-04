@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/recorder",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "type": "module",
   "bin": {
     "acpfx-recorder": "./dist/index.js"
