@@ -128,7 +128,6 @@ pub fn set_config_value(config: &mut UserConfig, key: &str, value: &str) -> Resu
 
 /// Build the full environment for spawning nodes.
 /// Priority: system env > project config env > global config env > pipeline yaml env.
-#[allow(dead_code)]
 pub fn build_node_env(
     merged: &MergedConfig,
     yaml_env: &BTreeMap<String, String>,

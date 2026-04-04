@@ -159,6 +159,11 @@ async fn main() {
                         std::process::exit(1);
                     });
 
+            // Merge env vars from user config (global + project) into the pipeline
+            let merged_config = user_config::load_merged_config();
+            let user_env = user_config::build_node_env(&merged_config, &Default::default());
+            orch.merge_env(user_env);
+
             orch.set_ready_timeout(ready_timeout);
             orch.set_setup_timeout(setup_timeout);
             orch.set_skip_setup(skip_setup);

@@ -82,6 +82,16 @@ impl Orchestrator {
         self.skip_setup = skip;
     }
 
+    /// Merge additional env vars into the pipeline config.
+    /// Used to inject env vars from ~/.acpfx/config.json and .acpfx/config.json.
+    /// Existing keys in the pipeline YAML are NOT overwritten (YAML takes precedence
+    /// over config files; system env takes precedence over everything at spawn time).
+    pub fn merge_env(&mut self, env: std::collections::BTreeMap<String, String>) {
+        for (k, v) in env {
+            self.config.env.entry(k).or_insert(v);
+        }
+    }
+
     /// Get manifest data for all nodes (for UI rendering).
     /// Returns (name, use_, emits) tuples in config declaration order.
     pub fn get_manifests(&self) -> Vec<(String, String, Vec<String>)> {
