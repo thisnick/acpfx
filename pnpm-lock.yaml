@@ -48,6 +48,9 @@ importers:
       speaker:
         specifier: ^0.5.5
         version: 0.5.5
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/node-bridge-acpx:
     dependencies:
@@ -57,6 +60,9 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/node-echo:
     dependencies:
@@ -66,8 +72,9 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
-
-  packages/node-mic-speaker: {}
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/node-mic-file:
     dependencies:
@@ -77,6 +84,11 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
+  packages/node-mic-speaker: {}
 
   packages/node-play-file:
     dependencies:
@@ -86,6 +98,9 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/node-recorder:
     dependencies:
@@ -95,6 +110,9 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/node-sdk:
     dependencies:
@@ -110,6 +128,9 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/node-stt-elevenlabs:
     dependencies:
@@ -119,6 +140,9 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/node-stt-kyutai: {}
 
@@ -130,6 +154,9 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/node-tts-elevenlabs:
     dependencies:
@@ -139,6 +166,9 @@ importers:
       '@acpfx/node-sdk':
         specifier: workspace:*
         version: link:../node-sdk
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
 
   packages/node-tts-kyutai: {}
 
