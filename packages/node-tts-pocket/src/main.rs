@@ -237,26 +237,13 @@ fn resolve_voice(model: &TTSModel, voice: &str) -> Result<ModelState> {
 }
 
 /// Print manifest JSON to stdout and exit.
-fn handle_manifest() {
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            let json_path = exe_dir.join("tts-pocket.manifest.json");
-            if json_path.exists() {
-                if let Ok(contents) = std::fs::read_to_string(&json_path) {
-                    print!("{}", contents);
-                    std::process::exit(0);
-                }
-            }
-        }
-    }
+/// Manifest YAML embedded at compile time — single source of truth.
+const MANIFEST_YAML: &str = include_str!("../manifest.yaml");
 
-    let manifest = json!({
-        "name": "tts-pocket",
-        "description": "Local text-to-speech via Pocket TTS (on-device, CPU-capable)",
-        "consumes": ["agent.delta", "agent.complete", "agent.tool_start", "control.interrupt"],
-        "emits": ["audio.chunk", "lifecycle.ready", "lifecycle.done", "log"]
-    });
-    println!("{}", serde_json::to_string_pretty(&manifest).unwrap());
+fn handle_manifest() {
+    let manifest: serde_json::Value = serde_yaml::from_str(MANIFEST_YAML)
+        .expect("embedded manifest.yaml is invalid");
+    println!("{}", manifest);
     std::process::exit(0);
 }
 

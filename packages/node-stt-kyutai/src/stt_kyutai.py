@@ -82,21 +82,28 @@ def handle_acpfx_flags():
 
 
 def _print_manifest():
-    script_path = os.path.abspath(sys.argv[0])
+    import yaml
+    # Try co-located files first (dist/nodes/ layout)
+    script_path = os.path.realpath(sys.argv[0])
     base = os.path.splitext(script_path)[0]
     for path in [f"{base}.manifest.json", f"{base}.manifest.yaml"]:
         if os.path.exists(path):
             with open(path) as f:
                 print(f.read().strip())
             sys.exit(0)
-    print(json.dumps({
-        "name": "stt-kyutai",
-        "description": "Local STT via Kyutai moshi (on-device, GPU)",
-        "consumes": ["audio.chunk"],
-        "emits": ["speech.partial", "speech.final", "speech.pause",
-                   "lifecycle.ready", "lifecycle.done", "log"],
-    }))
-    sys.exit(0)
+    # Fallback: load manifest.yaml from package root (relative to script)
+    script_dir = os.path.dirname(script_path)
+    for candidate in [
+        os.path.join(script_dir, "..", "manifest.yaml"),  # src/../manifest.yaml
+        os.path.join(script_dir, "manifest.yaml"),
+    ]:
+        if os.path.exists(candidate):
+            with open(candidate) as f:
+                manifest = yaml.safe_load(f)
+            print(json.dumps(manifest))
+            sys.exit(0)
+    print(json.dumps({"error": "manifest.yaml not found"}), file=sys.stderr)
+    sys.exit(1)
 
 
 def _handle_setup_check():
