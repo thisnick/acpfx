@@ -1,5 +1,11 @@
 # acpfx
 
+## 0.5.2
+
+### Patch Changes
+
+- 49d1170: Load env vars from ~/.acpfx/config.json and .acpfx/config.json into pipeline at startup
+
 ## 0.5.1
 
 ### Patch Changes
