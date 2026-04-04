@@ -1,5 +1,11 @@
 # @acpfx/audio-player
 
+## 0.3.2
+
+### Patch Changes
+
+- 2e9998d: Fix npx execution: add #!/usr/bin/env node shebang to built dist/index.js
+
 ## 0.3.1
 
 ### Patch Changes
