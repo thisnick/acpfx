@@ -10,6 +10,7 @@
 
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 // ---- Manifest Types ----
@@ -126,16 +127,11 @@ export function handleManifestFlag(manifestPath?: string): void {
  */
 function printManifest(manifestPath?: string): void {
   if (!manifestPath) {
-    const script = process.argv[1];
-    const scriptDir = dirname(script);
-    const scriptBase = script.replace(/\.[^.]+$/, "");
-    const colocated = `${scriptBase}.manifest.json`;
-    try {
-      readFileSync(colocated);
-      manifestPath = colocated;
-    } catch {
-      manifestPath = join(scriptDir, "manifest.json");
-    }
+    // Use import.meta.url to find the bundle's real location on disk.
+    // This works even when invoked via npx symlinks in .bin/ because
+    // import.meta.url resolves to the actual file, not the symlink.
+    const bundleDir = dirname(fileURLToPath(import.meta.url));
+    manifestPath = join(bundleDir, "manifest.json");
   }
 
   try {

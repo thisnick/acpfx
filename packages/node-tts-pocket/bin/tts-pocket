@@ -1,0 +1,35 @@
+#!/usr/bin/env node
+
+"use strict";
+
+const { spawnSync } = require("child_process");
+const { join } = require("path");
+const { existsSync } = require("fs");
+
+function getBinaryPath() {
+  if (process.env.TTS_POCKET_BINARY_PATH) {
+    return process.env.TTS_POCKET_BINARY_PATH;
+  }
+
+  const ext = process.platform === "win32" ? ".exe" : "";
+  const binName = `tts-pocket-${process.platform}-${process.arch}${ext}`;
+  const binPath = join(__dirname, binName);
+
+  if (!existsSync(binPath)) {
+    throw new Error(
+      `Could not find the tts-pocket binary for your platform (${process.platform} ${process.arch}).\n` +
+      `Expected: ${binPath}\n` +
+      `The postinstall script may have failed. Try reinstalling:\n` +
+      `  npm install @acpfx/tts-pocket\n` +
+      `Or set TTS_POCKET_BINARY_PATH to a local build.`
+    );
+  }
+
+  return binPath;
+}
+
+const binPath = getBinaryPath();
+const { status } = spawnSync(binPath, process.argv.slice(2), {
+  stdio: "inherit",
+});
+process.exitCode = status !== null ? status : 1;

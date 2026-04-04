@@ -2243,6 +2243,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "serde_json",
+ "serde_yaml",
  "sys-voice",
  "tokio",
 ]
@@ -2342,6 +2343,7 @@ dependencies = [
  "rubato 0.14.1",
  "serde",
  "serde_json",
+ "serde_yaml",
 ]
 
 [[package]]

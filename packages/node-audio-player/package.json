@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@acpfx/core": "workspace:*",
-    "speaker": "^0.5.5",
     "@acpfx/node-sdk": "workspace:*",
     "yaml": "^2.8.3"
   }
