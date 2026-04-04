@@ -86,46 +86,67 @@ for name in "${TS_NODES[@]}"; do
   test_ts_package "$name"
 done
 
-# Test native binary (mic-speaker) — just test the local binary directly
-echo -n "TEST: mic-speaker --acpfx-manifest ... "
-if [ -x "$ROOT/target/debug/mic-speaker" ]; then
-  output=$("$ROOT/target/debug/mic-speaker" --acpfx-manifest 2>/dev/null || true)
-  if echo "$output" | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-assert d['name'] == 'mic-speaker'
-assert 'arguments' in d
-" 2>/dev/null; then
-    echo "PASS"
-    PASS=$((PASS + 1))
-  else
-    echo "FAIL"
-    echo "  output: ${output:0:200}"
-    FAIL=$((FAIL + 1))
-  fi
-else
-  echo "SKIP (binary not built)"
-fi
+# Auto-discover native Rust nodes (have Cargo.toml)
+for d in "$ROOT"/packages/node-*/; do
+  name=$(basename "$d" | sed 's/^node-//')
+  [ -f "$d/Cargo.toml" ] || continue
 
-# Test tts-pocket native binary
-echo -n "TEST: tts-pocket --acpfx-manifest ... "
-if [ -x "$ROOT/target/debug/tts-pocket" ]; then
-  output=$("$ROOT/target/debug/tts-pocket" --acpfx-manifest 2>/dev/null || true)
-  if echo "$output" | python3 -c "
+  echo -n "TEST: $name --acpfx-manifest (native) ... "
+  bin="$ROOT/target/debug/$name"
+  if [ -x "$bin" ]; then
+    output=$("$bin" --acpfx-manifest 2>/dev/null || true)
+    if echo "$output" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-assert d['name'] == 'tts-pocket'
+assert 'name' in d, 'missing name'
+assert 'consumes' in d, 'missing consumes'
+assert 'emits' in d, 'missing emits'
 " 2>/dev/null; then
-    echo "PASS"
-    PASS=$((PASS + 1))
+      echo "PASS"
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL"
+      echo "  output: ${output:0:200}"
+      FAIL=$((FAIL + 1))
+    fi
   else
-    echo "FAIL"
-    echo "  output: ${output:0:200}"
-    FAIL=$((FAIL + 1))
+    echo "SKIP (binary not built)"
   fi
-else
-  echo "SKIP (binary not built)"
-fi
+done
+
+# Auto-discover Python nodes (have bin/ wrapper + src/*.py, no Cargo.toml, no src/index.ts)
+for d in "$ROOT"/packages/node-*/; do
+  name=$(basename "$d" | sed 's/^node-//')
+  [ -f "$d/Cargo.toml" ] && continue
+  [ -f "$d/src/index.ts" ] && continue
+  [ -d "$d/bin" ] || continue
+  [ -d "$d/src" ] || continue
+
+  # Find .py file in src/
+  py_file=$(find "$d/src" -name "*.py" -maxdepth 1 | head -1)
+  [ -n "$py_file" ] || continue
+
+  echo -n "TEST: $name --acpfx-manifest (python) ... "
+  if command -v uv &>/dev/null; then
+    output=$(uv run --python ">=3.10" "$py_file" --acpfx-manifest 2>/dev/null || true)
+    if echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+assert 'name' in d, 'missing name'
+assert 'consumes' in d, 'missing consumes'
+assert 'emits' in d, 'missing emits'
+" 2>/dev/null; then
+      echo "PASS"
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL"
+      echo "  output: ${output:0:200}"
+      FAIL=$((FAIL + 1))
+    fi
+  else
+    echo "SKIP (uv not installed)"
+  fi
+done
 
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
