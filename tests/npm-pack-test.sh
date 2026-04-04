@@ -14,19 +14,12 @@ ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PASS=0
 FAIL=0
 
-# TS node packages (use pnpm pack → npm install → run bin)
-TS_NODES=(
-  stt-deepgram
-  stt-elevenlabs
-  tts-deepgram
-  tts-elevenlabs
-  bridge-acpx
-  audio-player
-  recorder
-  mic-file
-  play-file
-  echo
-)
+# Auto-discover TS node packages (have src/index.ts + manifest.yaml)
+TS_NODES=()
+for d in "$ROOT"/packages/node-*/; do
+  name=$(basename "$d" | sed 's/^node-//')
+  [ -f "$d/src/index.ts" ] && [ -f "$d/manifest.yaml" ] && TS_NODES+=("$name")
+done
 
 test_ts_package() {
   local name="$1"
