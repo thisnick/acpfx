@@ -1,5 +1,11 @@
 # @acpfx/mic-speaker
 
+## 0.4.5
+
+### Patch Changes
+
+- bf5d242: Remove stale mic-aec-darwin-arm64 binary that was accidentally included in published package
+
 ## 0.4.4
 
 ### Patch Changes
