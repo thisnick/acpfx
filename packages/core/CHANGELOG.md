@@ -1,5 +1,11 @@
 # @acpfx/core
 
+## 0.4.1
+
+### Patch Changes
+
+- 05c4208: Embed manifest.yaml via include_str in native binaries (no hardcoded inline). Fix realpathSync for npx symlink manifest resolution. Remove speaker dep from audio-player.
+
 ## 0.4.0
 
 ### Minor Changes
