@@ -8,7 +8,7 @@
  *   --acpfx-*  (unknown)   Print {"unsupported": true, "flag": "..."} and exit
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { z } from "zod";
 
@@ -126,7 +126,10 @@ export function handleManifestFlag(manifestPath?: string): void {
  */
 function printManifest(manifestPath?: string): void {
   if (!manifestPath) {
-    const script = process.argv[1];
+    // Resolve symlinks — npx creates a symlink in .bin/ pointing to dist/index.js,
+    // so we need the real path to find the co-located manifest.json
+    let script = process.argv[1];
+    try { script = realpathSync(script); } catch {}
     const scriptDir = dirname(script);
     const scriptBase = script.replace(/\.[^.]+$/, "");
     const colocated = `${scriptBase}.manifest.json`;
