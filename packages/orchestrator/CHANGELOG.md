@@ -1,5 +1,11 @@
 # acpfx
 
+## 0.5.1
+
+### Patch Changes
+
+- 8d72303: Orchestrator falls back to --acpfx-manifest flag when no co-located manifest file exists (production/npx mode)
+
 ## 0.5.0
 
 ### Minor Changes
