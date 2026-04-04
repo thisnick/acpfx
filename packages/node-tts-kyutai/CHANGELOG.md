@@ -1,5 +1,11 @@
 # @acpfx/tts-kyutai
 
+## 0.2.2
+
+### Patch Changes
+
+- 13d47a9: Fix manifest lookup in Python nodes: use os.path.realpath + load manifest.yaml from package root instead of hardcoded inline JSON
+
 ## 0.2.1
 
 ### Patch Changes
