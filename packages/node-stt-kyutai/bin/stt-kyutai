@@ -3,5 +3,12 @@ if ! command -v uv &>/dev/null; then
     echo '{"type":"error","message":"uv is required but not installed. Install: curl -LsSf https://astral.sh/uv/install.sh | sh (macOS/Linux) or powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\" (Windows)"}' >&1
     exit 1
 fi
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve symlinks — npx creates symlinks in .bin/ pointing to the real bin/
+SELF="$0"
+while [ -L "$SELF" ]; do
+  DIR="$(cd "$(dirname "$SELF")" && pwd)"
+  SELF="$(readlink "$SELF")"
+  [[ "$SELF" != /* ]] && SELF="$DIR/$SELF"
+done
+SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
 exec uv run --python ">=3.10" "$SCRIPT_DIR/../src/stt_kyutai.py" "$@"

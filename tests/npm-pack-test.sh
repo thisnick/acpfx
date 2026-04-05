@@ -115,6 +115,7 @@ assert 'emits' in d, 'missing emits'
 done
 
 # Auto-discover Python nodes (have bin/ wrapper + src/*.py, no Cargo.toml, no src/index.ts)
+# Test via pnpm pack + npm install to verify symlink resolution works
 for d in "$ROOT"/packages/node-*/; do
   name=$(basename "$d" | sed 's/^node-//')
   [ -f "$d/Cargo.toml" ] && continue
@@ -122,30 +123,55 @@ for d in "$ROOT"/packages/node-*/; do
   [ -d "$d/bin" ] || continue
   [ -d "$d/src" ] || continue
 
-  # Find .py file in src/
   py_file=$(find "$d/src" -name "*.py" -maxdepth 1 | head -1)
   [ -n "$py_file" ] || continue
 
-  echo -n "TEST: $name --acpfx-manifest (python) ... "
-  if command -v uv &>/dev/null; then
-    output=$(uv run --python ">=3.10" "$py_file" --acpfx-manifest 2>/dev/null || true)
-    if echo "$output" | python3 -c "
+  echo -n "TEST: @acpfx/$name --acpfx-manifest (python, packed) ... "
+  if ! command -v uv &>/dev/null; then
+    echo "SKIP (uv not installed)"
+    continue
+  fi
+
+  tmp=$(mktemp -d)
+
+  # Pack with pnpm (resolves workspace: protocol)
+  cd "$d"
+  pnpm pack --pack-destination "$tmp" >/dev/null 2>&1
+
+  # Install in isolation
+  cd "$tmp"
+  echo '{}' > package.json
+  npm install acpfx-*.tgz --silent 2>/dev/null
+
+  # Run via bin link (tests symlink resolution)
+  bin_name="acpfx-$name"
+  if [ ! -f "node_modules/.bin/$bin_name" ]; then
+    echo "FAIL (bin '$bin_name' not found)"
+    FAIL=$((FAIL + 1))
+    cd "$ROOT"
+    rm -rf "$tmp"
+    continue
+  fi
+
+  output=$("node_modules/.bin/$bin_name" --acpfx-manifest 2>/dev/null || true)
+
+  if echo "$output" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 assert 'name' in d, 'missing name'
 assert 'consumes' in d, 'missing consumes'
 assert 'emits' in d, 'missing emits'
 " 2>/dev/null; then
-      echo "PASS"
-      PASS=$((PASS + 1))
-    else
-      echo "FAIL"
-      echo "  output: ${output:0:200}"
-      FAIL=$((FAIL + 1))
-    fi
+    echo "PASS"
+    PASS=$((PASS + 1))
   else
-    echo "SKIP (uv not installed)"
+    echo "FAIL"
+    echo "  output: ${output:0:200}"
+    FAIL=$((FAIL + 1))
   fi
+
+  cd "$ROOT"
+  rm -rf "$tmp"
 done
 
 echo ""
