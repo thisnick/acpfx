@@ -1,5 +1,11 @@
 # @acpfx/stt-kyutai
 
+## 0.3.2
+
+### Patch Changes
+
+- dca8263: Fix npx symlink resolution in Python node bash wrappers
+
 ## 0.3.1
 
 ### Patch Changes
