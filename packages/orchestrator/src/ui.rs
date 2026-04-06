@@ -17,6 +17,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use ratatui::Terminal;
 
+use crate::ui_widgets::{HoldState, UiAction};
+
 // ---- Per-node state ----
 
 #[derive(Debug, Clone)]
@@ -142,6 +144,8 @@ pub struct UiState {
     agent_scroll: usize,
     /// Whether to auto-scroll the agent panel.
     agent_auto_scroll: bool,
+    /// Node status strings (from node.status events), keyed by node name.
+    node_statuses: BTreeMap<String, String>,
 }
 
 impl UiState {
@@ -163,6 +167,7 @@ impl UiState {
             conversation: Vec::new(),
             agent_scroll: 0,
             agent_auto_scroll: true,
+            node_statuses: BTreeMap::new(),
         }
     }
 
@@ -304,6 +309,11 @@ impl UiState {
                 node.error = event.get("message").and_then(|v| v.as_str()).map(String::from);
             }
 
+            "node.status" => {
+                let text = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                self.node_statuses.insert(from.to_string(), text);
+            }
+
             "log" => {
                 let msg = event.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 self.logs.push(LogEntry { from: from.to_string(), message: msg });
@@ -363,6 +373,10 @@ fn render_frame(
         // Log panel gets remaining space when verbose, hidden otherwise
         if verbose {
             constraints.push(Constraint::Min(5));
+        }
+        // Status bar (1 line at bottom)
+        if !state.node_statuses.is_empty() {
+            constraints.push(Constraint::Length(1));
         }
 
         let areas = Layout::vertical(constraints).split(frame.area());
@@ -578,6 +592,25 @@ fn render_frame(
             let log_list = List::new(log_items).block(log_block);
             frame.render_widget(log_list, areas[num_nodes]);
         }
+
+        // Status bar (node statuses)
+        if !state.node_statuses.is_empty() {
+            let status_area_idx = if verbose { num_nodes + 1 } else { num_nodes };
+            let mut spans: Vec<Span> = Vec::new();
+            for (i, (node, text)) in state.node_statuses.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
+                }
+                spans.push(Span::styled(
+                    format!("{node}: "),
+                    Style::default().fg(Color::DarkGray),
+                ));
+                spans.push(Span::raw(text.as_str()));
+            }
+            let line = Line::from(spans);
+            let paragraph = Paragraph::new(line);
+            frame.render_widget(paragraph, areas[status_area_idx]);
+        }
     })?;
 
     Ok(())
@@ -593,10 +626,36 @@ pub fn create_ui_state(manifest_data: &[(String, String, Vec<String>)]) -> UiHan
     Arc::new(Mutex::new(UiState::new(manifest_data)))
 }
 
+/// Keybind registration from manifest controls.
+struct RegisteredKeybind {
+    /// The key code to match.
+    key: KeyCode,
+    /// The node name that declared this control.
+    node: String,
+    /// The control ID.
+    control_id: String,
+    /// Whether this is a hold-to-activate control.
+    hold: bool,
+}
+
+/// Parse a keybind string (e.g., "space", "m") into a KeyCode.
+fn parse_keybind(s: &str) -> Option<KeyCode> {
+    match s.to_lowercase().as_str() {
+        "space" => Some(KeyCode::Char(' ')),
+        s if s.len() == 1 => Some(KeyCode::Char(s.chars().next().unwrap())),
+        _ => None,
+    }
+}
+
 /// Run the terminal UI. Blocks until Ctrl+C or 'q' is pressed.
 /// Call from a dedicated thread. Returns when the UI should exit.
 /// When `verbose` is false, the log panel is hidden.
-pub fn run_ui(state: UiHandle, verbose: bool) -> io::Result<()> {
+pub fn run_ui(
+    state: UiHandle,
+    verbose: bool,
+    ui_controls: &BTreeMap<String, Vec<acpfx_schema::manifest::ManifestControl>>,
+    cmd_tx: tokio::sync::mpsc::UnboundedSender<UiAction>,
+) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stderr = io::stderr();
     execute!(stderr, EnterAlternateScreen, EnableMouseCapture)?;
@@ -605,11 +664,52 @@ pub fn run_ui(state: UiHandle, verbose: bool) -> io::Result<()> {
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
 
+    // Register keybinds from manifest controls
+    let mut keybinds: Vec<RegisteredKeybind> = Vec::new();
+    for (node_name, controls) in ui_controls {
+        for ctrl in controls {
+            if let Some(ref kb_str) = ctrl.keybind {
+                if let Some(key) = parse_keybind(kb_str) {
+                    keybinds.push(RegisteredKeybind {
+                        key,
+                        node: node_name.clone(),
+                        control_id: ctrl.id.clone(),
+                        hold: ctrl.hold.unwrap_or(false),
+                    });
+                }
+            }
+        }
+    }
+
+    // Hold state for hold-to-activate controls
+    let mut hold_states: BTreeMap<String, HoldState> = BTreeMap::new();
+    for kb in &keybinds {
+        if kb.hold {
+            let key = format!("{}:{}", kb.node, kb.control_id);
+            hold_states.insert(key, HoldState::new(300));
+        }
+    }
+
     loop {
         // Render current state
         {
             let s = state.lock().unwrap();
             render_frame(&mut terminal, &s, verbose)?;
+        }
+
+        // Check hold timeouts (deactivate if key was released)
+        for (key, hold) in &mut hold_states {
+            if hold.check_timeout() {
+                // Key released — deactivate (mute)
+                let parts: Vec<&str> = key.splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    let _ = cmd_tx.send(UiAction::ControlToggle {
+                        node: parts[0].to_string(),
+                        control_id: parts[1].to_string(),
+                        value: false, // hold released = deactivate = mute
+                    });
+                }
+            }
         }
 
         // Poll for terminal events (with timeout for refresh)
@@ -621,38 +721,72 @@ pub fn run_ui(state: UiHandle, verbose: bool) -> io::Result<()> {
                     {
                         break;
                     }
-                    // Arrow keys scroll the agent conversation panel
-                    match key.code {
-                        KeyCode::Up => {
-                            let mut s = state.lock().unwrap();
-                            s.agent_auto_scroll = false;
-                            s.agent_scroll = s.agent_scroll.saturating_sub(1);
+
+                    // Check manifest keybinds
+                    let mut handled = false;
+                    for kb in &keybinds {
+                        if key.code == kb.key {
+                            if kb.hold {
+                                let hold_key = format!("{}:{}", kb.node, kb.control_id);
+                                if let Some(hold) = hold_states.get_mut(&hold_key) {
+                                    if hold.on_press() {
+                                        // New activation — unmute (value=true means "activate toggle" which means unmute for hold)
+                                        // For hold: true, pressing activates (unmutes), releasing deactivates (mutes)
+                                        // The event field is "muted", so we send muted=false on press, muted=true on release
+                                        let _ = cmd_tx.send(UiAction::ControlToggle {
+                                            node: kb.node.clone(),
+                                            control_id: kb.control_id.clone(),
+                                            value: false, // muted=false (unmute on press)
+                                        });
+                                    }
+                                }
+                            } else {
+                                // Simple toggle — alternate value
+                                let _ = cmd_tx.send(UiAction::ControlToggle {
+                                    node: kb.node.clone(),
+                                    control_id: kb.control_id.clone(),
+                                    value: true,
+                                });
+                            }
+                            handled = true;
+                            break;
                         }
-                        KeyCode::Down => {
-                            let mut s = state.lock().unwrap();
-                            s.agent_auto_scroll = false;
-                            s.agent_scroll = s.agent_scroll.saturating_add(1);
+                    }
+
+                    if !handled {
+                        // Arrow keys scroll the agent conversation panel
+                        match key.code {
+                            KeyCode::Up => {
+                                let mut s = state.lock().unwrap();
+                                s.agent_auto_scroll = false;
+                                s.agent_scroll = s.agent_scroll.saturating_sub(1);
+                            }
+                            KeyCode::Down => {
+                                let mut s = state.lock().unwrap();
+                                s.agent_auto_scroll = false;
+                                s.agent_scroll = s.agent_scroll.saturating_add(1);
+                            }
+                            KeyCode::PageUp => {
+                                let mut s = state.lock().unwrap();
+                                s.agent_auto_scroll = false;
+                                s.agent_scroll = s.agent_scroll.saturating_sub(10);
+                            }
+                            KeyCode::PageDown => {
+                                let mut s = state.lock().unwrap();
+                                s.agent_auto_scroll = false;
+                                s.agent_scroll = s.agent_scroll.saturating_add(10);
+                            }
+                            KeyCode::End => {
+                                let mut s = state.lock().unwrap();
+                                s.agent_auto_scroll = true;
+                            }
+                            KeyCode::Home => {
+                                let mut s = state.lock().unwrap();
+                                s.agent_auto_scroll = false;
+                                s.agent_scroll = 0;
+                            }
+                            _ => {}
                         }
-                        KeyCode::PageUp => {
-                            let mut s = state.lock().unwrap();
-                            s.agent_auto_scroll = false;
-                            s.agent_scroll = s.agent_scroll.saturating_sub(10);
-                        }
-                        KeyCode::PageDown => {
-                            let mut s = state.lock().unwrap();
-                            s.agent_auto_scroll = false;
-                            s.agent_scroll = s.agent_scroll.saturating_add(10);
-                        }
-                        KeyCode::End => {
-                            let mut s = state.lock().unwrap();
-                            s.agent_auto_scroll = true;
-                        }
-                        KeyCode::Home => {
-                            let mut s = state.lock().unwrap();
-                            s.agent_auto_scroll = false;
-                            s.agent_scroll = 0;
-                        }
-                        _ => {}
                     }
                 }
                 Event::Mouse(mouse) => {

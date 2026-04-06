@@ -3,9 +3,11 @@ description: Captures mic audio with acoustic echo cancellation (native Rust)
 consumes:
   - audio.chunk
   - control.interrupt
+  - custom.mute
 emits:
   - audio.chunk
   - audio.level
+  - node.status
   - lifecycle.ready
   - lifecycle.done
   - control.error
@@ -25,3 +27,13 @@ arguments:
   debugDir:
     type: string
     description: "Directory to write debug WAV recordings"
+ui:
+  controls:
+    - id: mute
+      type: toggle
+      label: "Mute"
+      hold: true
+      keybind: space
+      event:
+        type: custom.mute
+        field: muted

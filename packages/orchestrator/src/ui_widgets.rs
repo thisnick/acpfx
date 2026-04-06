@@ -501,4 +501,182 @@ mod tests {
         // Release when not active is no-op
         assert!(!hold.on_release());
     }
+
+    // ---- Evaluator Phase 2: additional edge case tests ----
+
+    #[test]
+    fn scrollable_text_scroll_up_at_zero() {
+        let mut widget = ScrollableText::new("Test");
+        widget.lines = (0..10).map(|i| Line::from(format!("line {i}"))).collect();
+        widget.auto_scroll = false;
+        widget.scroll_offset = 0;
+
+        widget.handle_key(KeyEvent::new(KeyCode::Up, crossterm::event::KeyModifiers::NONE));
+        assert_eq!(widget.scroll_offset, 0, "scroll_offset should not underflow");
+
+        widget.handle_mouse_scroll(-5);
+        assert_eq!(widget.scroll_offset, 0, "mouse scroll up at 0 should not underflow");
+    }
+
+    #[test]
+    fn scrollable_text_clamped_offset() {
+        let mut widget = ScrollableText::new("Test");
+        widget.lines = (0..10).map(|i| Line::from(format!("line {i}"))).collect();
+        widget.scroll_offset = 999;
+        // With 10 lines and a visible height of 5, max offset is 5
+        let clamped = widget.clamped_offset(5);
+        assert_eq!(clamped, 5);
+    }
+
+    #[test]
+    fn scrollable_text_auto_scroll_disables_on_manual_scroll() {
+        let mut widget = ScrollableText::new("Test");
+        widget.lines = (0..50).map(|i| Line::from(format!("line {i}"))).collect();
+        assert!(widget.auto_scroll);
+
+        widget.handle_key(KeyEvent::new(KeyCode::Up, crossterm::event::KeyModifiers::NONE));
+        assert!(!widget.auto_scroll, "manual Up should disable auto_scroll");
+
+        widget.scroll_to_bottom();
+        assert!(widget.auto_scroll, "scroll_to_bottom should re-enable auto_scroll");
+    }
+
+    #[test]
+    fn scrollable_text_page_up_down() {
+        let mut widget = ScrollableText::new("Test");
+        widget.lines = (0..100).map(|i| Line::from(format!("line {i}"))).collect();
+        widget.auto_scroll = false;
+        widget.scroll_offset = 20;
+
+        widget.handle_key(KeyEvent::new(KeyCode::PageUp, crossterm::event::KeyModifiers::NONE));
+        assert_eq!(widget.scroll_offset, 10);
+
+        widget.handle_key(KeyEvent::new(KeyCode::PageDown, crossterm::event::KeyModifiers::NONE));
+        assert_eq!(widget.scroll_offset, 20);
+    }
+
+    #[test]
+    fn focus_ring_empty() {
+        let mut ring = FocusRing::new(vec![]);
+        assert_eq!(ring.focused_panel(), None);
+        ring.next(); // should not panic
+        ring.prev(); // should not panic
+        assert_eq!(ring.focused_panel(), None);
+    }
+
+    #[test]
+    fn focus_ring_single_panel() {
+        let mut ring = FocusRing::new(vec!["only".into()]);
+        assert_eq!(ring.focused_panel(), Some("only"));
+        ring.next();
+        assert_eq!(ring.focused_panel(), Some("only"));
+        ring.prev();
+        assert_eq!(ring.focused_panel(), Some("only"));
+    }
+
+    #[test]
+    fn focus_ring_hit_test() {
+        let mut ring = FocusRing::new(vec!["top".into(), "bottom".into()]);
+        ring.panel_areas = vec![
+            Rect { x: 0, y: 0, width: 80, height: 10 },
+            Rect { x: 0, y: 10, width: 80, height: 10 },
+        ];
+
+        // Create mouse event in top panel area
+        let mouse_top = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 5,
+            row: 3,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(ring.panel_at(&mouse_top), Some("top"));
+
+        // Create mouse event in bottom panel area
+        let mouse_bottom = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 5,
+            row: 15,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(ring.panel_at(&mouse_bottom), Some("bottom"));
+
+        // Mouse outside all panels
+        let mouse_outside = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 5,
+            row: 25,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(ring.panel_at(&mouse_outside), None);
+    }
+
+    #[test]
+    fn focus_ring_focus_at_changes_focus() {
+        let mut ring = FocusRing::new(vec!["a".into(), "b".into()]);
+        ring.panel_areas = vec![
+            Rect { x: 0, y: 0, width: 80, height: 10 },
+            Rect { x: 0, y: 10, width: 80, height: 10 },
+        ];
+        assert!(ring.is_focused("a"));
+
+        let mouse = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 5,
+            row: 15,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        let changed = ring.focus_at(&mouse);
+        assert!(changed);
+        assert!(ring.is_focused("b"));
+
+        // Click same panel again
+        let changed = ring.focus_at(&mouse);
+        assert!(!changed, "clicking already-focused panel should return false");
+    }
+
+    #[test]
+    fn hold_state_timeout() {
+        let mut hold = HoldState::new(10); // 10ms timeout for test speed
+        hold.on_press();
+        assert!(hold.active);
+
+        // Should not timeout immediately
+        assert!(!hold.check_timeout());
+
+        // Sleep past the timeout
+        std::thread::sleep(std::time::Duration::from_millis(15));
+        assert!(hold.check_timeout());
+        assert!(!hold.active);
+    }
+
+    #[test]
+    fn scroll_delta_parsing() {
+        let scroll_up = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 0, row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(FocusRing::scroll_delta(&scroll_up), Some(-3));
+
+        let scroll_down = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 0, row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(FocusRing::scroll_delta(&scroll_down), Some(3));
+
+        let click = MouseEvent {
+            kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 0, row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        };
+        assert_eq!(FocusRing::scroll_delta(&click), None);
+    }
+
+    #[test]
+    fn status_bar_empty() {
+        let bar = StatusBar::new();
+        assert!(bar.node_statuses.is_empty());
+        assert!(bar.control_indicators.is_empty());
+    }
 }

@@ -225,6 +225,9 @@ async fn main() {
     let handle_for_playback = handle.clone();
     let interrupted = Arc::new(AtomicBool::new(false));
     let interrupted_clone = interrupted.clone();
+    let muted = Arc::new(AtomicBool::new(true)); // start muted (push-to-talk: hold Space to unmute)
+    let muted_for_stdin = muted.clone();
+    let muted_for_capture = muted.clone();
     let speaker_clone = speaker.clone();
 
     // Stdin thread — parse events, play speaker audio directly per-chunk
@@ -236,8 +239,15 @@ async fn main() {
         eprintln!("[mic-speaker] Consider setting sampleRate: {} in config", native_rate);
     }
 
+    // Emit initial node.status (muted by default)
+    let status_msg = json!({"type": "node.status", "text": "Muted (hold Space)"});
+    writeln!(out, "{}", status_msg).unwrap();
+    out.flush().unwrap();
+
     std::thread::spawn(move || {
         let stdin = io::stdin();
+        let stdout_for_status = io::stdout();
+        let mut status_out = io::BufWriter::new(stdout_for_status.lock());
         for line in stdin.lock().lines() {
             let line = match line {
                 Ok(l) => l,
@@ -248,7 +258,15 @@ async fn main() {
             if let Ok(event) = serde_json::from_str::<Value>(&line) {
                 let event_type = event["type"].as_str().unwrap_or("");
 
-                if event_type == "control.interrupt" {
+                if event_type == "custom.mute" {
+                    let is_muted = event["muted"].as_bool().unwrap_or(true);
+                    muted_for_stdin.store(is_muted, Ordering::Relaxed);
+                    let text = if is_muted { "Muted (hold Space)" } else { "Listening" };
+                    let status = json!({"type": "node.status", "text": text});
+                    let _ = writeln!(status_out, "{}", status);
+                    let _ = status_out.flush();
+                    eprintln!("[mic-speaker] Mute: {}", is_muted);
+                } else if event_type == "control.interrupt" {
                     interrupted_clone.store(true, Ordering::Relaxed);
                     // Instantly clear sys-voice's playback buffer — speaker goes silent
                     let _ = handle_for_playback.clear_playback();
@@ -290,9 +308,13 @@ async fn main() {
 
                 while buffer.len() >= chunk_samples {
                     let chunk: Vec<f32> = buffer.drain(..chunk_samples).collect();
-                    // Record capture audio
+                    // Record capture audio (even when muted, to keep session alive)
                     if let Ok(mut w) = capture_wav.lock() {
                         if let Some(ref mut wav) = *w { wav.write_f32(&chunk); }
+                    }
+                    // Skip emitting events when muted (still reading audio to keep capture alive)
+                    if muted_for_capture.load(Ordering::Relaxed) {
+                        continue;
                     }
                     let b64 = samples_to_base64(&chunk);
                     let (rms, peak, dbfs) = compute_level(&chunk);

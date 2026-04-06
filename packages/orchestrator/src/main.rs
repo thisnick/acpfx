@@ -198,12 +198,16 @@ async fn main() {
             if !headless {
                 // UI mode: create shared state, spawn UI thread, feed events
                 let manifests = orch.get_manifests();
+                let ui_controls = orch.get_ui_controls().clone();
                 let ui_state = ui::create_ui_state(&manifests);
                 let ui_state_render = ui_state.clone();
 
+                // Create UI action channel for UI -> orchestrator communication
+                let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<ui_widgets::UiAction>();
+
                 // Spawn the ratatui rendering loop on a dedicated thread
                 let ui_thread = std::thread::spawn(move || {
-                    if let Err(e) = ui::run_ui(ui_state_render, verbose) {
+                    if let Err(e) = ui::run_ui(ui_state_render, verbose, &ui_controls, cmd_tx) {
                         ui::restore_terminal();
                         eprintln!("[acpfx] UI error: {e}");
                     }
@@ -214,11 +218,11 @@ async fn main() {
                 // Run routing loop, pushing events to shared UI state
                 let ui_state_events = ui_state.clone();
                 tokio::select! {
-                    _ = orch.run(move |event| {
+                    _ = orch.run_with_ui(move |event| {
                         if let Ok(mut s) = ui_state_events.lock() {
                             s.handle_event(event);
                         }
-                    }) => {}
+                    }, Some(cmd_rx)) => {}
                     _ = shutdown_rx.recv() => {}
                 }
 

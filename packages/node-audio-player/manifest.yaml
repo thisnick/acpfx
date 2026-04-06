@@ -10,7 +10,7 @@ consumes:
   - control.interrupt
 emits:
   - audio.chunk
-  - player.status
+  - node.status
   - lifecycle.ready
   - lifecycle.done
 arguments:

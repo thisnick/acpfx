@@ -654,4 +654,146 @@ emits:
         let manifest: NodeManifest = serde_yaml::from_str(yaml).unwrap();
         assert!(manifest.ui.is_none());
     }
+
+    // ---- Evaluator Phase 1: ManifestUi stress tests ----
+
+    #[test]
+    fn manifest_ui_roundtrip_json() {
+        let manifest = NodeManifest {
+            name: "test-mic".into(),
+            description: None,
+            consumes: vec!["custom.mute".into()],
+            emits: vec!["node.status".into(), "lifecycle.ready".into()],
+            arguments: BTreeMap::new(),
+            additional_arguments: None,
+            env: BTreeMap::new(),
+            ui: Some(ManifestUi {
+                controls: vec![ManifestControl {
+                    id: "mute".into(),
+                    type_: ControlType::Toggle,
+                    label: Some("Mute".into()),
+                    hold: Some(true),
+                    keybind: Some("space".into()),
+                    event: ControlEventSpec {
+                        type_: "custom.mute".into(),
+                        field: "muted".into(),
+                    },
+                }],
+            }),
+        };
+        let json = serde_json::to_string(&manifest).unwrap();
+        let back: NodeManifest = serde_json::from_str(&json).unwrap();
+        assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn manifest_ui_roundtrip_yaml() {
+        let manifest = NodeManifest {
+            name: "test-mic".into(),
+            description: None,
+            consumes: vec![],
+            emits: vec!["lifecycle.ready".into()],
+            arguments: BTreeMap::new(),
+            additional_arguments: None,
+            env: BTreeMap::new(),
+            ui: Some(ManifestUi {
+                controls: vec![ManifestControl {
+                    id: "mute".into(),
+                    type_: ControlType::Toggle,
+                    label: None,
+                    hold: None,
+                    keybind: None,
+                    event: ControlEventSpec {
+                        type_: "custom.mute".into(),
+                        field: "muted".into(),
+                    },
+                }],
+            }),
+        };
+        let yaml = serde_yaml::to_string(&manifest).unwrap();
+        let back: NodeManifest = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(manifest, back);
+    }
+
+    #[test]
+    fn manifest_ui_empty_controls_list() {
+        let yaml = r#"
+name: test
+consumes: []
+emits:
+  - lifecycle.ready
+ui:
+  controls: []
+"#;
+        let manifest: NodeManifest = serde_yaml::from_str(yaml).unwrap();
+        let ui = manifest.ui.unwrap();
+        assert!(ui.controls.is_empty());
+    }
+
+    #[test]
+    fn manifest_ui_multiple_controls() {
+        let yaml = r#"
+name: test
+consumes: []
+emits:
+  - lifecycle.ready
+ui:
+  controls:
+    - id: mute
+      type: toggle
+      keybind: space
+      event:
+        type: custom.mute
+        field: muted
+    - id: hold
+      type: toggle
+      label: "Hold"
+      hold: true
+      keybind: h
+      event:
+        type: custom.hold
+        field: held
+"#;
+        let manifest: NodeManifest = serde_yaml::from_str(yaml).unwrap();
+        let ui = manifest.ui.unwrap();
+        assert_eq!(ui.controls.len(), 2);
+        assert_eq!(ui.controls[0].id, "mute");
+        assert_eq!(ui.controls[1].id, "hold");
+        assert_eq!(ui.controls[1].keybind.as_deref(), Some("h"));
+    }
+
+    #[test]
+    fn manifest_ui_reject_unknown_control_type() {
+        let yaml = r#"
+name: test
+consumes: []
+emits:
+  - lifecycle.ready
+ui:
+  controls:
+    - id: foo
+      type: slider
+      event:
+        type: custom.foo
+        field: val
+"#;
+        let result: Result<NodeManifest, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err(), "Should reject unknown control type 'slider'");
+    }
+
+    #[test]
+    fn manifest_ui_control_missing_event() {
+        let yaml = r#"
+name: test
+consumes: []
+emits:
+  - lifecycle.ready
+ui:
+  controls:
+    - id: foo
+      type: toggle
+"#;
+        let result: Result<NodeManifest, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err(), "Should reject control without 'event' field");
+    }
 }
