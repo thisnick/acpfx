@@ -8,6 +8,7 @@ mod orchestrator;
 mod pipeline_resolver;
 mod templates;
 mod ui;
+mod ui_widgets;
 mod user_config;
 
 use std::path::PathBuf;
