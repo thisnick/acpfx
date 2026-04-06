@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::io;
 use std::sync::{Arc, Mutex};
 
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyModifiers, MouseEventKind, EnableMouseCapture, DisableMouseCapture};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::execute;
 use ratatui::backend::CrosstermBackend;
@@ -112,6 +112,23 @@ impl NodeManifest {
     }
 }
 
+// ---- Conversation history ----
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+enum ConversationEntry {
+    Turn {
+        prompt: String,
+        response: String,
+        ttft: Option<u64>,
+        had_thinking: bool,
+        had_tool: bool,
+    },
+    Interrupt {
+        reason: String,
+    },
+}
+
 // ---- Shared UI state ----
 
 #[derive(Debug)]
@@ -119,6 +136,12 @@ pub struct UiState {
     manifests: Vec<NodeManifest>,
     nodes: BTreeMap<String, PerNodeState>,
     logs: Vec<LogEntry>,
+    /// Completed conversation turns and interrupts (agent history).
+    conversation: Vec<ConversationEntry>,
+    /// Scroll offset for the agent conversation panel.
+    agent_scroll: usize,
+    /// Whether to auto-scroll the agent panel.
+    agent_auto_scroll: bool,
 }
 
 impl UiState {
@@ -133,7 +156,14 @@ impl UiState {
             });
             nodes.insert(name.clone(), PerNodeState::default());
         }
-        Self { manifests, nodes, logs: Vec::new() }
+        Self {
+            manifests,
+            nodes,
+            logs: Vec::new(),
+            conversation: Vec::new(),
+            agent_scroll: 0,
+            agent_auto_scroll: true,
+        }
     }
 
     /// Process an event from the orchestrator.
@@ -176,6 +206,16 @@ impl UiState {
 
             "agent.submit" => {
                 node.interrupted = false; // clear stale interrupt flag on new turn
+                // Finalize previous turn into conversation history
+                if !node.agent.prompt.is_empty() && node.agent.status != "idle" {
+                    self.conversation.push(ConversationEntry::Turn {
+                        prompt: node.agent.prompt.clone(),
+                        response: node.agent.text.clone(),
+                        ttft: node.agent.ttft,
+                        had_thinking: node.agent.thinking,
+                        had_tool: node.agent.tool_status.is_some(),
+                    });
+                }
                 let prompt = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 node.agent = NodeAgentState {
                     status: "waiting".into(),
@@ -235,6 +275,16 @@ impl UiState {
                         node.agent.text = text.to_string();
                     }
                 }
+                // Finalize turn into conversation history
+                if !node.agent.prompt.is_empty() {
+                    self.conversation.push(ConversationEntry::Turn {
+                        prompt: node.agent.prompt.clone(),
+                        response: node.agent.text.clone(),
+                        ttft: node.agent.ttft,
+                        had_thinking: false, // thinking phase is over
+                        had_tool: node.agent.tool_status.is_some(),
+                    });
+                }
             }
 
             "player.status" => {
@@ -247,6 +297,8 @@ impl UiState {
 
             "control.interrupt" => {
                 node.interrupted = true;
+                let reason = event.get("reason").and_then(|v| v.as_str()).unwrap_or("interrupted").to_string();
+                self.conversation.push(ConversationEntry::Interrupt { reason });
             }
             "control.error" => {
                 node.error = event.get("message").and_then(|v| v.as_str()).map(String::from);
@@ -261,6 +313,27 @@ impl UiState {
             }
 
             _ => {}
+        }
+    }
+}
+
+// ---- Rendering helpers ----
+
+/// Push word-wrapped lines into a Vec, with an indent prefix.
+fn push_wrapped_lines(lines: &mut Vec<Line<'static>>, raw_line: &str, max_width: usize, prefix: &str) {
+    if raw_line.len() <= max_width {
+        lines.push(Line::from(format!("{prefix}{raw_line}")));
+    } else {
+        let mut pos = 0;
+        while pos < raw_line.len() {
+            let end = (pos + max_width).min(raw_line.len());
+            let break_at = if end < raw_line.len() {
+                raw_line[pos..end].rfind(' ').map(|i| pos + i + 1).unwrap_or(end)
+            } else {
+                end
+            };
+            lines.push(Line::from(format!("{prefix}{}", &raw_line[pos..break_at])));
+            pos = break_at;
         }
     }
 }
@@ -344,79 +417,95 @@ fn render_frame(
                 }
             }
 
-            // Agent widget — status line + thinking/tool/text output
+            // Agent widget — conversation history + current turn
             if manifest.emits_category("agent") {
-                let icon = match node_state.agent.status.as_str() {
-                    "idle" => "\u{23F9}",
-                    "waiting" => "\u{23F3}",
-                    "thinking" => "\u{1F4AD}",
-                    "tool" => "\u{1F527}",
-                    "complete" => "\u{2713}",
-                    _ => "\u{25B6}",
-                };
-                let ttft_str = node_state.agent.ttft.map(|t| format!(" \u{00B7} TTFT: {}ms", t)).unwrap_or_default();
-                lines.push(Line::from(format!(
-                    "{} {} \u{00B7} {} tok{}",
-                    icon, node_state.agent.status, node_state.agent.tokens, ttft_str
-                )));
-
-                // Submitted prompt
-                if !node_state.agent.prompt.is_empty() {
-                    let prompt = if node_state.agent.prompt.len() > 80 {
-                        format!("{}...", &node_state.agent.prompt[..80])
-                    } else {
-                        node_state.agent.prompt.clone()
-                    };
-                    lines.push(Line::from(vec![
-                        Span::styled("  prompt: ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(format!("\"{prompt}\""), Style::default().fg(Color::Cyan)),
-                    ]));
-                }
-
-                // Thinking indicator
-                if node_state.agent.thinking {
-                    lines.push(Line::from(Span::styled(
-                        "  thinking...",
-                        Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
-                    )));
-                }
-
-                // Tool call indicator
-                if node_state.agent.tool_active {
-                    lines.push(Line::from(Span::styled(
-                        "  \u{1F527} tool call...",
-                        Style::default().fg(Color::Yellow),
-                    )));
-                } else if let Some(ref status) = node_state.agent.tool_status {
-                    let color = if status == "completed" { Color::Green }
-                        else if status == "failed" { Color::Red }
-                        else { Color::DarkGray };
-                    lines.push(Line::from(Span::styled(
-                        format!("  \u{1F527} tool call ({status})"),
-                        Style::default().fg(color),
-                    )));
-                }
-
-                // Streamed response text — wrap long lines, include all (scroll handles overflow)
-                if !node_state.agent.text.is_empty() {
-                    let max_width = 100usize;
-                    for raw_line in node_state.agent.text.lines() {
-                        if raw_line.len() <= max_width {
-                            lines.push(Line::from(format!("  > {raw_line}")));
-                        } else {
-                            let mut pos = 0;
-                            while pos < raw_line.len() {
-                                let end = (pos + max_width).min(raw_line.len());
-                                let break_at = if end < raw_line.len() {
-                                    raw_line[pos..end].rfind(' ').map(|i| pos + i + 1).unwrap_or(end)
-                                } else {
-                                    end
-                                };
-                                lines.push(Line::from(format!("  > {}", &raw_line[pos..break_at])));
-                                pos = break_at;
+                // Render past conversation entries
+                for entry in &state.conversation {
+                    match entry {
+                        ConversationEntry::Turn { prompt, response, ttft, had_tool, .. } => {
+                            lines.push(Line::from(Span::styled(
+                                format!("> \"{prompt}\""),
+                                Style::default().fg(Color::Cyan),
+                            )));
+                            let max_width = 100usize;
+                            for raw_line in response.lines() {
+                                push_wrapped_lines(&mut lines, raw_line, max_width, "  ");
                             }
+                            let mut meta_parts = Vec::new();
+                            if let Some(t) = ttft {
+                                meta_parts.push(format!("TTFT: {}ms", t));
+                            }
+                            if *had_tool {
+                                meta_parts.push("tool".into());
+                            }
+                            if !meta_parts.is_empty() {
+                                lines.push(Line::from(Span::styled(
+                                    format!("  ({})", meta_parts.join(" | ")),
+                                    Style::default().fg(Color::DarkGray),
+                                )));
+                            }
+                            lines.push(Line::from("")); // blank separator
+                        }
+                        ConversationEntry::Interrupt { reason } => {
+                            lines.push(Line::from(Span::styled(
+                                format!("--- interrupted: {reason} ---"),
+                                Style::default().fg(Color::Yellow),
+                            )));
                         }
                     }
+                }
+
+                // Render current turn (in-progress)
+                if node_state.agent.status != "idle" && node_state.agent.status != "complete" {
+                    // Status line
+                    let icon = match node_state.agent.status.as_str() {
+                        "waiting" => "\u{23F3}",
+                        "thinking" => "\u{1F4AD}",
+                        "tool" => "\u{1F527}",
+                        _ => "\u{25B6}",
+                    };
+                    let ttft_str = node_state.agent.ttft.map(|t| format!(" \u{00B7} TTFT: {}ms", t)).unwrap_or_default();
+                    lines.push(Line::from(format!(
+                        "{} {} \u{00B7} {} tok{}",
+                        icon, node_state.agent.status, node_state.agent.tokens, ttft_str
+                    )));
+
+                    // Current prompt
+                    if !node_state.agent.prompt.is_empty() {
+                        lines.push(Line::from(Span::styled(
+                            format!("> \"{}\"", node_state.agent.prompt),
+                            Style::default().fg(Color::Cyan),
+                        )));
+                    }
+
+                    // Thinking indicator
+                    if node_state.agent.thinking {
+                        lines.push(Line::from(Span::styled(
+                            "  thinking...",
+                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                        )));
+                    }
+
+                    // Tool call indicator
+                    if node_state.agent.tool_active {
+                        lines.push(Line::from(Span::styled(
+                            "  \u{1F527} tool call...",
+                            Style::default().fg(Color::Yellow),
+                        )));
+                    }
+
+                    // Streamed response text
+                    if !node_state.agent.text.is_empty() {
+                        let max_width = 100usize;
+                        for raw_line in node_state.agent.text.lines() {
+                            push_wrapped_lines(&mut lines, raw_line, max_width, "  ");
+                        }
+                    }
+                } else if state.conversation.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        "Waiting for first prompt...",
+                        Style::default().fg(Color::DarkGray),
+                    )));
                 }
             }
 
@@ -445,10 +534,19 @@ fn render_frame(
                 lines.push(Line::from(if node_state.ready { "ready" } else { "starting..." }));
             }
 
-            // Auto-scroll to bottom: if content exceeds box height, scroll down
+            // Scroll handling: agent panel uses user-controlled scroll; others auto-scroll
             let content_height = lines.len() as u16;
             let box_height = areas[i].height.saturating_sub(2); // minus borders
-            let scroll = content_height.saturating_sub(box_height);
+            let scroll = if manifest.emits_category("agent") {
+                let max_offset = content_height.saturating_sub(box_height) as usize;
+                if state.agent_auto_scroll {
+                    max_offset as u16
+                } else {
+                    (state.agent_scroll.min(max_offset)) as u16
+                }
+            } else {
+                content_height.saturating_sub(box_height)
+            };
             let paragraph = Paragraph::new(lines).block(block).scroll((scroll, 0));
             frame.render_widget(paragraph, areas[i]);
         }
@@ -501,7 +599,7 @@ pub fn create_ui_state(manifest_data: &[(String, String, Vec<String>)]) -> UiHan
 pub fn run_ui(state: UiHandle, verbose: bool) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stderr = io::stderr();
-    execute!(stderr, EnterAlternateScreen)?;
+    execute!(stderr, EnterAlternateScreen, EnableMouseCapture)?;
 
     let backend = CrosstermBackend::new(io::stderr());
     let mut terminal = Terminal::new(backend)?;
@@ -516,24 +614,76 @@ pub fn run_ui(state: UiHandle, verbose: bool) -> io::Result<()> {
 
         // Poll for terminal events (with timeout for refresh)
         if event::poll(std::time::Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                if key.code == KeyCode::Char('q')
-                    || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
-                {
-                    break;
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.code == KeyCode::Char('q')
+                        || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
+                    {
+                        break;
+                    }
+                    // Arrow keys scroll the agent conversation panel
+                    match key.code {
+                        KeyCode::Up => {
+                            let mut s = state.lock().unwrap();
+                            s.agent_auto_scroll = false;
+                            s.agent_scroll = s.agent_scroll.saturating_sub(1);
+                        }
+                        KeyCode::Down => {
+                            let mut s = state.lock().unwrap();
+                            s.agent_auto_scroll = false;
+                            s.agent_scroll = s.agent_scroll.saturating_add(1);
+                        }
+                        KeyCode::PageUp => {
+                            let mut s = state.lock().unwrap();
+                            s.agent_auto_scroll = false;
+                            s.agent_scroll = s.agent_scroll.saturating_sub(10);
+                        }
+                        KeyCode::PageDown => {
+                            let mut s = state.lock().unwrap();
+                            s.agent_auto_scroll = false;
+                            s.agent_scroll = s.agent_scroll.saturating_add(10);
+                        }
+                        KeyCode::End => {
+                            let mut s = state.lock().unwrap();
+                            s.agent_auto_scroll = true;
+                        }
+                        KeyCode::Home => {
+                            let mut s = state.lock().unwrap();
+                            s.agent_auto_scroll = false;
+                            s.agent_scroll = 0;
+                        }
+                        _ => {}
+                    }
                 }
+                Event::Mouse(mouse) => {
+                    // Mouse scroll controls agent panel scroll
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            let mut s = state.lock().unwrap();
+                            s.agent_auto_scroll = false;
+                            s.agent_scroll = s.agent_scroll.saturating_sub(3);
+                        }
+                        MouseEventKind::ScrollDown => {
+                            let mut s = state.lock().unwrap();
+                            s.agent_auto_scroll = false;
+                            s.agent_scroll = s.agent_scroll.saturating_add(3);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
             }
         }
     }
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(io::stderr(), LeaveAlternateScreen)?;
+    execute!(io::stderr(), LeaveAlternateScreen, DisableMouseCapture)?;
     Ok(())
 }
 
 /// Clean up terminal state (call on shutdown if UI thread panicked).
 pub fn restore_terminal() {
     let _ = disable_raw_mode();
-    let _ = execute!(io::stderr(), LeaveAlternateScreen);
+    let _ = execute!(io::stderr(), LeaveAlternateScreen, DisableMouseCapture);
 }
