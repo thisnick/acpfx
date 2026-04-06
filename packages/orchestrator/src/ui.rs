@@ -270,6 +270,7 @@ impl UiState {
 fn render_frame(
     terminal: &mut Terminal<CrosstermBackend<io::Stderr>>,
     state: &UiState,
+    verbose: bool,
 ) -> io::Result<()> {
     terminal.draw(|frame| {
         let num_nodes = state.manifests.len();
@@ -286,8 +287,10 @@ fn render_frame(
                 constraints.push(Constraint::Length(height));
             }
         }
-        // Log panel gets remaining space, minimum 5 lines
-        constraints.push(Constraint::Min(5));
+        // Log panel gets remaining space when verbose, hidden otherwise
+        if verbose {
+            constraints.push(Constraint::Min(5));
+        }
 
         let areas = Layout::vertical(constraints).split(frame.area());
 
@@ -450,31 +453,33 @@ fn render_frame(
             frame.render_widget(paragraph, areas[i]);
         }
 
-        // Log panel
-        let log_block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray))
-            .title(Line::from(Span::styled(" Logs ", Style::default().add_modifier(Modifier::BOLD))));
+        // Log panel (only when verbose)
+        if verbose {
+            let log_block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title(Line::from(Span::styled(" Logs ", Style::default().add_modifier(Modifier::BOLD))));
 
-        let log_area_height = areas[num_nodes].height.saturating_sub(2) as usize; // subtract borders
-        let visible_logs = if state.logs.len() > log_area_height {
-            &state.logs[state.logs.len() - log_area_height..]
-        } else {
-            &state.logs
-        };
+            let log_area_height = areas[num_nodes].height.saturating_sub(2) as usize; // subtract borders
+            let visible_logs = if state.logs.len() > log_area_height {
+                &state.logs[state.logs.len() - log_area_height..]
+            } else {
+                &state.logs
+            };
 
-        let log_items: Vec<ListItem> = visible_logs
-            .iter()
-            .map(|entry| {
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!("[{}] ", entry.from), Style::default().fg(Color::DarkGray)),
-                    Span::raw(&entry.message),
-                ]))
-            })
-            .collect();
+            let log_items: Vec<ListItem> = visible_logs
+                .iter()
+                .map(|entry| {
+                    ListItem::new(Line::from(vec![
+                        Span::styled(format!("[{}] ", entry.from), Style::default().fg(Color::DarkGray)),
+                        Span::raw(&entry.message),
+                    ]))
+                })
+                .collect();
 
-        let log_list = List::new(log_items).block(log_block);
-        frame.render_widget(log_list, areas[num_nodes]);
+            let log_list = List::new(log_items).block(log_block);
+            frame.render_widget(log_list, areas[num_nodes]);
+        }
     })?;
 
     Ok(())
@@ -492,7 +497,8 @@ pub fn create_ui_state(manifest_data: &[(String, String, Vec<String>)]) -> UiHan
 
 /// Run the terminal UI. Blocks until Ctrl+C or 'q' is pressed.
 /// Call from a dedicated thread. Returns when the UI should exit.
-pub fn run_ui(state: UiHandle) -> io::Result<()> {
+/// When `verbose` is false, the log panel is hidden.
+pub fn run_ui(state: UiHandle, verbose: bool) -> io::Result<()> {
     enable_raw_mode()?;
     let mut stderr = io::stderr();
     execute!(stderr, EnterAlternateScreen)?;
@@ -505,7 +511,7 @@ pub fn run_ui(state: UiHandle) -> io::Result<()> {
         // Render current state
         {
             let s = state.lock().unwrap();
-            render_frame(&mut terminal, &s)?;
+            render_frame(&mut terminal, &s, verbose)?;
         }
 
         // Poll for terminal events (with timeout for refresh)

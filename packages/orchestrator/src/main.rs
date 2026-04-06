@@ -53,6 +53,10 @@ enum Commands {
         /// Skip the setup check phase
         #[arg(long)]
         skip_setup: bool,
+
+        /// Show verbose log panel in the dashboard UI
+        #[arg(long)]
+        verbose: bool,
     },
 
     /// Show or modify configuration
@@ -109,6 +113,7 @@ async fn main() {
             headless,
             setup_timeout,
             skip_setup,
+            verbose,
         } => {
             // Resolve pipeline path
             let config_path = if let Some(name) = config.or(pipeline) {
@@ -198,7 +203,7 @@ async fn main() {
 
                 // Spawn the ratatui rendering loop on a dedicated thread
                 let ui_thread = std::thread::spawn(move || {
-                    if let Err(e) = ui::run_ui(ui_state_render) {
+                    if let Err(e) = ui::run_ui(ui_state_render, verbose) {
                         ui::restore_terminal();
                         eprintln!("[acpfx] UI error: {e}");
                     }
