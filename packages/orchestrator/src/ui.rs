@@ -211,16 +211,6 @@ impl UiState {
 
             "agent.submit" => {
                 node.interrupted = false; // clear stale interrupt flag on new turn
-                // Finalize previous turn into conversation history
-                if !node.agent.prompt.is_empty() && node.agent.status != "idle" {
-                    self.conversation.push(ConversationEntry::Turn {
-                        prompt: node.agent.prompt.clone(),
-                        response: node.agent.text.clone(),
-                        ttft: node.agent.ttft,
-                        had_thinking: node.agent.thinking,
-                        had_tool: node.agent.tool_status.is_some(),
-                    });
-                }
                 let prompt = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
                 node.agent = NodeAgentState {
                     status: "waiting".into(),
