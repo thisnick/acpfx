@@ -65,6 +65,52 @@ impl ManifestEnvField {
     }
 }
 
+/// The type of a UI control declared in a manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ControlType {
+    Toggle,
+}
+
+/// The event payload for a UI control action.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ControlEventSpec {
+    /// The event type to send (e.g., "custom.mute").
+    #[serde(rename = "type")]
+    pub type_: String,
+    /// The field name for the value (e.g., "muted").
+    pub field: String,
+}
+
+/// A single UI control declared in a manifest.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ManifestControl {
+    /// Unique control identifier within this node.
+    pub id: String,
+    /// The control type.
+    #[serde(rename = "type")]
+    pub type_: ControlType,
+    /// Display label.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// If true, the control is hold-to-activate (vs press-to-toggle).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold: Option<bool>,
+    /// Global keybind (e.g., "space").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keybind: Option<String>,
+    /// The event to send when the control is toggled.
+    pub event: ControlEventSpec,
+}
+
+/// UI section of a manifest: declares controls the orchestrator renders.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ManifestUi {
+    /// Controls declared by this node.
+    #[serde(default)]
+    pub controls: Vec<ManifestControl>,
+}
+
 /// A complete node manifest (`manifest.yaml`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NodeManifest {
@@ -96,6 +142,10 @@ pub struct NodeManifest {
     /// Environment variable declarations.
     #[serde(default)]
     pub env: BTreeMap<String, ManifestEnvField>,
+
+    /// UI controls declared by this node.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui: Option<ManifestUi>,
 }
 
 impl NodeManifest {
@@ -542,6 +592,7 @@ emits: []
                 );
                 m
             },
+            ui: None,
         };
 
         // Roundtrip via JSON
@@ -553,5 +604,54 @@ emits: []
         let yaml = serde_yaml::to_string(&manifest).unwrap();
         let back_yaml: NodeManifest = serde_yaml::from_str(&yaml).unwrap();
         assert_eq!(manifest, back_yaml);
+    }
+
+    #[test]
+    fn deserialize_manifest_with_ui_controls() {
+        let yaml = r#"
+name: mic-speaker
+consumes:
+  - audio.chunk
+  - custom.mute
+emits:
+  - audio.chunk
+  - audio.level
+  - node.status
+  - lifecycle.ready
+  - lifecycle.done
+ui:
+  controls:
+    - id: mute
+      type: toggle
+      label: "Mute"
+      hold: true
+      keybind: space
+      event:
+        type: custom.mute
+        field: muted
+"#;
+        let manifest: NodeManifest = serde_yaml::from_str(yaml).unwrap();
+        let ui = manifest.ui.as_ref().unwrap();
+        assert_eq!(ui.controls.len(), 1);
+        let ctrl = &ui.controls[0];
+        assert_eq!(ctrl.id, "mute");
+        assert_eq!(ctrl.type_, ControlType::Toggle);
+        assert_eq!(ctrl.label.as_deref(), Some("Mute"));
+        assert_eq!(ctrl.hold, Some(true));
+        assert_eq!(ctrl.keybind.as_deref(), Some("space"));
+        assert_eq!(ctrl.event.type_, "custom.mute");
+        assert_eq!(ctrl.event.field, "muted");
+    }
+
+    #[test]
+    fn manifest_without_ui_field() {
+        let yaml = r#"
+name: echo
+consumes: []
+emits:
+  - lifecycle.ready
+"#;
+        let manifest: NodeManifest = serde_yaml::from_str(yaml).unwrap();
+        assert!(manifest.ui.is_none());
     }
 }
