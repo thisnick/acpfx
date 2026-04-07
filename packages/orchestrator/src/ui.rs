@@ -17,7 +17,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use ratatui::Terminal;
 
-use crate::ui_widgets::{HoldState, UiAction};
+use crate::ui_widgets::{FocusRing, HoldState, InteractiveWidget, ScrollableText, StatusBar, UiAction};
 
 // ---- Per-node state ----
 
@@ -140,12 +140,12 @@ pub struct UiState {
     logs: Vec<LogEntry>,
     /// Completed conversation turns and interrupts (agent history).
     conversation: Vec<ConversationEntry>,
-    /// Scroll offset for the agent conversation panel.
-    agent_scroll: usize,
-    /// Whether to auto-scroll the agent panel.
-    agent_auto_scroll: bool,
-    /// Node status strings (from node.status events), keyed by node name.
-    node_statuses: BTreeMap<String, String>,
+    /// Scrollable widget for the agent conversation panel.
+    agent_scroll: ScrollableText,
+    /// Focus ring for panel navigation (Tab cycling, mouse click focus).
+    focus: FocusRing,
+    /// Status bar showing node statuses and control indicators.
+    status_bar: StatusBar,
 }
 
 impl UiState {
@@ -160,14 +160,21 @@ impl UiState {
             });
             nodes.insert(name.clone(), PerNodeState::default());
         }
+        // Build focus ring panel list: "agent" if any node emits agent, "logs" if verbose
+        let mut panels: Vec<String> = Vec::new();
+        if manifests.iter().any(|m| m.emits_category("agent")) {
+            panels.push("agent".into());
+        }
+        panels.push("logs".into());
+
         Self {
             manifests,
             nodes,
             logs: Vec::new(),
             conversation: Vec::new(),
-            agent_scroll: 0,
-            agent_auto_scroll: true,
-            node_statuses: BTreeMap::new(),
+            agent_scroll: ScrollableText::new("Agent Conversation"),
+            focus: FocusRing::new(panels),
+            status_bar: StatusBar::new(),
         }
     }
 
@@ -300,8 +307,8 @@ impl UiState {
             }
 
             "node.status" => {
-                let text = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                self.node_statuses.insert(from.to_string(), text);
+                let text = event.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                self.status_bar.set_node_status(from, text);
             }
 
             "log" => {
@@ -342,9 +349,14 @@ fn push_wrapped_lines(lines: &mut Vec<Line<'static>>, raw_line: &str, max_width:
 
 fn render_frame(
     terminal: &mut Terminal<CrosstermBackend<io::Stderr>>,
-    state: &UiState,
+    state: &mut UiState,
     verbose: bool,
 ) -> io::Result<()> {
+    // Build agent conversation lines before entering the draw closure
+    // (we need &mut state to update agent_scroll, but the draw closure borrows state)
+    let agent_lines = build_agent_lines(state);
+    state.agent_scroll.set_lines(agent_lines);
+
     terminal.draw(|frame| {
         let num_nodes = state.manifests.len();
         // Each node box gets 3 lines (border top + content + border bottom),
@@ -364,16 +376,31 @@ fn render_frame(
         if verbose {
             constraints.push(Constraint::Min(5));
         }
-        // Status bar (1 line at bottom)
-        if !state.node_statuses.is_empty() {
-            constraints.push(Constraint::Length(1));
-        }
+        // Status bar (1 line at bottom — always reserve space)
+        constraints.push(Constraint::Length(1));
 
         let areas = Layout::vertical(constraints).split(frame.area());
 
         // Render each node box
         for (i, manifest) in state.manifests.iter().enumerate() {
             let node_state = state.nodes.get(&manifest.name).cloned().unwrap_or_default();
+
+            // Agent panel is rendered via ScrollableText widget
+            if manifest.emits_category("agent") {
+                // Update focus area for hit-testing
+                state.focus.set_area("agent", areas[i]);
+                state.agent_scroll.focused = state.focus.is_focused("agent");
+                state.agent_scroll.border_color = if node_state.ready { Color::Green } else { Color::DarkGray };
+                state.agent_scroll.title = format!(
+                    "{} ({}) {}",
+                    manifest.name,
+                    manifest.use_,
+                    if node_state.done || node_state.ready { "\u{2713}" } else { "?" }
+                );
+                state.agent_scroll.render(frame, areas[i]);
+                continue;
+            }
+
             let ready_icon = if node_state.done || node_state.ready { "\u{2713}" } else { "?" };
             let border_color = if node_state.ready { Color::Green } else { Color::DarkGray };
 
@@ -421,98 +448,6 @@ fn render_frame(
                 }
             }
 
-            // Agent widget — conversation history + current turn
-            if manifest.emits_category("agent") {
-                // Render past conversation entries
-                for entry in &state.conversation {
-                    match entry {
-                        ConversationEntry::Turn { prompt, response, ttft, had_tool, .. } => {
-                            lines.push(Line::from(Span::styled(
-                                format!("> \"{prompt}\""),
-                                Style::default().fg(Color::Cyan),
-                            )));
-                            let max_width = 100usize;
-                            for raw_line in response.lines() {
-                                push_wrapped_lines(&mut lines, raw_line, max_width, "  ");
-                            }
-                            let mut meta_parts = Vec::new();
-                            if let Some(t) = ttft {
-                                meta_parts.push(format!("TTFT: {}ms", t));
-                            }
-                            if *had_tool {
-                                meta_parts.push("tool".into());
-                            }
-                            if !meta_parts.is_empty() {
-                                lines.push(Line::from(Span::styled(
-                                    format!("  ({})", meta_parts.join(" | ")),
-                                    Style::default().fg(Color::DarkGray),
-                                )));
-                            }
-                            lines.push(Line::from("")); // blank separator
-                        }
-                        ConversationEntry::Interrupt { reason } => {
-                            lines.push(Line::from(Span::styled(
-                                format!("--- interrupted: {reason} ---"),
-                                Style::default().fg(Color::Yellow),
-                            )));
-                        }
-                    }
-                }
-
-                // Render current turn (in-progress)
-                if node_state.agent.status != "idle" && node_state.agent.status != "complete" {
-                    // Status line
-                    let icon = match node_state.agent.status.as_str() {
-                        "waiting" => "\u{23F3}",
-                        "thinking" => "\u{1F4AD}",
-                        "tool" => "\u{1F527}",
-                        _ => "\u{25B6}",
-                    };
-                    let ttft_str = node_state.agent.ttft.map(|t| format!(" \u{00B7} TTFT: {}ms", t)).unwrap_or_default();
-                    lines.push(Line::from(format!(
-                        "{} {} \u{00B7} {} tok{}",
-                        icon, node_state.agent.status, node_state.agent.tokens, ttft_str
-                    )));
-
-                    // Current prompt
-                    if !node_state.agent.prompt.is_empty() {
-                        lines.push(Line::from(Span::styled(
-                            format!("> \"{}\"", node_state.agent.prompt),
-                            Style::default().fg(Color::Cyan),
-                        )));
-                    }
-
-                    // Thinking indicator
-                    if node_state.agent.thinking {
-                        lines.push(Line::from(Span::styled(
-                            "  thinking...",
-                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
-                        )));
-                    }
-
-                    // Tool call indicator
-                    if node_state.agent.tool_active {
-                        lines.push(Line::from(Span::styled(
-                            "  \u{1F527} tool call...",
-                            Style::default().fg(Color::Yellow),
-                        )));
-                    }
-
-                    // Streamed response text
-                    if !node_state.agent.text.is_empty() {
-                        let max_width = 100usize;
-                        for raw_line in node_state.agent.text.lines() {
-                            push_wrapped_lines(&mut lines, raw_line, max_width, "  ");
-                        }
-                    }
-                } else if state.conversation.is_empty() {
-                    lines.push(Line::from(Span::styled(
-                        "Waiting for first prompt...",
-                        Style::default().fg(Color::DarkGray),
-                    )));
-                }
-            }
-
             // Player widget
             if manifest.emits_category("player") {
                 if let Some(ref ps) = node_state.player {
@@ -538,31 +473,27 @@ fn render_frame(
                 lines.push(Line::from(if node_state.ready { "ready" } else { "starting..." }));
             }
 
-            // Scroll handling: agent panel uses user-controlled scroll; others auto-scroll
+            // Non-agent panels auto-scroll to bottom
             let content_height = lines.len() as u16;
             let box_height = areas[i].height.saturating_sub(2); // minus borders
-            let scroll = if manifest.emits_category("agent") {
-                let max_offset = content_height.saturating_sub(box_height) as usize;
-                if state.agent_auto_scroll {
-                    max_offset as u16
-                } else {
-                    (state.agent_scroll.min(max_offset)) as u16
-                }
-            } else {
-                content_height.saturating_sub(box_height)
-            };
+            let scroll = content_height.saturating_sub(box_height);
             let paragraph = Paragraph::new(lines).block(block).scroll((scroll, 0));
             frame.render_widget(paragraph, areas[i]);
         }
 
         // Log panel (only when verbose)
         if verbose {
+            let log_area = areas[num_nodes];
+            state.focus.set_area("logs", log_area);
+            let log_focused = state.focus.is_focused("logs");
+            let log_border_color = if log_focused { Color::Cyan } else { Color::DarkGray };
+
             let log_block = Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::DarkGray))
+                .border_style(Style::default().fg(log_border_color))
                 .title(Line::from(Span::styled(" Logs ", Style::default().add_modifier(Modifier::BOLD))));
 
-            let log_area_height = areas[num_nodes].height.saturating_sub(2) as usize; // subtract borders
+            let log_area_height = log_area.height.saturating_sub(2) as usize; // subtract borders
             let visible_logs = if state.logs.len() > log_area_height {
                 &state.logs[state.logs.len() - log_area_height..]
             } else {
@@ -580,30 +511,118 @@ fn render_frame(
                 .collect();
 
             let log_list = List::new(log_items).block(log_block);
-            frame.render_widget(log_list, areas[num_nodes]);
+            frame.render_widget(log_list, log_area);
         }
 
-        // Status bar (node statuses)
-        if !state.node_statuses.is_empty() {
-            let status_area_idx = if verbose { num_nodes + 1 } else { num_nodes };
-            let mut spans: Vec<Span> = Vec::new();
-            for (i, (node, text)) in state.node_statuses.iter().enumerate() {
-                if i > 0 {
-                    spans.push(Span::styled(" | ", Style::default().fg(Color::DarkGray)));
-                }
-                spans.push(Span::styled(
-                    format!("{node}: "),
-                    Style::default().fg(Color::DarkGray),
-                ));
-                spans.push(Span::raw(text.as_str()));
-            }
-            let line = Line::from(spans);
-            let paragraph = Paragraph::new(line);
-            frame.render_widget(paragraph, areas[status_area_idx]);
-        }
+        // Status bar via StatusBar widget
+        let status_area_idx = if verbose { num_nodes + 1 } else { num_nodes };
+        state.status_bar.render(frame, areas[status_area_idx]);
     })?;
 
     Ok(())
+}
+
+/// Build the agent conversation lines from UiState (extracted for reuse with ScrollableText).
+fn build_agent_lines(state: &UiState) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    // Find the agent node state (first node that emits agent events)
+    let agent_manifest = state.manifests.iter().find(|m| m.emits_category("agent"));
+    let agent_node_state = agent_manifest
+        .and_then(|m| state.nodes.get(&m.name))
+        .cloned()
+        .unwrap_or_default();
+
+    // Render past conversation entries
+    for entry in &state.conversation {
+        match entry {
+            ConversationEntry::Turn { prompt, response, ttft, had_tool, .. } => {
+                lines.push(Line::from(Span::styled(
+                    format!("> \"{prompt}\""),
+                    Style::default().fg(Color::Cyan),
+                )));
+                let max_width = 100usize;
+                for raw_line in response.lines() {
+                    push_wrapped_lines(&mut lines, raw_line, max_width, "  ");
+                }
+                let mut meta_parts = Vec::new();
+                if let Some(t) = ttft {
+                    meta_parts.push(format!("TTFT: {}ms", t));
+                }
+                if *had_tool {
+                    meta_parts.push("tool".into());
+                }
+                if !meta_parts.is_empty() {
+                    lines.push(Line::from(Span::styled(
+                        format!("  ({})", meta_parts.join(" | ")),
+                        Style::default().fg(Color::DarkGray),
+                    )));
+                }
+                lines.push(Line::from("")); // blank separator
+            }
+            ConversationEntry::Interrupt { reason } => {
+                lines.push(Line::from(Span::styled(
+                    format!("--- interrupted: {reason} ---"),
+                    Style::default().fg(Color::Yellow),
+                )));
+            }
+        }
+    }
+
+    // Render current turn (in-progress)
+    if agent_node_state.agent.status != "idle" && agent_node_state.agent.status != "complete" {
+        // Status line
+        let icon = match agent_node_state.agent.status.as_str() {
+            "waiting" => "\u{23F3}",
+            "thinking" => "\u{1F4AD}",
+            "tool" => "\u{1F527}",
+            _ => "\u{25B6}",
+        };
+        let ttft_str = agent_node_state.agent.ttft.map(|t| format!(" \u{00B7} TTFT: {}ms", t)).unwrap_or_default();
+        lines.push(Line::from(format!(
+            "{} {} \u{00B7} {} tok{}",
+            icon, agent_node_state.agent.status, agent_node_state.agent.tokens, ttft_str
+        )));
+
+        // Current prompt
+        if !agent_node_state.agent.prompt.is_empty() {
+            lines.push(Line::from(Span::styled(
+                format!("> \"{}\"", agent_node_state.agent.prompt),
+                Style::default().fg(Color::Cyan),
+            )));
+        }
+
+        // Thinking indicator
+        if agent_node_state.agent.thinking {
+            lines.push(Line::from(Span::styled(
+                "  thinking...".to_string(),
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+            )));
+        }
+
+        // Tool call indicator
+        if agent_node_state.agent.tool_active {
+            lines.push(Line::from(Span::styled(
+                "  \u{1F527} tool call...".to_string(),
+                Style::default().fg(Color::Yellow),
+            )));
+        }
+
+        // Streamed response text
+        if !agent_node_state.agent.text.is_empty() {
+            let max_width = 100usize;
+            for raw_line in agent_node_state.agent.text.lines() {
+                push_wrapped_lines(&mut lines, raw_line, max_width, "  ");
+            }
+        }
+    } else if state.conversation.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "Waiting for first prompt...".to_string(),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    lines
 }
 
 // ---- Public API ----
@@ -680,11 +699,28 @@ pub fn run_ui(
         }
     }
 
+    // Populate status bar control indicators from manifest controls
+    {
+        let mut indicators: Vec<String> = Vec::new();
+        for (node_name, controls) in ui_controls {
+            for ctrl in controls {
+                if let Some(ref kb_str) = ctrl.keybind {
+                    let label = ctrl.label.as_deref().unwrap_or(&ctrl.id);
+                    let hold_tag = if ctrl.hold.unwrap_or(false) { " (hold)" } else { "" };
+                    indicators.push(format!("{}: {}{}", kb_str, label, hold_tag));
+                    let _ = node_name; // used for context, indicator is keybind-focused
+                }
+            }
+        }
+        let mut s = state.lock().unwrap();
+        s.status_bar.set_controls(indicators);
+    }
+
     loop {
         // Render current state
         {
-            let s = state.lock().unwrap();
-            render_frame(&mut terminal, &s, verbose)?;
+            let mut s = state.lock().unwrap();
+            render_frame(&mut terminal, &mut s, verbose)?;
         }
 
         // Check hold timeouts (deactivate if key was released)
@@ -709,6 +745,7 @@ pub fn run_ui(
                     if key.code == KeyCode::Char('q')
                         || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
                     {
+                        let _ = cmd_tx.send(UiAction::Quit);
                         break;
                     }
 
@@ -744,53 +781,40 @@ pub fn run_ui(
                     }
 
                     if !handled {
-                        // Arrow keys scroll the agent conversation panel
                         match key.code {
-                            KeyCode::Up => {
+                            KeyCode::Tab => {
                                 let mut s = state.lock().unwrap();
-                                s.agent_auto_scroll = false;
-                                s.agent_scroll = s.agent_scroll.saturating_sub(1);
+                                s.focus.next();
                             }
-                            KeyCode::Down => {
+                            KeyCode::BackTab => {
                                 let mut s = state.lock().unwrap();
-                                s.agent_auto_scroll = false;
-                                s.agent_scroll = s.agent_scroll.saturating_add(1);
+                                s.focus.prev();
                             }
-                            KeyCode::PageUp => {
+                            KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown
+                            | KeyCode::Home | KeyCode::End => {
                                 let mut s = state.lock().unwrap();
-                                s.agent_auto_scroll = false;
-                                s.agent_scroll = s.agent_scroll.saturating_sub(10);
-                            }
-                            KeyCode::PageDown => {
-                                let mut s = state.lock().unwrap();
-                                s.agent_auto_scroll = false;
-                                s.agent_scroll = s.agent_scroll.saturating_add(10);
-                            }
-                            KeyCode::End => {
-                                let mut s = state.lock().unwrap();
-                                s.agent_auto_scroll = true;
-                            }
-                            KeyCode::Home => {
-                                let mut s = state.lock().unwrap();
-                                s.agent_auto_scroll = false;
-                                s.agent_scroll = 0;
+                                if s.focus.is_focused("agent") {
+                                    s.agent_scroll.handle_key(key);
+                                }
                             }
                             _ => {}
                         }
                     }
                 }
                 Event::Mouse(mouse) => {
-                    // Mouse scroll controls agent panel scroll
+                    let mut s = state.lock().unwrap();
                     match mouse.kind {
-                        MouseEventKind::ScrollUp => {
-                            let mut s = state.lock().unwrap();
-                            s.agent_auto_scroll = false;
-                            s.agent_scroll = s.agent_scroll.saturating_sub(3);
+                        MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                            if let Some(delta) = FocusRing::scroll_delta(&mouse) {
+                                if let Some(panel) = s.focus.panel_at(&mouse) {
+                                    if panel == "agent" {
+                                        s.agent_scroll.handle_mouse_scroll(delta);
+                                    }
+                                }
+                            }
                         }
-                        MouseEventKind::ScrollDown => {
-                            let mut s = state.lock().unwrap();
-                            s.agent_auto_scroll = false;
-                            s.agent_scroll = s.agent_scroll.saturating_add(3);
+                        MouseEventKind::Down(_) => {
+                            s.focus.focus_at(&mouse);
                         }
                         _ => {}
                     }

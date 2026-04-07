@@ -86,6 +86,7 @@ impl ScrollableText {
     }
 
     /// Append lines and auto-scroll if enabled.
+    #[allow(dead_code)]
     pub fn push_lines(&mut self, new_lines: Vec<Line<'static>>) {
         self.lines.extend(new_lines);
         if self.auto_scroll {
@@ -392,6 +393,8 @@ impl HoldState {
     }
 
     /// Called on key release (native). Returns true if this is a deactivation.
+    /// Note: not used until crossterm keyboard enhancement protocol is enabled.
+    #[allow(dead_code)]
     pub fn on_release(&mut self) -> bool {
         if self.active {
             self.active = false;
