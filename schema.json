@@ -791,6 +791,40 @@
           ]
         }
       }
+    },
+    {
+      "description": "A display status string emitted by any node.\n\nThe orchestrator renders this in the status bar as `nodeName: text`. Nodes that never emit `node.status` don't appear in the status bar.",
+      "type": "object",
+      "required": [
+        "text",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "description": "Human-readable status text (e.g., \"Listening\", \"Muted\").",
+          "type": "string"
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "node.status"
+          ]
+        }
+      }
     }
   ],
   "definitions": {

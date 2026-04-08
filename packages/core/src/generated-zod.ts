@@ -137,6 +137,11 @@ export const PlayerStatusEventSchema = OrchestratorStampSchema.extend({
   sfxActive: z.boolean(),
 });
 
+export const NodeStatusEventSchema = OrchestratorStampSchema.extend({
+  type: z.literal("node.status"),
+  text: z.string(),
+});
+
 export const PipelineEventSchema = z.discriminatedUnion("type", [
   AudioChunkEventSchema,
   AudioLevelEventSchema,
@@ -157,4 +162,5 @@ export const PipelineEventSchema = z.discriminatedUnion("type", [
   LifecycleDoneEventSchema,
   LogEventSchema,
   PlayerStatusEventSchema,
+  NodeStatusEventSchema,
 ]);

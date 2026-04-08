@@ -150,6 +150,13 @@ export type PlayerStatusEvent = OrchestratorStamp & {
   sfxActive: boolean;
 };
 
+// ---- Node ----
+
+export type NodeStatusEvent = OrchestratorStamp & {
+  type: "node.status";
+  text: string;
+};
+
 // ---- Union types ----
 
 export type AudioEvent = AudioChunkEvent | AudioLevelEvent;
@@ -178,6 +185,8 @@ export type LogEventType = LogEvent;
 
 export type PlayerEvent = PlayerStatusEvent;
 
+export type NodeEvent = NodeStatusEvent;
+
 export type PipelineEvent =
   | AudioEvent
   | SpeechEvent
@@ -185,7 +194,8 @@ export type PipelineEvent =
   | ControlEvent
   | LifecycleEvent
   | LogEvent
-  | PlayerEvent;
+  | PlayerEvent
+  | NodeEvent;
 
 /** An event with a `type` field that doesn't match a known type. Forwarded unchanged. */
 export type UnknownEvent = OrchestratorStamp & {
@@ -217,6 +227,7 @@ const KNOWN_TYPES = new Set([
   "lifecycle.done",
   "log",
   "player.status",
+  "node.status",
 ]);
 
 export function isKnownEventType(type: string): boolean {
