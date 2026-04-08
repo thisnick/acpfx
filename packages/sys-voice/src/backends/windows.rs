@@ -244,6 +244,69 @@ fn playback_loop(playback_rx: flume::Receiver<PlaybackCommand>) -> Result<(), Ae
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Independent capture / playback (for PTT mode — no AEC)
+// ---------------------------------------------------------------------------
+
+/// Create a capture-only WASAPI stream (no AEC, no playback).
+/// Returns (sample_rate, buffer_size, handle). Dropping the handle stops capture.
+pub fn create_capture_only(
+    sender: flume::Sender<Vec<f32>>,
+) -> Result<(u32, usize, Box<dyn std::any::Any + Send>), AecError> {
+    let hr = initialize_mta();
+    if hr.0 != 0 {
+        return Err(AecError::BackendError(format!("COM init failed: {hr:?}")));
+    }
+
+    let enumerator = DeviceEnumerator::new()
+        .map_err(|e| AecError::BackendError(format!("DeviceEnumerator::new: {e:?}")))?;
+    enumerator
+        .get_default_device(&Direction::Capture)
+        .map_err(|_| AecError::DeviceUnavailable)?;
+
+    let (meta_tx, meta_rx) = flume::bounded::<Result<(u32, usize), AecError>>(1);
+
+    let join_handle = tokio::task::spawn_blocking(move || {
+        if let Err(e) = capture_loop(sender, meta_tx.clone()) {
+            let _ = meta_tx.send(Err(e));
+        }
+    });
+
+    let (rate, size) = meta_rx.recv().map_err(|_| {
+        AecError::BackendError("capture thread died before sending metadata".to_string())
+    })??;
+
+    Ok((rate, size, Box::new(join_handle)))
+}
+
+/// Create a playback-only WASAPI stream. Always-on speaker output.
+/// Returns the native sample rate.
+pub fn create_playback_only(
+    playback_rx: flume::Receiver<PlaybackCommand>,
+) -> Result<u32, AecError> {
+    let hr = initialize_mta();
+    if hr.0 != 0 {
+        return Err(AecError::BackendError(format!("COM init failed: {hr:?}")));
+    }
+
+    let enumerator = DeviceEnumerator::new()
+        .map_err(|e| AecError::BackendError(format!("DeviceEnumerator::new: {e:?}")))?;
+    enumerator
+        .get_default_device(&Direction::Render)
+        .map_err(|_| AecError::DeviceUnavailable)?;
+
+    // We need to know the native sample rate. The playback_loop will use 48000.
+    let native_rate = 48000u32;
+
+    tokio::task::spawn_blocking(move || {
+        if let Err(e) = playback_loop(playback_rx) {
+            tracing::error!("Playback loop error: {e:?}");
+        }
+    });
+
+    Ok(native_rate)
+}
+
 fn write_samples_to_device(
     samples: &[f32],
     native_channels: usize,

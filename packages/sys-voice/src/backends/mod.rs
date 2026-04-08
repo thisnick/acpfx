@@ -10,10 +10,11 @@ mod linux;
 use crate::resampler::Resampler;
 use crate::AecError;
 
+use std::sync::Mutex;
+
 /// Handle for sending audio to the backend for playback.
 /// Audio played through this handle goes through the same engine as capture,
 /// enabling AEC to cancel it from the recorded audio.
-use std::sync::Mutex;
 
 #[derive(Clone)]
 pub struct BackendHandle {
@@ -190,4 +191,137 @@ pub(crate) fn create_backend(
         let _ = (sender, playback_rx);
         Err(AecError::AecNotSupported)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Independent capture / playback handles (for PTT mode — no AEC)
+// ---------------------------------------------------------------------------
+
+/// Playback-only backend handle. Same playback logic as BackendHandle but
+/// decoupled from capture. Speaker output is always-on.
+#[derive(Clone)]
+pub(crate) struct PlaybackBackendHandle {
+    playback_tx: flume::Sender<PlaybackCommand>,
+    native_sample_rate: u32,
+    resampler: std::sync::Arc<Mutex<Option<Resampler>>>,
+    resampler_source_rate: std::sync::Arc<Mutex<u32>>,
+}
+
+impl PlaybackBackendHandle {
+    /// Play a complete audio buffer. Uses a persistent resampler for smooth playback.
+    pub fn play_audio(&self, samples: Vec<f32>, sample_rate: u32) -> Result<(), AecError> {
+        let resampled = if sample_rate == self.native_sample_rate {
+            samples
+        } else {
+            let mut resampler_guard = self
+                .resampler
+                .lock()
+                .map_err(|_| AecError::BackendError("resampler lock poisoned".to_string()))?;
+            let mut rate_guard = self
+                .resampler_source_rate
+                .lock()
+                .map_err(|_| AecError::BackendError("resampler lock poisoned".to_string()))?;
+
+            if resampler_guard.is_none() || *rate_guard != sample_rate {
+                *resampler_guard = Some(Resampler::new(sample_rate, self.native_sample_rate)?);
+                *rate_guard = sample_rate;
+            }
+
+            resampler_guard.as_mut().unwrap().process(&samples)?
+        };
+        self.playback_tx
+            .send(PlaybackCommand::OneShot(resampled))
+            .map_err(|_| AecError::BackendError("playback channel closed".to_string()))
+    }
+
+    /// Start a streaming playback session.
+    pub fn start_playback_stream(
+        &self,
+        sample_rate: u32,
+    ) -> Result<flume::Sender<Vec<f32>>, AecError> {
+        let (user_tx, user_rx) = flume::bounded::<Vec<f32>>(64);
+        let (backend_tx, backend_rx) = flume::bounded::<Vec<f32>>(64);
+
+        spawn_resampler(user_rx, backend_tx, sample_rate, self.native_sample_rate);
+
+        self.playback_tx
+            .send(PlaybackCommand::StartStream(backend_rx))
+            .map_err(|_| AecError::BackendError("playback channel closed".to_string()))?;
+
+        Ok(user_tx)
+    }
+
+    /// Clear the playback buffer immediately.
+    pub fn clear_playback(&self) -> Result<(), AecError> {
+        self.playback_tx
+            .send(PlaybackCommand::ClearBuffer)
+            .map_err(|_| AecError::BackendError("playback channel closed".to_string()))
+    }
+}
+
+/// Capture-only backend handle. RAII — dropping stops capture and releases
+/// the OS microphone (indicator goes away).
+pub(crate) struct CaptureBackendHandle {
+    _handle: Box<dyn std::any::Any + Send>,
+}
+
+/// Create a capture-only backend (no AEC, no playback).
+/// Returns (native_sample_rate, buffer_size, handle).
+pub(crate) fn create_capture_backend(
+    sender: flume::Sender<Vec<f32>>,
+) -> Result<(u32, usize, CaptureBackendHandle), AecError> {
+    #[cfg(target_os = "macos")]
+    {
+        let (rate, size, handle) = macos::create_capture_only(sender)?;
+        Ok((rate, size, CaptureBackendHandle { _handle: handle }))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let (rate, size, handle) = linux::create_capture_only(sender)?;
+        Ok((rate, size, CaptureBackendHandle { _handle: handle }))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let (rate, size, handle) = windows::create_capture_only(sender)?;
+        Ok((rate, size, CaptureBackendHandle { _handle: handle }))
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = sender;
+        Err(AecError::AecNotSupported)
+    }
+}
+
+/// Create a playback-only backend (no capture, no AEC).
+/// Returns (native_sample_rate, handle). The handle owns the send side of
+/// the playback command channel; the platform backend owns the receive side.
+pub(crate) fn create_playback_backend() -> Result<(u32, PlaybackBackendHandle), AecError> {
+    let (playback_tx, playback_rx) = flume::bounded::<PlaybackCommand>(16);
+
+    #[cfg(target_os = "macos")]
+    let native_rate = macos::create_playback_only(playback_rx)?;
+
+    #[cfg(target_os = "linux")]
+    let native_rate = linux::create_playback_only(playback_rx)?;
+
+    #[cfg(target_os = "windows")]
+    let native_rate = windows::create_playback_only(playback_rx)?;
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = playback_rx;
+        return Err(AecError::AecNotSupported);
+    }
+
+    let handle = PlaybackBackendHandle {
+        playback_tx,
+        native_sample_rate: native_rate,
+        resampler: std::sync::Arc::new(Mutex::new(None)),
+        resampler_source_rate: std::sync::Arc::new(Mutex::new(0)),
+    };
+
+    Ok((native_rate, handle))
 }

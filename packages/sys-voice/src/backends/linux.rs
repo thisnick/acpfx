@@ -85,6 +85,57 @@ fn write_samples(simple: &Simple, samples: &[f32]) -> Result<(), AecError> {
         .map_err(|e| AecError::BackendError(format!("PulseAudio write error: {e:?}")))
 }
 
+// ---------------------------------------------------------------------------
+// Independent capture / playback (for PTT mode — no AEC)
+// ---------------------------------------------------------------------------
+
+/// Create a capture-only PulseAudio stream (no playback, no AEC).
+/// Returns (sample_rate, buffer_size, handle). Dropping the handle stops capture.
+pub fn create_capture_only(
+    sender: flume::Sender<Vec<f32>>,
+) -> Result<(u32, usize, Box<dyn std::any::Any + Send>), AecError> {
+    let simple = create_simple_stream(Direction::Record, "PTT Capture")?;
+
+    let join_handle = tokio::task::spawn_blocking(move || {
+        let mut buffer = vec![0.0f32; BUFFER_FRAMES];
+
+        loop {
+            let byte_slice = unsafe {
+                std::slice::from_raw_parts_mut(
+                    buffer.as_mut_ptr() as *mut u8,
+                    buffer.len() * std::mem::size_of::<f32>(),
+                )
+            };
+
+            if simple.read(byte_slice).is_err() {
+                break;
+            }
+
+            if sender.send(buffer.clone()).is_err() {
+                break;
+            }
+        }
+    });
+
+    Ok((SAMPLE_RATE, BUFFER_FRAMES, Box::new(join_handle)))
+}
+
+/// Create a playback-only PulseAudio stream. Always-on speaker output.
+/// Returns the native sample rate.
+pub fn create_playback_only(
+    playback_rx: flume::Receiver<PlaybackCommand>,
+) -> Result<u32, AecError> {
+    // Verify connection works
+    let _test = create_simple_stream(Direction::Playback, "PTT Playback test")?;
+    drop(_test);
+
+    tokio::task::spawn_blocking(move || {
+        let _ = run_playback(playback_rx);
+    });
+
+    Ok(SAMPLE_RATE)
+}
+
 fn create_simple_stream(direction: Direction, description: &str) -> Result<Simple, AecError> {
     let spec = Spec {
         format: Format::F32le,

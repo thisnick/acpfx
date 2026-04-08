@@ -182,6 +182,138 @@ impl CaptureHandle {
 
 // Drop on CaptureHandle drops backend, which stops capture via RAII
 
+// ---------------------------------------------------------------------------
+// Independent playback / capture handles (for PTT mode — no AEC)
+// ---------------------------------------------------------------------------
+
+/// Playback-only handle. No capture, no AEC. Always-on for speaker output.
+/// Use this in PTT mode where mic and speaker are never active simultaneously.
+pub struct PlaybackHandle {
+    backend: backends::PlaybackBackendHandle,
+    sample_rate: u32,
+}
+
+impl PlaybackHandle {
+    /// Create a new playback-only handle.
+    /// Starts the speaker output immediately (always-on).
+    pub fn new() -> Result<Self, AecError> {
+        let (native_rate, backend) = backends::create_playback_backend()?;
+        Ok(Self {
+            backend,
+            sample_rate: native_rate,
+        })
+    }
+
+    /// Play audio through the speaker at the given sample rate.
+    pub fn play_audio(&self, samples: Vec<f32>, sample_rate: u32) -> Result<(), AecError> {
+        self.backend.play_audio(samples, sample_rate)
+    }
+
+    /// Start a streaming playback session.
+    /// Returns a handle for sending audio chunks incrementally.
+    pub fn start_playback_stream(
+        &self,
+        sample_rate: u32,
+    ) -> Result<PlaybackStreamHandle, AecError> {
+        let chunk_tx = self.backend.start_playback_stream(sample_rate)?;
+        Ok(PlaybackStreamHandle { chunk_tx })
+    }
+
+    /// Clear the playback buffer immediately.
+    /// Use for interrupt/barge-in — stops speaker output instantly.
+    pub fn clear_playback(&self) -> Result<(), AecError> {
+        self.backend.clear_playback()
+    }
+
+    /// Get the native sample rate of the playback device.
+    pub fn native_sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+}
+
+/// Capture-only handle. Created on unmute, dropped on mute.
+/// Dropping releases the OS mic (indicator goes away on macOS).
+pub struct IndependentCaptureHandle {
+    receiver: flume::Receiver<Result<Vec<f32>, AecError>>,
+    _backend: backends::CaptureBackendHandle,
+    sample_rate: u32,
+}
+
+impl IndependentCaptureHandle {
+    /// Create and start a new independent capture stream (no AEC).
+    /// The OS mic indicator turns on when this is created and turns off when dropped.
+    pub fn new(config: AecConfig) -> Result<Self, AecError> {
+        if config.sample_rate == 0 {
+            return Err(AecError::InvalidConfig(
+                "sample_rate must be non-zero".to_string(),
+            ));
+        }
+
+        let (backend_tx, backend_rx) = flume::bounded::<Vec<f32>>(32);
+        let (native_rate, _buffer_size, backend_handle) =
+            backends::create_capture_backend(backend_tx)?;
+
+        let (public_tx, public_rx) = flume::bounded::<Result<Vec<f32>, AecError>>(32);
+        let target_rate = config.sample_rate;
+        let target_channels = config.channels;
+
+        let needs_stereo = target_channels == Channels::Stereo;
+        let needs_resampling = native_rate != target_rate;
+
+        let resampler = if needs_resampling {
+            Some(
+                Resampler::new(native_rate, target_rate)
+                    .map_err(|e| AecError::BackendError(format!("resampler init: {e:?}")))?,
+            )
+        } else {
+            None
+        };
+
+        tokio::spawn(async move {
+            let mut resampler = resampler;
+
+            while let Ok(samples) = backend_rx.recv_async().await {
+                let processed = match process_audio_chunk(samples, &mut resampler, needs_stereo) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        let _ = public_tx.send_async(Err(AecError::BackendError(e))).await;
+                        break;
+                    }
+                };
+                if public_tx.send_async(Ok(processed)).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Ok(Self {
+            receiver: public_rx,
+            _backend: backend_handle,
+            sample_rate: target_rate,
+        })
+    }
+
+    /// Receive audio samples asynchronously.
+    pub async fn recv(&self) -> Option<Result<Vec<f32>, AecError>> {
+        self.receiver.recv_async().await.ok()
+    }
+
+    /// Receive audio samples, blocking the current thread.
+    pub fn recv_blocking(&self) -> Option<Result<Vec<f32>, AecError>> {
+        self.receiver.recv().ok()
+    }
+
+    /// Try to receive audio samples without blocking.
+    pub fn try_recv(&self) -> Option<Result<Vec<f32>, AecError>> {
+        self.receiver.try_recv().ok()
+    }
+
+    /// Get the sample rate being used.
+    pub fn native_sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+}
+
 fn process_audio_chunk(
     samples: Vec<f32>,
     resampler: &mut Option<Resampler>,
