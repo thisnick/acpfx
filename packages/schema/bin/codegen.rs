@@ -199,6 +199,13 @@ fn generate_typescript() -> String {
     out.push_str("  sfxActive: boolean;\n");
     out.push_str("};\n\n");
 
+    // Node
+    out.push_str("// ---- Node ----\n\n");
+    out.push_str("export type NodeStatusEvent = OrchestratorStamp & {\n");
+    out.push_str("  type: \"node.status\";\n");
+    out.push_str("  text: string;\n");
+    out.push_str("};\n\n");
+
     // Union types
     out.push_str("// ---- Union types ----\n\n");
     out.push_str("export type AudioEvent = AudioChunkEvent | AudioLevelEvent;\n\n");
@@ -221,6 +228,7 @@ fn generate_typescript() -> String {
     out.push_str("export type LifecycleEvent = LifecycleReadyEvent | LifecycleDoneEvent;\n");
     out.push_str("export type LogEventType = LogEvent;\n\n");
     out.push_str("export type PlayerEvent = PlayerStatusEvent;\n\n");
+    out.push_str("export type NodeEvent = NodeStatusEvent;\n\n");
 
     out.push_str("export type PipelineEvent =\n");
     out.push_str("  | AudioEvent\n");
@@ -229,7 +237,8 @@ fn generate_typescript() -> String {
     out.push_str("  | ControlEvent\n");
     out.push_str("  | LifecycleEvent\n");
     out.push_str("  | LogEvent\n");
-    out.push_str("  | PlayerEvent;\n\n");
+    out.push_str("  | PlayerEvent\n");
+    out.push_str("  | NodeEvent;\n\n");
 
     out.push_str("/** An event with a `type` field that doesn't match a known type. Forwarded unchanged. */\n");
     out.push_str("export type UnknownEvent = OrchestratorStamp & {\n");
@@ -431,6 +440,12 @@ fn generate_zod() -> String {
     out.push_str("  sfxActive: z.boolean(),\n");
     out.push_str("});\n\n");
 
+    // Node
+    out.push_str("export const NodeStatusEventSchema = OrchestratorStampSchema.extend({\n");
+    out.push_str("  type: z.literal(\"node.status\"),\n");
+    out.push_str("  text: z.string(),\n");
+    out.push_str("});\n\n");
+
     // Union schemas
     out.push_str("export const PipelineEventSchema = z.discriminatedUnion(\"type\", [\n");
     out.push_str("  AudioChunkEventSchema,\n");
@@ -452,6 +467,7 @@ fn generate_zod() -> String {
     out.push_str("  LifecycleDoneEventSchema,\n");
     out.push_str("  LogEventSchema,\n");
     out.push_str("  PlayerStatusEventSchema,\n");
+    out.push_str("  NodeStatusEventSchema,\n");
     out.push_str("]);\n");
 
     out

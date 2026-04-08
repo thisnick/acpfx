@@ -100,11 +100,19 @@ const SFX_CHUNK_BYTES = Math.floor(SAMPLE_RATE * BYTES_PER_SAMPLE * SFX_CHUNK_MS
 
 
 function emitStatus(): void {
+  let text: string;
+  if (playingKind === "speech") {
+    text = "\u25B6 speech";
+  } else if (sfxActive) {
+    text = `\u266B ${agentState} SFX`;
+  } else if (agentState !== "idle") {
+    text = agentState;
+  } else {
+    text = "\u23F9 idle";
+  }
   emit({
-    type: "player.status",
-    playing: playingKind,
-    agentState,
-    sfxActive,
+    type: "node.status",
+    text,
   });
 }
 

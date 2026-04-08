@@ -96,7 +96,30 @@ fi
 run_test "manifest via --acpfx-manifest fallback" "All nodes ready" "no manifest for" \
     "$SCRIPT_DIR/test-no-setup.yaml"
 
-# Test 8: Unknown --acpfx-* flag returns unsupported response
+# Test 8: Manifest with UI controls is parsed (no errors about ui field)
+run_test "manifest with UI controls parsed" "All nodes ready" "unknown field" \
+    "$SCRIPT_DIR/test-ui-control.yaml"
+
+# Test 9: Dummy control node manifest includes UI controls
+echo -n "TEST: dummy control node manifest has UI controls ... "
+manifest=$("$SCRIPT_DIR/dummy-control-node.sh" --acpfx-manifest 2>&1)
+if echo "$manifest" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+assert 'ui' in d, 'no ui field'
+assert len(d['ui']['controls']) > 0, 'no controls'
+assert d['ui']['controls'][0]['id'] == 'mute'
+assert d['ui']['controls'][0]['event']['type'] == 'custom.mute'
+" 2>/dev/null; then
+    echo "PASS"
+    PASS=$((PASS + 1))
+else
+    echo "FAIL"
+    echo "  output: $manifest"
+    FAIL=$((FAIL + 1))
+fi
+
+# Test 10: Unknown --acpfx-* flag returns unsupported response
 echo -n "TEST: unknown --acpfx-* flag ... "
 response=$("$SCRIPT_DIR/dummy-node.sh" --acpfx-future-flag 2>&1)
 if echo "$response" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['unsupported']==True; assert d['flag']=='--acpfx-future-flag'" 2>/dev/null; then

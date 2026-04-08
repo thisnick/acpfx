@@ -22,3 +22,4 @@ packages/node-tts-pocket/bin/tts-pocket-*
 # Downloaded platform binaries (postinstall downloads these)
 packages/orchestrator/bin/acpfx-*
 packages/node-mic-aec/
+manifest.json

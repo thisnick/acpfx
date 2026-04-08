@@ -1,0 +1,5 @@
+nodes:
+  mic:
+    use: './tests/dummy-node/dummy-control-node.sh'
+    settings: {}
+    outputs: []

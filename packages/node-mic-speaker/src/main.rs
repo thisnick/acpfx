@@ -185,6 +185,10 @@ async fn main() {
 
     let playback_wav_for_stdin = playback_wav.clone();
 
+    // Stdout is owned by the main thread (capture loop). The stdin thread sends
+    // lines via this channel to avoid deadlocking on stdout.lock().
+    let (stdout_tx, stdout_rx) = std::sync::mpsc::channel::<String>();
+
     let stdout = io::stdout();
     let mut out = io::BufWriter::new(stdout.lock());
 
@@ -225,6 +229,9 @@ async fn main() {
     let handle_for_playback = handle.clone();
     let interrupted = Arc::new(AtomicBool::new(false));
     let interrupted_clone = interrupted.clone();
+    let muted = Arc::new(AtomicBool::new(true)); // start muted — hold Space to talk (push-to-talk)
+    let muted_for_stdin = muted.clone();
+    let muted_for_capture = muted.clone();
     let speaker_clone = speaker.clone();
 
     // Stdin thread — parse events, play speaker audio directly per-chunk
@@ -235,6 +242,11 @@ async fn main() {
         eprintln!("[mic-speaker] WARNING: sample_rate {}Hz != native {}Hz — playback will resample (may stutter)", sample_rate, native_rate);
         eprintln!("[mic-speaker] Consider setting sampleRate: {} in config", native_rate);
     }
+
+    // Emit initial node.status
+    let status_msg = json!({"type": "node.status", "text": "Muted (hold Space)"});
+    writeln!(out, "{}", status_msg).unwrap();
+    out.flush().unwrap();
 
     std::thread::spawn(move || {
         let stdin = io::stdin();
@@ -248,7 +260,23 @@ async fn main() {
             if let Ok(event) = serde_json::from_str::<Value>(&line) {
                 let event_type = event["type"].as_str().unwrap_or("");
 
-                if event_type == "control.interrupt" {
+                if event_type == "custom.mute" {
+                    let was_muted = muted_for_stdin.load(Ordering::Relaxed);
+                    let is_muted = event["muted"].as_bool().unwrap_or(true);
+                    muted_for_stdin.store(is_muted, Ordering::Relaxed);
+                    let text = if is_muted { "Muted (hold Space)" } else { "Listening" };
+                    let _ = stdout_tx.send(json!({"type": "node.status", "text": text}).to_string());
+
+                    // Unmuting in hold mode: interrupt the agent so user can speak
+                    if was_muted && !is_muted {
+                        let _ = stdout_tx.send(json!({
+                            "type": "control.interrupt",
+                            "reason": "push_to_talk"
+                        }).to_string());
+                        // Also clear playback so the speaker stops immediately
+                        let _ = handle_for_playback.clear_playback();
+                    }
+                } else if event_type == "control.interrupt" {
                     interrupted_clone.store(true, Ordering::Relaxed);
                     // Instantly clear sys-voice's playback buffer — speaker goes silent
                     let _ = handle_for_playback.clear_playback();
@@ -284,15 +312,25 @@ async fn main() {
             buffer.clear();
         }
 
+        // Drain any pending stdout messages from the stdin thread (e.g., node.status from mute toggle)
+        while let Ok(msg) = stdout_rx.try_recv() {
+            let _ = writeln!(out, "{}", msg);
+            let _ = out.flush();
+        }
+
         match handle_for_capture.recv().await {
             Some(Ok(samples)) => {
                 buffer.extend_from_slice(&samples);
 
                 while buffer.len() >= chunk_samples {
                     let chunk: Vec<f32> = buffer.drain(..chunk_samples).collect();
-                    // Record capture audio
+                    // Record capture audio (even when muted, to keep session alive)
                     if let Ok(mut w) = capture_wav.lock() {
                         if let Some(ref mut wav) = *w { wav.write_f32(&chunk); }
+                    }
+                    // Skip emitting events when muted (still reading audio to keep capture alive)
+                    if muted_for_capture.load(Ordering::Relaxed) {
+                        continue;
                     }
                     let b64 = samples_to_base64(&chunk);
                     let (rms, peak, dbfs) = compute_level(&chunk);

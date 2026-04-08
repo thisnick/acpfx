@@ -11,6 +11,7 @@ pub mod envelope;
 pub mod lifecycle;
 pub mod log;
 pub mod manifest;
+pub mod node;
 pub mod player;
 pub mod speech;
 
@@ -22,7 +23,11 @@ pub use control::*;
 pub use envelope::OrchestratorStamp;
 pub use lifecycle::*;
 pub use log::*;
-pub use manifest::{ArgumentType, ManifestArgument, ManifestEnvField, NodeManifest};
+pub use manifest::{
+    ArgumentType, ControlEventSpec, ControlType, ManifestArgument, ManifestControl,
+    ManifestEnvField, ManifestUi, NodeManifest,
+};
+pub use node::*;
 pub use player::*;
 pub use speech::*;
 
@@ -86,6 +91,10 @@ pub enum Event {
     // Player
     #[serde(rename = "player.status")]
     PlayerStatus(PlayerStatus),
+
+    // Node
+    #[serde(rename = "node.status")]
+    NodeStatus(NodeStatus),
 }
 
 impl Event {
@@ -111,6 +120,7 @@ impl Event {
             Event::LifecycleDone(_) => "lifecycle.done",
             Event::Log(_) => "log",
             Event::PlayerStatus(_) => "player.status",
+            Event::NodeStatus(_) => "node.status",
         }
     }
 
@@ -298,6 +308,9 @@ mod tests {
                 agent_state: serde_json::Value::Null,
                 sfx_active: false, ts: None, from: None,
             }),
+            Event::NodeStatus(NodeStatus {
+                text: "Listening".into(), ts: None, from: None,
+            }),
         ];
 
         for event in &events {
@@ -331,6 +344,6 @@ mod tests {
                 ty
             );
         }
-        assert_eq!(categories::ALL_EVENT_TYPES.len(), 19);
+        assert_eq!(categories::ALL_EVENT_TYPES.len(), 20);
     }
 }

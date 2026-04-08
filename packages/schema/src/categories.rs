@@ -14,6 +14,7 @@ pub enum Category {
     Lifecycle,
     Log,
     Player,
+    Node,
 }
 
 /// All known event type strings.
@@ -37,6 +38,7 @@ pub const ALL_EVENT_TYPES: &[&str] = &[
     "lifecycle.done",
     "log",
     "player.status",
+    "node.status",
 ];
 
 /// Map an event type string to its category.
@@ -53,6 +55,7 @@ pub fn category_of(event_type: &str) -> Option<Category> {
         "lifecycle.ready" | "lifecycle.done" => Some(Category::Lifecycle),
         "log" => Some(Category::Log),
         "player.status" => Some(Category::Player),
+        "node.status" => Some(Category::Node),
         _ => None,
     }
 }
@@ -79,6 +82,7 @@ pub fn types_in_category(category: Category) -> &'static [&'static str] {
         Category::Lifecycle => &["lifecycle.ready", "lifecycle.done"],
         Category::Log => &["log"],
         Category::Player => &["player.status"],
+        Category::Node => &["node.status"],
     }
 }
 
@@ -126,5 +130,6 @@ mod tests {
         assert_eq!(types_in_category(Category::Lifecycle).len(), 2);
         assert_eq!(types_in_category(Category::Log).len(), 1);
         assert_eq!(types_in_category(Category::Player).len(), 1);
+        assert_eq!(types_in_category(Category::Node).len(), 1);
     }
 }

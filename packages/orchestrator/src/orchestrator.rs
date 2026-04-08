@@ -35,6 +35,8 @@ pub struct Orchestrator {
     setup_timeout_ms: u64,
     skip_setup: bool,
     stopped: bool,
+    /// UI controls declared by manifests, keyed by node name.
+    ui_controls: BTreeMap<String, Vec<acpfx_schema::manifest::ManifestControl>>,
 }
 
 impl Orchestrator {
@@ -67,6 +69,7 @@ impl Orchestrator {
             setup_timeout_ms: 600000,
             skip_setup: false,
             stopped: false,
+            ui_controls: BTreeMap::new(),
         }
     }
 
@@ -104,6 +107,12 @@ impl Orchestrator {
                 })
             })
             .collect()
+    }
+
+    /// Get UI controls declared by all node manifests.
+    /// Returns (node_name, controls) pairs.
+    pub fn get_ui_controls(&self) -> &BTreeMap<String, Vec<acpfx_schema::manifest::ManifestControl>> {
+        &self.ui_controls
     }
 
     /// Load manifests for all nodes from co-located manifest files.
@@ -147,6 +156,13 @@ impl Orchestrator {
                 let node_settings = self.config.nodes.get(name)
                     .and_then(|n| n.settings.as_ref());
                 validate_settings(name, node_settings, &m);
+
+                // Store UI controls if declared
+                if let Some(ref ui) = m.ui {
+                    if !ui.controls.is_empty() {
+                        self.ui_controls.insert(name.clone(), ui.controls.clone());
+                    }
+                }
 
                 dag_node.consumes = m.consumes;
                 dag_node.emits = m.emits;
@@ -322,13 +338,44 @@ impl Orchestrator {
     }
 
     /// Run the event routing loop. Call after start(). Returns when all nodes exit or stop() is called.
+    /// Optionally accepts a receiver for UI actions (e.g., control toggles).
     pub async fn run(
         &mut self,
+        on_event: impl FnMut(&serde_json::Value),
+    ) {
+        self.run_with_ui(on_event, None).await;
+    }
+
+    /// Run the event routing loop with optional UI action channel.
+    pub async fn run_with_ui(
+        &mut self,
         mut on_event: impl FnMut(&serde_json::Value),
+        mut ui_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::ui_widgets::UiAction>>,
     ) {
         let mut event_rx = self.event_rx.take().expect("run() called twice");
 
-        while let Some((from_node, node_event)) = event_rx.recv().await {
+        loop {
+            let (from_node, node_event) = if let Some(ref mut rx) = ui_rx {
+                tokio::select! {
+                    event = event_rx.recv() => {
+                        match event {
+                            Some(e) => e,
+                            None => break,
+                        }
+                    }
+                    action = rx.recv() => {
+                        if let Some(action) = action {
+                            self.handle_ui_action(action).await;
+                        }
+                        continue;
+                    }
+                }
+            } else {
+                match event_rx.recv().await {
+                    Some(e) => e,
+                    None => break,
+                }
+            };
             if self.stopped {
                 break;
             }
@@ -424,8 +471,28 @@ impl Orchestrator {
         }
     }
 
+    /// Handle a UI action (e.g., control toggle).
+    async fn handle_ui_action(&self, action: crate::ui_widgets::UiAction) {
+        match action {
+            crate::ui_widgets::UiAction::ControlToggle { ref node, ref control_id, value } => {
+                // Find the control spec for this node
+                if let Some(controls) = self.ui_controls.get(node.as_str()) {
+                    if let Some(ctrl) = controls.iter().find(|c| c.id == *control_id) {
+                        let event = serde_json::json!({
+                            "type": ctrl.event.type_,
+                            ctrl.event.field.clone(): value,
+                        });
+                        self.send_to_node(node, &event).await;
+                    }
+                }
+            }
+            crate::ui_widgets::UiAction::Quit => {
+                // Quit is handled by the UI thread, not here
+            }
+        }
+    }
+
     /// Send an event directly to a specific node.
-    #[allow(dead_code)]
     pub async fn send_to_node(&self, name: &str, event: &serde_json::Value) {
         if let Some(runner) = self.runners.get(name) {
             let json = serde_json::to_string(event).unwrap_or_default();
