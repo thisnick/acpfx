@@ -225,7 +225,7 @@ async fn main() {
     let handle_for_playback = handle.clone();
     let interrupted = Arc::new(AtomicBool::new(false));
     let interrupted_clone = interrupted.clone();
-    let muted = Arc::new(AtomicBool::new(true)); // start muted (push-to-talk: hold Space to unmute)
+    let muted = Arc::new(AtomicBool::new(true)); // start muted — hold Space to talk (push-to-talk)
     let muted_for_stdin = muted.clone();
     let muted_for_capture = muted.clone();
     let speaker_clone = speaker.clone();
@@ -239,7 +239,7 @@ async fn main() {
         eprintln!("[mic-speaker] Consider setting sampleRate: {} in config", native_rate);
     }
 
-    // Emit initial node.status (muted by default)
+    // Emit initial node.status
     let status_msg = json!({"type": "node.status", "text": "Muted (hold Space)"});
     writeln!(out, "{}", status_msg).unwrap();
     out.flush().unwrap();

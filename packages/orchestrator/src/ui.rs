@@ -732,7 +732,7 @@ pub fn run_ui(
                     let _ = cmd_tx.send(UiAction::ControlToggle {
                         node: parts[0].to_string(),
                         control_id: parts[1].to_string(),
-                        value: false, // hold released = deactivate = mute
+                        value: true, // hold released = muted=true (re-mute)
                     });
                 }
             }
@@ -757,13 +757,11 @@ pub fn run_ui(
                                 let hold_key = format!("{}:{}", kb.node, kb.control_id);
                                 if let Some(hold) = hold_states.get_mut(&hold_key) {
                                     if hold.on_press() {
-                                        // New activation — unmute (value=true means "activate toggle" which means unmute for hold)
-                                        // For hold: true, pressing activates (unmutes), releasing deactivates (mutes)
-                                        // The event field is "muted", so we send muted=false on press, muted=true on release
+                                        // Push-to-talk: hold to unmute, release to mute
                                         let _ = cmd_tx.send(UiAction::ControlToggle {
                                             node: kb.node.clone(),
                                             control_id: kb.control_id.clone(),
-                                            value: false, // muted=false (unmute on press)
+                                            value: false, // muted=false (unmute while held)
                                         });
                                     }
                                 }
