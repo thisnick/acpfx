@@ -695,7 +695,7 @@ pub fn run_ui(
     for kb in &keybinds {
         if kb.hold {
             let key = format!("{}:{}", kb.node, kb.control_id);
-            hold_states.insert(key, HoldState::new(300));
+            hold_states.insert(key, HoldState::new(600)); // >500ms to cover macOS initial key repeat delay
         }
     }
 
@@ -832,4 +832,77 @@ pub fn run_ui(
 pub fn restore_terminal() {
     let _ = disable_raw_mode();
     let _ = execute!(io::stderr(), LeaveAlternateScreen, DisableMouseCapture);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_keybind_space() {
+        assert_eq!(parse_keybind("space"), Some(KeyCode::Char(' ')));
+        assert_eq!(parse_keybind("Space"), Some(KeyCode::Char(' ')));
+        assert_eq!(parse_keybind("SPACE"), Some(KeyCode::Char(' ')));
+    }
+
+    #[test]
+    fn parse_keybind_single_char() {
+        assert_eq!(parse_keybind("m"), Some(KeyCode::Char('m')));
+        assert_eq!(parse_keybind("M"), Some(KeyCode::Char('m'))); // lowercased
+    }
+
+    #[test]
+    fn keybind_matches_crossterm_space() {
+        // Crossterm sends KeyCode::Char(' ') for space in raw mode.
+        // Verify our parsed keybind matches it.
+        let parsed = parse_keybind("space").unwrap();
+        let crossterm_space = KeyCode::Char(' ');
+        assert_eq!(parsed, crossterm_space, "parsed keybind should match crossterm Space");
+    }
+
+    #[test]
+    fn keybind_registration_from_manifest() {
+        // Simulate what run_ui does: parse ui_controls into RegisteredKeybind
+        let mut controls = std::collections::BTreeMap::new();
+        controls.insert("mic".to_string(), vec![
+            acpfx_schema::manifest::ManifestControl {
+                id: "mute".to_string(),
+                type_: acpfx_schema::manifest::ControlType::Toggle,
+                label: Some("Mute".to_string()),
+                hold: Some(true),
+                keybind: Some("space".to_string()),
+                event: acpfx_schema::manifest::ControlEventSpec {
+                    type_: "custom.mute".to_string(),
+                    field: "muted".to_string(),
+                },
+            },
+        ]);
+
+        let mut keybinds: Vec<RegisteredKeybind> = Vec::new();
+        for (node_name, ctrls) in &controls {
+            for ctrl in ctrls {
+                if let Some(ref kb_str) = ctrl.keybind {
+                    if let Some(key) = parse_keybind(kb_str) {
+                        keybinds.push(RegisteredKeybind {
+                            key,
+                            node: node_name.clone(),
+                            control_id: ctrl.id.clone(),
+                            hold: ctrl.hold.unwrap_or(false),
+                        });
+                    }
+                }
+            }
+        }
+
+        assert_eq!(keybinds.len(), 1);
+        assert_eq!(keybinds[0].key, KeyCode::Char(' '));
+        assert_eq!(keybinds[0].node, "mic");
+        assert_eq!(keybinds[0].control_id, "mute");
+        assert!(keybinds[0].hold);
+
+        // Simulate space press matching
+        let simulated_key = KeyCode::Char(' ');
+        let matched = keybinds.iter().find(|kb| kb.key == simulated_key);
+        assert!(matched.is_some(), "Space should match the registered keybind");
+    }
 }

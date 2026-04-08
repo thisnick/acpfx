@@ -185,6 +185,10 @@ async fn main() {
 
     let playback_wav_for_stdin = playback_wav.clone();
 
+    // Stdout is owned by the main thread (capture loop). The stdin thread sends
+    // lines via this channel to avoid deadlocking on stdout.lock().
+    let (stdout_tx, stdout_rx) = std::sync::mpsc::channel::<String>();
+
     let stdout = io::stdout();
     let mut out = io::BufWriter::new(stdout.lock());
 
@@ -246,8 +250,6 @@ async fn main() {
 
     std::thread::spawn(move || {
         let stdin = io::stdin();
-        let stdout_for_status = io::stdout();
-        let mut status_out = io::BufWriter::new(stdout_for_status.lock());
         for line in stdin.lock().lines() {
             let line = match line {
                 Ok(l) => l,
@@ -259,13 +261,21 @@ async fn main() {
                 let event_type = event["type"].as_str().unwrap_or("");
 
                 if event_type == "custom.mute" {
+                    let was_muted = muted_for_stdin.load(Ordering::Relaxed);
                     let is_muted = event["muted"].as_bool().unwrap_or(true);
                     muted_for_stdin.store(is_muted, Ordering::Relaxed);
                     let text = if is_muted { "Muted (hold Space)" } else { "Listening" };
-                    let status = json!({"type": "node.status", "text": text});
-                    let _ = writeln!(status_out, "{}", status);
-                    let _ = status_out.flush();
-                    eprintln!("[mic-speaker] Mute: {}", is_muted);
+                    let _ = stdout_tx.send(json!({"type": "node.status", "text": text}).to_string());
+
+                    // Unmuting in hold mode: interrupt the agent so user can speak
+                    if was_muted && !is_muted {
+                        let _ = stdout_tx.send(json!({
+                            "type": "control.interrupt",
+                            "reason": "push_to_talk"
+                        }).to_string());
+                        // Also clear playback so the speaker stops immediately
+                        let _ = handle_for_playback.clear_playback();
+                    }
                 } else if event_type == "control.interrupt" {
                     interrupted_clone.store(true, Ordering::Relaxed);
                     // Instantly clear sys-voice's playback buffer — speaker goes silent
@@ -300,6 +310,12 @@ async fn main() {
         if interrupted.load(Ordering::Relaxed) {
             interrupted.store(false, Ordering::Relaxed);
             buffer.clear();
+        }
+
+        // Drain any pending stdout messages from the stdin thread (e.g., node.status from mute toggle)
+        while let Ok(msg) = stdout_rx.try_recv() {
+            let _ = writeln!(out, "{}", msg);
+            let _ = out.flush();
         }
 
         match handle_for_capture.recv().await {
