@@ -16,6 +16,17 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot};
 
+// Package versions embedded at compile time by build.rs
+include!(concat!(env!("OUT_DIR"), "/pkg_versions.rs"));
+
+/// Look up the compile-time version for an @acpfx/* package.
+fn get_pkg_version(package: &str) -> Option<&'static str> {
+    PKG_VERSIONS
+        .iter()
+        .find(|(name, _)| *name == package)
+        .map(|(_, ver)| *ver)
+}
+
 /// How to launch a resolved node.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -69,10 +80,14 @@ pub fn resolve_node(use_: &str, dist_dir: &Path) -> ResolvedNode {
             };
         }
 
-        // 3. npx fallback
+        // 3. npx fallback — use compile-time version if known, else @latest
+        let version_spec = match get_pkg_version(use_) {
+            Some(ver) => format!("{use_}@{ver}"),
+            None => format!("{use_}@latest"),
+        };
         return ResolvedNode {
             command: "npx".into(),
-            args: vec!["-y".into(), format!("{}@latest", use_)],
+            args: vec!["-y".into(), version_spec],
             launch_type: LaunchType::Spawn,
         };
     }
