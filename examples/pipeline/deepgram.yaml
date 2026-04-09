@@ -1,11 +1,11 @@
 nodes:
   mic:
     use: '@acpfx/mic-speaker'
-    settings: {speaker: player}
+    settings: {mode: ptt, speaker: player}
     outputs: [stt]
   stt:
     use: '@acpfx/stt-deepgram'
-    settings: {language: en, model: nova-3, utteranceEndMs: 1500, endpointing: 500}
+    settings: {language: en, model: nova-3, turnDetection: false}
     outputs: [bridge]
   bridge:
     use: '@acpfx/bridge-acpx'

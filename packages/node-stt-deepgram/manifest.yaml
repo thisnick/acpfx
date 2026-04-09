@@ -2,6 +2,8 @@ name: stt-deepgram
 description: Speech-to-text via Deepgram streaming API
 consumes:
   - audio.chunk
+  - audio.start
+  - audio.end
 emits:
   - speech.partial
   - speech.final
@@ -13,7 +15,7 @@ arguments:
   language:
     type: string
     default: "en"
-    description: "Language code for transcription"
+    description: "Language code (e.g., en, fr, de, ja, zh, es). Use 'multi' for automatic multi-language detection. See https://developers.deepgram.com/docs/language"
   model:
     type: string
     default: "nova-3"
@@ -29,6 +31,10 @@ arguments:
   apiKey:
     type: string
     description: "Deepgram API key (overrides DEEPGRAM_API_KEY env var)"
+  turnDetection:
+    type: boolean
+    default: true
+    description: "Enable turn detection (set false for push-to-talk mode)"
 env:
   DEEPGRAM_API_KEY:
     required: true

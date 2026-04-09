@@ -40,6 +40,7 @@ import threading
 NODE_NAME = os.environ.get("ACPFX_NODE_NAME", "stt-kyutai")
 COMPONENT = "stt-kyutai"
 SETTINGS = json.loads(os.environ.get("ACPFX_SETTINGS", "{}"))
+TURN_DETECTION = SETTINGS.get("turnDetection", True)
 
 MODEL_ID = SETTINGS.get("model", "kyutai/stt-1b-en_fr")
 DEVICE_PREF = SETTINGS.get("device", "auto")
@@ -477,6 +478,8 @@ def main():
 
     def on_vad():
         nonlocal accumulated_text, pending_text
+        if not TURN_DETECTION:
+            return  # Skip in PTT mode
         full_text = f"{pending_text}{accumulated_text.strip()}".strip()
         if full_text:
             emit({
@@ -540,6 +543,36 @@ def main():
             continue
 
         event_type = event.get("type", "")
+
+        if event_type == "audio.start":
+            # PTT session start: reset accumulated text
+            pending_text = ""
+            accumulated_text = ""
+            continue
+
+        if event_type == "audio.end":
+            # PTT session end: flush remaining audio buffer through the model
+            # Pad remaining audio to chunk size so the model can process it
+            if len(audio_buffer) > 0:
+                remaining = list(audio_buffer)
+                audio_buffer.clear()
+                # Pad to MOSHI_CHUNK_SIZE with silence
+                remaining.extend([0.0] * (MOSHI_CHUNK_SIZE - len(remaining)))
+                backend.process_audio(remaining[:MOSHI_CHUNK_SIZE])
+
+            # Now finalize whatever text has been accumulated
+            full_text = f"{pending_text}{accumulated_text.strip()}".strip()
+            if full_text:
+                emit({
+                    "type": "speech.pause",
+                    "trackId": "stt",
+                    "pendingText": full_text,
+                    "silenceMs": 0,
+                })
+                pending_text = ""
+                accumulated_text = ""
+            continue
+
         if event_type != "audio.chunk":
             continue
 

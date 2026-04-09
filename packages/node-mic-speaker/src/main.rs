@@ -1,22 +1,20 @@
-/// mic-speaker node — microphone capture with OS-level echo cancellation.
+/// mic-speaker node — microphone capture with optional OS-level echo cancellation.
 ///
-/// Uses `sys-voice` which leverages platform-native AEC:
-///   - macOS: CoreAudio VoiceProcessingIO
-///   - Windows: WASAPI IAcousticEchoCancellationControl
-///   - Linux: PulseAudio module-echo-cancel
-///   - Android: Oboe VoiceCommunication
+/// Two modes, detected automatically from the embedded manifest:
 ///
-/// This node handles BOTH mic capture AND speaker playback in one process,
-/// because OS-level AEC requires the capture and playback to be on the
-/// same audio unit so the OS can correlate them.
+/// **PTT (push-to-talk) mode** — manifest has `hold: true` mute control:
+///   - Speaker always on via independent PlaybackHandle
+///   - Mic created on unmute, dropped on mute (OS mic indicator follows)
+///   - No AEC needed since mic and speaker are never active simultaneously
 ///
-/// Receives audio.chunk events on stdin (from TTS/player) to play through speaker.
-/// Emits audio.chunk and audio.level events on stdout from mic (with echo cancelled).
+/// **AEC (continuous) mode** — no hold control in manifest:
+///   - Single CaptureHandle couples mic + speaker for echo cancellation
+///   - macOS: VoiceProcessingIO, Windows: WASAPI AEC, Linux: PulseAudio
 ///
 /// Settings (via ACPFX_SETTINGS):
 ///   sampleRate?: number     — target sample rate (default: 16000)
 ///   chunkMs?: number        — chunk duration in ms (default: 100)
-///   speaker?: string         — node name whose audio is the speaker reference for AEC (default: "player")
+///   speaker?: string        — node name whose audio is the speaker reference (default: "player")
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
 use serde_json::{json, Value};
@@ -61,6 +59,11 @@ fn handle_acpfx_flags() {
             std::process::exit(0);
         }
     }
+}
+
+/// Detect PTT mode from the `mode` setting (ACPFX_SETTINGS).
+fn is_ptt_mode(settings: &Value) -> bool {
+    settings["mode"].as_str().unwrap_or("continuous") == "ptt"
 }
 
 fn samples_to_base64(samples: &[f32]) -> String {
@@ -150,39 +153,260 @@ impl Drop for WavWriter {
     }
 }
 
-#[tokio::main]
-async fn main() {
-    // Handle --acpfx-* flags before normal startup
-    handle_acpfx_flags();
+// ---------------------------------------------------------------------------
+// Stdin command — messages from the stdin thread to the main loop
+// ---------------------------------------------------------------------------
 
-    let settings_str = std::env::var("ACPFX_SETTINGS").unwrap_or_default();
-    let settings: Value = if settings_str.is_empty() {
-        json!({})
-    } else {
-        serde_json::from_str(&settings_str).expect("Invalid ACPFX_SETTINGS JSON")
+enum StdinCommand {
+    Mute { is_muted: bool },
+    Interrupt,
+}
+
+// ---------------------------------------------------------------------------
+// PTT mode — independent mic/speaker
+// ---------------------------------------------------------------------------
+
+async fn run_ptt_mode(
+    sample_rate: u32,
+    chunk_ms: u32,
+    chunk_samples: usize,
+    speaker: String,
+    capture_wav: Arc<Mutex<Option<WavWriter>>>,
+    playback_wav: Arc<Mutex<Option<WavWriter>>>,
+) {
+    let stdout = io::stdout();
+    let mut out = io::BufWriter::new(stdout.lock());
+
+    // Create playback handle (speaker always on)
+    let playback = match sys_voice::PlaybackHandle::new() {
+        Ok(h) => h,
+        Err(e) => {
+            eprintln!("[mic-speaker] Failed to start playback: {:?}", e);
+            let err = json!({
+                "type": "control.error",
+                "component": "mic-speaker",
+                "message": format!("Playback init failed: {:?}", e),
+                "fatal": true
+            });
+            writeln!(out, "{}", err).unwrap();
+            out.flush().unwrap();
+            std::process::exit(1);
+        }
     };
 
-    let sample_rate = settings["sampleRate"].as_u64().unwrap_or(DEFAULT_SAMPLE_RATE as u64) as u32;
-    let chunk_ms = settings["chunkMs"].as_u64().unwrap_or(DEFAULT_CHUNK_MS as u64) as u32;
-    let chunk_samples = (sample_rate * chunk_ms / 1000) as usize;
-    let speaker = settings["speaker"]
-        .as_str()
-        .unwrap_or("player")
-        .to_string();
+    let native_rate = playback.native_sample_rate();
+    eprintln!(
+        "[mic-speaker] PTT mode — speaker at {}Hz (native: {}Hz), {}ms chunks, speech from \"{}\"",
+        sample_rate, native_rate, chunk_ms, speaker
+    );
 
-    // Debug recording
-    let debug_dir = settings["debugDir"].as_str().map(|s| s.to_string())
-        .or_else(|| std::env::var("ACPFX_MIC_DEBUG").ok().filter(|v| v == "1").map(|_| "./mic-debug".to_string()));
-
-    let capture_wav: Arc<Mutex<Option<WavWriter>>> = Arc::new(Mutex::new(None));
-    let playback_wav: Arc<Mutex<Option<WavWriter>>> = Arc::new(Mutex::new(None));
-
-    if let Some(ref dir) = debug_dir {
-        std::fs::create_dir_all(dir).ok();
-        *capture_wav.lock().unwrap() = WavWriter::new(&format!("{}/capture.wav", dir), sample_rate).ok();
-        *playback_wav.lock().unwrap() = WavWriter::new(&format!("{}/playback.wav", dir), sample_rate).ok();
+    if sample_rate != native_rate {
+        eprintln!("[mic-speaker] WARNING: sample_rate {}Hz != native {}Hz — playback will resample (may stutter)", sample_rate, native_rate);
+        eprintln!("[mic-speaker] Consider setting sampleRate: {} in config", native_rate);
     }
 
+    // Emit lifecycle.ready
+    let ready = json!({"type": "lifecycle.ready", "component": "mic-speaker"});
+    writeln!(out, "{}", ready).unwrap();
+    out.flush().unwrap();
+
+    // Emit initial node.status
+    let status_msg = json!({"type": "node.status", "text": "Muted (hold Space)"});
+    writeln!(out, "{}", status_msg).unwrap();
+    out.flush().unwrap();
+
+    // Channel for commands from stdin thread
+    let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<StdinCommand>();
+
+    let playback = Arc::new(playback);
+    let playback_for_stdin = playback.clone();
+    let playback_wav_for_stdin = playback_wav.clone();
+
+    // Stdin thread
+    std::thread::spawn(move || {
+        let stdin = io::stdin();
+        for line in stdin.lock().lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => break,
+            };
+            if line.trim().is_empty() { continue; }
+
+            if let Ok(event) = serde_json::from_str::<Value>(&line) {
+                let event_type = event["type"].as_str().unwrap_or("");
+                eprintln!("[mic-speaker] stdin: {}", event_type);
+
+                if event_type == "custom.mute" {
+                    let is_muted = event["muted"].as_bool().unwrap_or(true);
+                    eprintln!("[mic-speaker] custom.mute muted={}", is_muted);
+                    let _ = cmd_tx.send(StdinCommand::Mute { is_muted });
+                } else if event_type == "control.interrupt" {
+                    let _ = playback_for_stdin.clear_playback();
+                    eprintln!("[mic-speaker] Interrupt — cleared playback buffer");
+                    let _ = cmd_tx.send(StdinCommand::Interrupt);
+                } else if event_type == "audio.chunk" {
+                    let from = event["_from"].as_str().unwrap_or("");
+                    if from == speaker {
+                        if let Some(data) = event["data"].as_str() {
+                            let samples = base64_to_f32(data);
+                            if let Ok(mut w) = playback_wav_for_stdin.lock() {
+                                if let Some(ref mut wav) = *w { wav.write_f32(&samples); }
+                            }
+                            if let Err(e) = playback_for_stdin.play_audio(samples, sample_rate) {
+                                eprintln!("[mic-speaker] play_audio error: {:?}", e);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        std::process::exit(0);
+    });
+
+    // State machine
+    let mut capture: Option<sys_voice::IndependentCaptureHandle> = None;
+    let mut is_muted = true;
+    let mut buffer: Vec<f32> = Vec::with_capacity(chunk_samples * 2);
+    let interrupted = Arc::new(AtomicBool::new(false));
+
+    loop {
+        if interrupted.load(Ordering::Relaxed) {
+            interrupted.store(false, Ordering::Relaxed);
+            buffer.clear();
+        }
+
+        // Process commands from stdin thread (non-blocking)
+        while let Ok(cmd) = cmd_rx.try_recv() {
+            match cmd {
+                StdinCommand::Mute { is_muted: new_muted } => {
+                    let was_muted = is_muted;
+                    is_muted = new_muted;
+
+                    let text = if is_muted { "Muted (hold Space)" } else { "Listening" };
+                    let _ = writeln!(out, "{}", json!({"type": "node.status", "text": text}));
+                    let _ = out.flush();
+
+                    if was_muted && !is_muted {
+                        // Unmuting: emit interrupt, clear playback, create capture
+                        let _ = writeln!(out, "{}", json!({
+                            "type": "control.interrupt",
+                            "reason": "push_to_talk"
+                        }));
+                        let _ = out.flush();
+                        let _ = playback.clear_playback();
+
+                        let config = sys_voice::AecConfig {
+                            sample_rate,
+                            channels: sys_voice::Channels::Mono,
+                        };
+                        match sys_voice::IndependentCaptureHandle::new(config) {
+                            Ok(h) => {
+                                capture = Some(h);
+                                buffer.clear();
+                                let _ = writeln!(out, "{}", json!({
+                                    "type": "audio.start",
+                                    "trackId": "mic"
+                                }));
+                                let _ = out.flush();
+                            }
+                            Err(e) => {
+                                let _ = writeln!(out, "{}", json!({
+                                    "type": "log", "level": "error", "component": "mic-speaker",
+                                    "message": format!("Failed to start capture: {:?}", e)
+                                }));
+                                let _ = out.flush();
+                            }
+                        }
+                    } else if !was_muted && is_muted {
+                        // Muting: emit audio.end, then drop capture (OS mic indicator off)
+                        let _ = writeln!(out, "{}", json!({
+                            "type": "audio.end",
+                            "trackId": "mic"
+                        }));
+                        let _ = out.flush();
+                        capture = None;
+                        buffer.clear();
+                        eprintln!("[mic-speaker] Capture stopped (PTT mute)");
+                    }
+                }
+                StdinCommand::Interrupt => {
+                    interrupted.store(true, Ordering::Relaxed);
+                }
+            }
+        }
+
+        // Read from capture if active
+        if let Some(ref cap) = capture {
+            // Use a short timeout so we can process commands regularly
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(10),
+                cap.recv(),
+            ).await {
+                Ok(Some(Ok(samples))) => {
+                    buffer.extend_from_slice(&samples);
+
+                    while buffer.len() >= chunk_samples {
+                        let chunk: Vec<f32> = buffer.drain(..chunk_samples).collect();
+                        if let Ok(mut w) = capture_wav.lock() {
+                            if let Some(ref mut wav) = *w { wav.write_f32(&chunk); }
+                        }
+
+                        let b64 = samples_to_base64(&chunk);
+                        let (rms, peak, dbfs) = compute_level(&chunk);
+
+                        let audio_event = json!({
+                            "type": "audio.chunk",
+                            "trackId": "mic",
+                            "format": "pcm_s16le",
+                            "sampleRate": sample_rate,
+                            "channels": 1,
+                            "data": b64,
+                            "durationMs": chunk_ms,
+                        });
+                        writeln!(out, "{}", audio_event).unwrap();
+
+                        let level_event = json!({
+                            "type": "audio.level",
+                            "trackId": "mic",
+                            "rms": rms,
+                            "peak": peak,
+                            "dbfs": dbfs,
+                        });
+                        writeln!(out, "{}", level_event).unwrap();
+                        out.flush().unwrap();
+                    }
+                }
+                Ok(Some(Err(e))) => {
+                    eprintln!("[mic-speaker] Capture error: {:?}", e);
+                    capture = None;
+                }
+                Ok(None) => {
+                    eprintln!("[mic-speaker] Capture channel closed");
+                    capture = None;
+                }
+                Err(_) => {
+                    // Timeout — no audio yet, continue processing commands
+                }
+            }
+        } else {
+            // No capture active — sleep briefly to avoid busy-waiting
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// AEC mode — existing behavior
+// ---------------------------------------------------------------------------
+
+async fn run_aec_mode(
+    sample_rate: u32,
+    chunk_ms: u32,
+    chunk_samples: usize,
+    speaker: String,
+    capture_wav: Arc<Mutex<Option<WavWriter>>>,
+    playback_wav: Arc<Mutex<Option<WavWriter>>>,
+) {
     let playback_wav_for_stdin = playback_wav.clone();
 
     // Stdout is owned by the main thread (capture loop). The stdin thread sends
@@ -234,10 +458,6 @@ async fn main() {
     let muted_for_capture = muted.clone();
     let speaker_clone = speaker.clone();
 
-    // Stdin thread — parse events, play speaker audio directly per-chunk
-    // No local buffering — play_audio() feeds sys-voice's CoreAudio render buffer.
-    // If sample_rate matches native rate, no resampling happens (no stutter).
-    // Interrupt just stops sending new chunks — CoreAudio buffer is small (~20ms).
     if sample_rate != native_rate {
         eprintln!("[mic-speaker] WARNING: sample_rate {}Hz != native {}Hz — playback will resample (may stutter)", sample_rate, native_rate);
         eprintln!("[mic-speaker] Consider setting sampleRate: {} in config", native_rate);
@@ -282,9 +502,6 @@ async fn main() {
                     let _ = handle_for_playback.clear_playback();
                     eprintln!("[mic-speaker] Interrupt — cleared playback buffer");
                 } else if event_type == "audio.chunk" {
-                    // No need to drop chunks — clear_playback() already emptied the buffer.
-                    // Any chunk arriving now is either a straggler (plays briefly, harmless)
-                    // or from the new response (should play).
                     let from = event["_from"].as_str().unwrap_or("");
                     if from == speaker_clone {
                         if let Some(data) = event["data"].as_str() {
@@ -312,7 +529,7 @@ async fn main() {
             buffer.clear();
         }
 
-        // Drain any pending stdout messages from the stdin thread (e.g., node.status from mute toggle)
+        // Drain any pending stdout messages from the stdin thread
         while let Ok(msg) = stdout_rx.try_recv() {
             let _ = writeln!(out, "{}", msg);
             let _ = out.flush();
@@ -324,7 +541,6 @@ async fn main() {
 
                 while buffer.len() >= chunk_samples {
                     let chunk: Vec<f32> = buffer.drain(..chunk_samples).collect();
-                    // Record capture audio (even when muted, to keep session alive)
                     if let Ok(mut w) = capture_wav.lock() {
                         if let Some(ref mut wav) = *w { wav.write_f32(&chunk); }
                     }
@@ -371,4 +587,47 @@ async fn main() {
     let done = json!({"type": "lifecycle.done", "component": "mic-speaker"});
     writeln!(out, "{}", done).unwrap();
     out.flush().unwrap();
+}
+
+#[tokio::main]
+async fn main() {
+    // Handle --acpfx-* flags before normal startup
+    handle_acpfx_flags();
+
+    let settings_str = std::env::var("ACPFX_SETTINGS").unwrap_or_default();
+    let settings: Value = if settings_str.is_empty() {
+        json!({})
+    } else {
+        serde_json::from_str(&settings_str).expect("Invalid ACPFX_SETTINGS JSON")
+    };
+
+    let sample_rate = settings["sampleRate"].as_u64().unwrap_or(DEFAULT_SAMPLE_RATE as u64) as u32;
+    let chunk_ms = settings["chunkMs"].as_u64().unwrap_or(DEFAULT_CHUNK_MS as u64) as u32;
+    let chunk_samples = (sample_rate * chunk_ms / 1000) as usize;
+    let speaker = settings["speaker"]
+        .as_str()
+        .unwrap_or("player")
+        .to_string();
+
+    // Debug recording
+    let debug_dir = settings["debugDir"].as_str().map(|s| s.to_string())
+        .or_else(|| std::env::var("ACPFX_MIC_DEBUG").ok().filter(|v| v == "1").map(|_| "./mic-debug".to_string()));
+
+    let capture_wav: Arc<Mutex<Option<WavWriter>>> = Arc::new(Mutex::new(None));
+    let playback_wav: Arc<Mutex<Option<WavWriter>>> = Arc::new(Mutex::new(None));
+
+    if let Some(ref dir) = debug_dir {
+        std::fs::create_dir_all(dir).ok();
+        *capture_wav.lock().unwrap() = WavWriter::new(&format!("{}/capture.wav", dir), sample_rate).ok();
+        *playback_wav.lock().unwrap() = WavWriter::new(&format!("{}/playback.wav", dir), sample_rate).ok();
+    }
+
+    let ptt = is_ptt_mode(&settings);
+    eprintln!("[mic-speaker] Mode: {}", if ptt { "PTT (push-to-talk)" } else { "AEC (continuous)" });
+
+    if ptt {
+        run_ptt_mode(sample_rate, chunk_ms, chunk_samples, speaker, capture_wav, playback_wav).await;
+    } else {
+        run_aec_mode(sample_rate, chunk_ms, chunk_samples, speaker, capture_wav, playback_wav).await;
+    }
 }

@@ -6,12 +6,20 @@ consumes:
   - custom.mute
 emits:
   - audio.chunk
+  - audio.start
+  - audio.end
   - audio.level
   - node.status
+  - control.interrupt
   - lifecycle.ready
   - lifecycle.done
   - control.error
 arguments:
+  mode:
+    type: string
+    default: "continuous"
+    enum: ["continuous", "ptt"]
+    description: "continuous = always listening with AEC, ptt = push-to-talk (hold Space to talk, no AEC)"
   sampleRate:
     type: number
     default: 16000

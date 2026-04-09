@@ -13,10 +13,10 @@ emits:
 arguments:
   voiceId:
     type: string
-    description: "ElevenLabs voice ID"
+    description: "ElevenLabs voice ID. Each voice has a language — browse voices at https://elevenlabs.io/voice-library"
   model:
     type: string
-    description: "ElevenLabs model name"
+    description: "ElevenLabs model (e.g., eleven_turbo_v2_5 for low latency, eleven_multilingual_v2 for 29 languages)"
   apiKey:
     type: string
     description: "ElevenLabs API key (overrides ELEVENLABS_API_KEY env var)"

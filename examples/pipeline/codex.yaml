@@ -1,11 +1,11 @@
 nodes:
   mic:
     use: '@acpfx/mic-speaker'
-    settings: {speaker: player}
+    settings: {mode: ptt, speaker: player}
     outputs: [stt, recorder]
   stt:
     use: '@acpfx/stt-elevenlabs'
-    settings: {language: en}
+    settings: {language: en, turnDetection: false}
     outputs: [bridge]
   bridge:
     use: '@acpfx/bridge-acpx'

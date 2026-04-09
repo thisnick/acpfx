@@ -26,11 +26,13 @@ type Settings = {
   vadThreshold?: number;         // 0-1, default 0.5 (higher = less sensitive)
   minSpeechDurationMs?: number;  // default 250 (ignore short noise bursts)
   minSilenceDurationMs?: number; // default 100
+  turnDetection?: boolean;       // default true — set false for PTT mode
 };
 
 const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
 const LANGUAGE = settings.language ?? "en";
 const API_KEY = settings.apiKey ?? process.env.ELEVENLABS_API_KEY ?? "";
+const TURN_DETECTION = settings.turnDetection ?? true;
 const TRACK_ID = "stt";
 
 if (!API_KEY) {
@@ -53,16 +55,23 @@ async function connectWebSocket(): Promise<void> {
   const vadThreshold = settings.vadThreshold ?? 0.5;
   const minSpeechMs = settings.minSpeechDurationMs ?? 250;
   const minSilenceMs = settings.minSilenceDurationMs ?? 100;
-  const url =
+  let url =
     `${WS_URL}?model_id=${MODEL}` +
     `&language_code=${encodeURIComponent(LANGUAGE)}` +
     `&sample_rate=16000` +
-    `&encoding=pcm_s16le` +
-    `&commit_strategy=vad` +
-    `&vad_silence_threshold_secs=${vadSilenceSecs}` +
-    `&vad_threshold=${vadThreshold}` +
-    `&min_speech_duration_ms=${minSpeechMs}` +
-    `&min_silence_duration_ms=${minSilenceMs}`;
+    `&encoding=pcm_s16le`;
+
+  if (TURN_DETECTION) {
+    url += `&commit_strategy=vad` +
+      `&vad_silence_threshold_secs=${vadSilenceSecs}` +
+      `&vad_threshold=${vadThreshold}` +
+      `&min_speech_duration_ms=${minSpeechMs}` +
+      `&min_silence_duration_ms=${minSilenceMs}`;
+  } else {
+    // Manual commit — PTT controls when speech ends via audio.end event
+    // Don't use VAD; transcripts accumulate until explicitly committed
+    url += `&commit_strategy=manual`;
+  }
 
   ws = new WebSocket(url, {
     headers: { "xi-api-key": API_KEY },
@@ -180,16 +189,18 @@ function handleServerMessage(msg: Record<string, unknown>): void {
 
     // When using VAD commit_strategy, a committed_transcript means
     // ElevenLabs detected a pause. Emit speech.pause.
-    emit({
-      type: "speech.pause",
-      trackId: TRACK_ID,
-      pendingText: accumulatedText,
-      silenceMs: settings.pauseMs ?? 600,
-    });
+    if (TURN_DETECTION) {
+      emit({
+        type: "speech.pause",
+        trackId: TRACK_ID,
+        pendingText: accumulatedText,
+        silenceMs: settings.pauseMs ?? 600,
+      });
 
-    // Reset for next utterance
-    lastPartialText = "";
-    accumulatedText = "";
+      // Reset for next utterance
+      lastPartialText = "";
+      accumulatedText = "";
+    }
   } else if (msgType === "auth_error" || msgType === "error") {
     const errMsg =
       (msg.message as string) ?? (msg.error as string) ?? msgType;
@@ -249,6 +260,34 @@ async function main(): Promise<void> {
         });
       } else if (connected && !interrupted) {
         sendAudio(event.data as string);
+      }
+    } else if (event.type === "audio.start") {
+      // PTT session start: reset accumulated text
+      accumulatedText = "";
+      lastPartialText = "";
+    } else if (event.type === "audio.end") {
+      // PTT session end: send commit to ElevenLabs to finalize transcript
+      if (ws && connected) {
+        ws.send(JSON.stringify({
+          message_type: "input_audio_chunk",
+          audio_base_64: "",
+          commit: true,
+          sample_rate: 16000,
+        }));
+      }
+      // Emit speech.pause with best available text.
+      // accumulatedText has committed transcripts; lastPartialText has the latest partial.
+      // The commit response is async so accumulatedText may be empty — use partial as fallback.
+      const finalText = accumulatedText || lastPartialText;
+      if (finalText) {
+        emit({
+          type: "speech.pause",
+          trackId: TRACK_ID,
+          pendingText: finalText,
+          silenceMs: 0,
+        });
+        accumulatedText = "";
+        lastPartialText = "";
       }
     } else if (event.type === "control.interrupt") {
       // Don't close WebSocket — STT should keep listening for barge-in.

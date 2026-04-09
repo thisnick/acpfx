@@ -298,7 +298,8 @@ impl UiState {
             }
 
             "control.interrupt" => {
-                node.interrupted = true;
+                // Don't mark the emitting node as interrupted — only downstream receivers
+                // The _from node sent the interrupt, it wasn't interrupted itself
                 let reason = event.get("reason").and_then(|v| v.as_str()).unwrap_or("interrupted").to_string();
                 self.conversation.push(ConversationEntry::Interrupt { reason });
             }

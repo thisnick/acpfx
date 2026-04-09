@@ -14,7 +14,7 @@ arguments:
   voice:
     type: string
     default: "aura-2-apollo-en"
-    description: "Deepgram voice model name"
+    description: "Deepgram voice model (e.g., aura-2-apollo-en, aura-2-aries-en). Language is determined by voice name suffix. See https://developers.deepgram.com/docs/tts-models"
   sampleRate:
     type: number
     default: 16000
