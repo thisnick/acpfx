@@ -15,7 +15,7 @@ arguments:
   language:
     type: string
     default: "en"
-    description: "Language code for transcription"
+    description: "Language code (e.g., en, fr, de, ja, zh, es). Use 'multi' for automatic multi-language detection. See https://developers.deepgram.com/docs/language"
   model:
     type: string
     default: "nova-3"

@@ -19,7 +19,7 @@ arguments:
   language:
     type: string
     default: "en"
-    description: "Language code for transcription"
+    description: "Language code (en or fr). The default stt-1b-en_fr model supports English and French. Use stt-2.6b-en model for English-only with higher quality"
   device:
     type: string
     default: "auto"

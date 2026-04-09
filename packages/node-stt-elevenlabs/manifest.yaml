@@ -16,7 +16,7 @@ arguments:
   language:
     type: string
     default: "en"
-    description: "Language code for transcription"
+    description: "Language code (e.g., en, fr, de, ja, zh, es). Omit for automatic language detection. See https://elevenlabs.io/docs/api-reference/speech-to-text"
   apiKey:
     type: string
     description: "ElevenLabs API key (overrides ELEVENLABS_API_KEY env var)"
