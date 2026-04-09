@@ -6,8 +6,11 @@ consumes:
   - custom.mute
 emits:
   - audio.chunk
+  - audio.start
+  - audio.end
   - audio.level
   - node.status
+  - control.interrupt
   - lifecycle.ready
   - lifecycle.done
   - control.error

@@ -301,13 +301,13 @@ async fn run_ptt_mode(
                         };
                         match sys_voice::IndependentCaptureHandle::new(config) {
                             Ok(h) => {
-                                let _ = writeln!(out, "{}", json!({
-                                    "type": "log", "level": "info", "component": "mic-speaker",
-                                    "message": "Capture started (PTT unmute)"
-                                }));
-                                let _ = out.flush();
                                 capture = Some(h);
                                 buffer.clear();
+                                let _ = writeln!(out, "{}", json!({
+                                    "type": "audio.start",
+                                    "trackId": "mic"
+                                }));
+                                let _ = out.flush();
                             }
                             Err(e) => {
                                 let _ = writeln!(out, "{}", json!({
@@ -318,7 +318,12 @@ async fn run_ptt_mode(
                             }
                         }
                     } else if !was_muted && is_muted {
-                        // Muting: drop capture (OS mic indicator off)
+                        // Muting: emit audio.end, then drop capture (OS mic indicator off)
+                        let _ = writeln!(out, "{}", json!({
+                            "type": "audio.end",
+                            "trackId": "mic"
+                        }));
+                        let _ = out.flush();
                         capture = None;
                         buffer.clear();
                         eprintln!("[mic-speaker] Capture stopped (PTT mute)");

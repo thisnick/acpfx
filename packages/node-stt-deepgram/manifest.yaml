@@ -2,6 +2,8 @@ name: stt-deepgram
 description: Speech-to-text via Deepgram streaming API
 consumes:
   - audio.chunk
+  - audio.start
+  - audio.end
 emits:
   - speech.partial
   - speech.final

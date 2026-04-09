@@ -543,6 +543,27 @@ def main():
             continue
 
         event_type = event.get("type", "")
+
+        if event_type == "audio.start":
+            # PTT session start: reset accumulated text
+            pending_text = ""
+            accumulated_text = ""
+            continue
+
+        if event_type == "audio.end":
+            # PTT session end: finalize accumulated text
+            full_text = f"{pending_text}{accumulated_text.strip()}".strip()
+            if full_text:
+                emit({
+                    "type": "speech.pause",
+                    "trackId": "stt",
+                    "pendingText": full_text,
+                    "silenceMs": 0,
+                })
+                pending_text = ""
+                accumulated_text = ""
+            continue
+
         if event_type != "audio.chunk":
             continue
 

@@ -2,6 +2,8 @@ name: stt-kyutai
 description: Local speech-to-text via Kyutai moshi (on-device, no API key needed)
 consumes:
   - audio.chunk
+  - audio.start
+  - audio.end
 emits:
   - speech.partial
   - speech.final

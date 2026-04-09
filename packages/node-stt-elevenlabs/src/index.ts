@@ -260,6 +260,22 @@ async function main(): Promise<void> {
       } else if (connected && !interrupted) {
         sendAudio(event.data as string);
       }
+    } else if (event.type === "audio.start") {
+      // PTT session start: reset accumulated text
+      accumulatedText = "";
+      lastPartialText = "";
+    } else if (event.type === "audio.end") {
+      // PTT session end: finalize whatever text has been accumulated
+      if (accumulatedText) {
+        emit({
+          type: "speech.pause",
+          trackId: TRACK_ID,
+          pendingText: accumulatedText,
+          silenceMs: 0,
+        });
+        accumulatedText = "";
+        lastPartialText = "";
+      }
     } else if (event.type === "control.interrupt") {
       // Don't close WebSocket — STT should keep listening for barge-in.
     }

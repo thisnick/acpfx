@@ -2,6 +2,8 @@ name: stt-elevenlabs
 description: Speech-to-text via ElevenLabs streaming API
 consumes:
   - audio.chunk
+  - audio.start
+  - audio.end
 emits:
   - speech.partial
   - speech.delta
