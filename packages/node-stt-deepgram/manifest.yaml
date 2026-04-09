@@ -29,6 +29,10 @@ arguments:
   apiKey:
     type: string
     description: "Deepgram API key (overrides DEEPGRAM_API_KEY env var)"
+  turnDetection:
+    type: boolean
+    default: true
+    description: "Enable turn detection (set false for push-to-talk mode)"
 env:
   DEEPGRAM_API_KEY:
     required: true

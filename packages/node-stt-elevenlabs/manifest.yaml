@@ -30,6 +30,10 @@ arguments:
   minSilenceDurationMs:
     type: number
     description: "Minimum silence duration in ms"
+  turnDetection:
+    type: boolean
+    default: true
+    description: "Enable turn detection (set false for push-to-talk mode)"
 env:
   ELEVENLABS_API_KEY:
     required: true

@@ -8,6 +8,16 @@ use flume::{Receiver, Sender};
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
+/// RAII wrapper that aborts a tokio task when dropped.
+/// This ensures the AudioUnit inside the task is dropped (stopping capture/mic).
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// Shared buffer for playback samples
 struct PlaybackBuffer {
     samples: VecDeque<f32>,
@@ -178,9 +188,12 @@ pub fn create_backend(
 // Independent capture (RemoteIO, no AEC) — for PTT mode
 // ---------------------------------------------------------------------------
 
-/// Create a capture-only AudioUnit using RemoteIO (no VoiceProcessingIO).
-/// No render callback, no AEC. Dropping the returned AudioUnit stops capture
+/// Create a capture-only AudioUnit. Dropping the returned AudioUnit stops capture
 /// and the OS mic indicator disappears.
+///
+/// Uses VoiceProcessingIO (same as AEC mode) but without a render callback,
+/// so no echo cancellation is performed. VoiceProcessingIO is used because
+/// RemoteIO/HALOutput has API differences for input callbacks on macOS desktop.
 ///
 /// Returns (native_sample_rate, buffer_size, Box holding the AudioUnit for RAII).
 pub fn create_capture_only(
@@ -188,9 +201,9 @@ pub fn create_capture_only(
 ) -> Result<(u32, usize, Box<dyn std::any::Any + Send>), AecError> {
     let (callback_tx, callback_rx) = flume::bounded::<Vec<f32>>(32);
 
-    // Use RemoteIO — lightweight, no AEC processing
-    let mut audio_unit = AudioUnit::new(IOType::RemoteIO).map_err(|e| {
-        AecError::BackendError(format!("failed to create RemoteIO: {e:?}"))
+    // Use VoiceProcessingIO for reliable input callback support on macOS
+    let mut audio_unit = AudioUnit::new(IOType::VoiceProcessingIO).map_err(|e| {
+        AecError::BackendError(format!("failed to create VoiceProcessingIO (capture-only): {e:?}"))
     })?;
 
     let _ = audio_unit.uninitialize();
@@ -205,17 +218,6 @@ pub fn create_capture_only(
             Some(&enable_input),
         )
         .map_err(|e| AecError::BackendError(format!("failed to enable input: {e:?}")))?;
-
-    // Disable output (capture only)
-    let disable_output: u32 = 0;
-    audio_unit
-        .set_property(
-            coreaudio::sys::kAudioOutputUnitProperty_EnableIO,
-            Scope::Output,
-            Element::Output,
-            Some(&disable_output),
-        )
-        .map_err(|e| AecError::BackendError(format!("failed to disable output: {e:?}")))?;
 
     // Query native format
     let native_format = audio_unit
@@ -235,7 +237,25 @@ pub fn create_capture_only(
         .set_stream_format(stream_format, Scope::Output, Element::Input)
         .map_err(|e| AecError::BackendError(format!("failed to set input stream format: {e:?}")))?;
 
+    // Set output stream format (VoiceProcessingIO needs this even for capture-only)
+    audio_unit
+        .set_stream_format(stream_format, Scope::Input, Element::Output)
+        .map_err(|e| AecError::BackendError(format!("failed to set output stream format: {e:?}")))?;
+
     let native_rate = native_format.sample_rate as u32;
+
+    // Silent render callback — VoiceProcessingIO requires a render callback
+    audio_unit
+        .set_render_callback(
+            move |mut args: render_callback::Args<data::NonInterleaved<f32>>| {
+                let output_buffer = args.data.channels_mut().next().unwrap();
+                for sample in output_buffer.iter_mut() {
+                    *sample = 0.0;
+                }
+                Ok(())
+            },
+        )
+        .map_err(|e| AecError::BackendError(format!("failed to set render callback: {e:?}")))?;
 
     audio_unit
         .set_input_callback(
@@ -264,13 +284,9 @@ pub fn create_capture_only(
         .unwrap_or(512);
 
     // The AudioUnit must stay alive for capture to work.
-    // We move it into a spawned task that also forwards samples.
-    // When the public_sender's receiver is dropped, the task exits and
-    // the AudioUnit is dropped, stopping capture.
-    let handle: Box<dyn std::any::Any + Send> = Box::new(public_sender.clone());
-
-    tokio::spawn(async move {
-        let _audio_unit = audio_unit; // RAII — Drop stops capture
+    // We use a JoinHandle + abort to ensure cleanup on drop.
+    let task = tokio::spawn(async move {
+        let _audio_unit = audio_unit; // RAII — Drop stops capture and releases mic
 
         while let Ok(samples) = callback_rx.recv_async().await {
             if public_sender.send_async(samples).await.is_err() {
@@ -278,6 +294,9 @@ pub fn create_capture_only(
             }
         }
     });
+
+    // Wrap the JoinHandle so aborting the task drops the AudioUnit
+    let handle: Box<dyn std::any::Any + Send> = Box::new(AbortOnDrop(task));
 
     Ok((native_rate, buffer_size as usize, handle))
 }

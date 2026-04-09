@@ -40,6 +40,7 @@ import threading
 NODE_NAME = os.environ.get("ACPFX_NODE_NAME", "stt-kyutai")
 COMPONENT = "stt-kyutai"
 SETTINGS = json.loads(os.environ.get("ACPFX_SETTINGS", "{}"))
+TURN_DETECTION = SETTINGS.get("turnDetection", True)
 
 MODEL_ID = SETTINGS.get("model", "kyutai/stt-1b-en_fr")
 DEVICE_PREF = SETTINGS.get("device", "auto")
@@ -477,6 +478,8 @@ def main():
 
     def on_vad():
         nonlocal accumulated_text, pending_text
+        if not TURN_DETECTION:
+            return  # Skip in PTT mode
         full_text = f"{pending_text}{accumulated_text.strip()}".strip()
         if full_text:
             emit({

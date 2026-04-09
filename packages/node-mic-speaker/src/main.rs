@@ -242,11 +242,11 @@ async fn run_ptt_mode(
 
             if let Ok(event) = serde_json::from_str::<Value>(&line) {
                 let event_type = event["type"].as_str().unwrap_or("");
+                eprintln!("[mic-speaker] stdin: {}", event_type);
 
                 if event_type == "custom.mute" {
-                    // We need was_muted state, but it's tracked in main loop.
-                    // Send the raw muted value; main loop tracks state.
                     let is_muted = event["muted"].as_bool().unwrap_or(true);
+                    eprintln!("[mic-speaker] custom.mute muted={}", is_muted);
                     let _ = cmd_tx.send(StdinCommand::Mute { is_muted });
                 } else if event_type == "control.interrupt" {
                     let _ = playback_for_stdin.clear_playback();
@@ -309,12 +309,20 @@ async fn run_ptt_mode(
                         };
                         match sys_voice::IndependentCaptureHandle::new(config) {
                             Ok(h) => {
-                                eprintln!("[mic-speaker] Capture started (PTT unmute)");
+                                let _ = writeln!(out, "{}", json!({
+                                    "type": "log", "level": "info", "component": "mic-speaker",
+                                    "message": "Capture started (PTT unmute)"
+                                }));
+                                let _ = out.flush();
                                 capture = Some(h);
                                 buffer.clear();
                             }
                             Err(e) => {
-                                eprintln!("[mic-speaker] Failed to start capture: {:?}", e);
+                                let _ = writeln!(out, "{}", json!({
+                                    "type": "log", "level": "error", "component": "mic-speaker",
+                                    "message": format!("Failed to start capture: {:?}", e)
+                                }));
+                                let _ = out.flush();
                             }
                         }
                     } else if !was_muted && is_muted {

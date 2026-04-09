@@ -22,3 +22,7 @@ arguments:
     type: string
     default: "auto"
     description: "Compute device: auto, cpu, cuda, or metal"
+  turnDetection:
+    type: boolean
+    default: true
+    description: "Enable turn detection (set false for push-to-talk mode)"

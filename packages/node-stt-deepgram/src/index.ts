@@ -27,12 +27,14 @@ type Settings = {
   model?: string;
   utteranceEndMs?: number;
   endpointing?: number;
+  turnDetection?: boolean;
 };
 
 const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
 const API_KEY = settings.apiKey ?? process.env.DEEPGRAM_API_KEY ?? "";
 const LANGUAGE = settings.language ?? "en";
 const MODEL = settings.model ?? "nova-3";
+const TURN_DETECTION = settings.turnDetection ?? true;
 const UTTERANCE_END_MS = settings.utteranceEndMs ?? 1000;
 const ENDPOINTING = settings.endpointing ?? 300;
 const TRACK_ID = "stt";
@@ -49,7 +51,7 @@ let pendingText = "";
 
 
 async function connectWebSocket(): Promise<void> {
-  const url =
+  let url =
     `${WS_URL}?model=${MODEL}` +
     `&language=${encodeURIComponent(LANGUAGE)}` +
     `&encoding=linear16` +
@@ -57,10 +59,17 @@ async function connectWebSocket(): Promise<void> {
     `&channels=1` +
     `&interim_results=true` +
     `&punctuate=true` +
-    `&smart_format=true` +
-    `&utterance_end_ms=${UTTERANCE_END_MS}` +
-    `&endpointing=${ENDPOINTING}` +
-    `&vad_events=true`;
+    `&smart_format=true`;
+
+  if (TURN_DETECTION) {
+    url += `&utterance_end_ms=${UTTERANCE_END_MS}` +
+      `&endpointing=${ENDPOINTING}` +
+      `&vad_events=true`;
+  } else {
+    // Disable endpointing — STT will only emit finals on natural boundaries
+    url += `&endpointing=false` +
+      `&vad_events=false`;
+  }
 
   ws = new WebSocket(url, ["token", API_KEY]);
 
@@ -118,6 +127,7 @@ function handleServerMessage(msg: Record<string, unknown>): void {
 
   // UtteranceEnd — speaker finished their turn (word-timing based, ignores noise)
   if (type === "UtteranceEnd") {
+    if (!TURN_DETECTION) return; // Skip in PTT mode
     if (pendingText) {
       emit({
         type: "speech.pause",
@@ -161,7 +171,7 @@ function handleServerMessage(msg: Record<string, unknown>): void {
       });
 
       // If speech_final (endpointing detected silence), also emit pause
-      if (speechFinal) {
+      if (speechFinal && TURN_DETECTION) {
         emit({
           type: "speech.pause",
           trackId: TRACK_ID,
