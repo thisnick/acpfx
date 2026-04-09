@@ -236,7 +236,12 @@ async function main(): Promise<void> {
       pendingText = "";
       lastFinalText = "";
     } else if (event.type === "audio.end") {
-      // PTT session end: finalize whatever text has been accumulated
+      // PTT session end: tell Deepgram to finalize remaining audio
+      if (ws && connected) {
+        ws.send(JSON.stringify({ type: "Finalize" }));
+      }
+      // Also emit speech.pause with whatever we have accumulated so far
+      // (Finalize response may arrive async, but we need to submit now)
       if (pendingText) {
         emit({
           type: "speech.pause",

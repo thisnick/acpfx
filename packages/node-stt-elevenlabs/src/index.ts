@@ -68,8 +68,9 @@ async function connectWebSocket(): Promise<void> {
       `&min_speech_duration_ms=${minSpeechMs}` +
       `&min_silence_duration_ms=${minSilenceMs}`;
   } else {
-    // No VAD — the caller (PTT) controls when speech ends
-    url += `&commit_strategy=none`;
+    // Manual commit — PTT controls when speech ends via audio.end event
+    // Don't use VAD; transcripts accumulate until explicitly committed
+    url += `&commit_strategy=manual`;
   }
 
   ws = new WebSocket(url, {
@@ -265,7 +266,16 @@ async function main(): Promise<void> {
       accumulatedText = "";
       lastPartialText = "";
     } else if (event.type === "audio.end") {
-      // PTT session end: finalize whatever text has been accumulated
+      // PTT session end: send commit to ElevenLabs to finalize transcript
+      if (ws && connected) {
+        ws.send(JSON.stringify({
+          message_type: "input_audio_chunk",
+          audio_base_64: "",
+          commit: true,
+          sample_rate: 16000,
+        }));
+      }
+      // Also emit speech.pause with whatever we have accumulated
       if (accumulatedText) {
         emit({
           type: "speech.pause",

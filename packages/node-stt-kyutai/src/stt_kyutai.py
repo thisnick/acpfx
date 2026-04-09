@@ -551,7 +551,16 @@ def main():
             continue
 
         if event_type == "audio.end":
-            # PTT session end: finalize accumulated text
+            # PTT session end: flush remaining audio buffer through the model
+            # Pad remaining audio to chunk size so the model can process it
+            if len(audio_buffer) > 0:
+                remaining = list(audio_buffer)
+                audio_buffer.clear()
+                # Pad to MOSHI_CHUNK_SIZE with silence
+                remaining.extend([0.0] * (MOSHI_CHUNK_SIZE - len(remaining)))
+                backend.process_audio(remaining[:MOSHI_CHUNK_SIZE])
+
+            # Now finalize whatever text has been accumulated
             full_text = f"{pending_text}{accumulated_text.strip()}".strip()
             if full_text:
                 emit({
