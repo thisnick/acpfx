@@ -1,6 +1,6 @@
 [package]
 name = "acpfx-orchestrator"
-version = "0.1.0"
+version = "0.6.0"
 edition = "2021"
 description = "Rust orchestrator for acpfx DAG-based audio pipelines"
 

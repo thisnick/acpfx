@@ -1,5 +1,21 @@
 # @acpfx/stt-deepgram
 
+## 0.2.7
+
+### Patch Changes
+
+- 921de4c: Independent mic/speaker for push-to-talk mode: hold Space to capture, release to finalize.
+
+  - sys-voice: add PlaybackHandle + IndependentCaptureHandle with per-platform backends (macOS VoiceProcessingIO capture-only, Linux PulseAudio, Windows WASAPI)
+  - mic-speaker: mode setting (ptt/continuous), independent capture created/dropped on mute/unmute, audio.start/end events for STT session boundaries, control.interrupt on unmute
+  - STT nodes: turnDetection setting to disable VAD/endpointing, audio.start/end handlers for PTT finalization, proper end-of-stream signaling (Deepgram Finalize, ElevenLabs manual commit, Kyutai buffer flush)
+  - UI: don't show "Interrupted" on the emitting node
+  - All example pipelines default to hold-to-unmute with turnDetection off
+
+- Updated dependencies [921de4c]
+  - @acpfx/core@0.4.2
+  - @acpfx/node-sdk@0.3.2
+
 ## 0.2.6
 
 ### Patch Changes
