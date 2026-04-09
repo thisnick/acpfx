@@ -275,12 +275,15 @@ async function main(): Promise<void> {
           sample_rate: 16000,
         }));
       }
-      // Also emit speech.pause with whatever we have accumulated
-      if (accumulatedText) {
+      // Emit speech.pause with best available text.
+      // accumulatedText has committed transcripts; lastPartialText has the latest partial.
+      // The commit response is async so accumulatedText may be empty — use partial as fallback.
+      const finalText = accumulatedText || lastPartialText;
+      if (finalText) {
         emit({
           type: "speech.pause",
           trackId: TRACK_ID,
-          pendingText: accumulatedText,
+          pendingText: finalText,
           silenceMs: 0,
         });
         accumulatedText = "";
