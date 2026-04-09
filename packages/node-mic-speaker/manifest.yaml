@@ -12,6 +12,11 @@ emits:
   - lifecycle.done
   - control.error
 arguments:
+  mode:
+    type: string
+    default: "continuous"
+    enum: ["continuous", "ptt"]
+    description: "continuous = always listening with AEC, ptt = push-to-talk (hold Space to talk, no AEC)"
   sampleRate:
     type: number
     default: 16000

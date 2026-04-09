@@ -61,17 +61,9 @@ fn handle_acpfx_flags() {
     }
 }
 
-/// Detect PTT mode by checking if the manifest has a mute control with hold: true.
-fn is_ptt_mode() -> bool {
-    let manifest: Value = serde_yaml::from_str(MANIFEST_YAML).unwrap_or(json!({}));
-    if let Some(controls) = manifest["ui"]["controls"].as_array() {
-        for ctrl in controls {
-            if ctrl["id"].as_str() == Some("mute") && ctrl["hold"].as_bool() == Some(true) {
-                return true;
-            }
-        }
-    }
-    false
+/// Detect PTT mode from the `mode` setting (ACPFX_SETTINGS).
+fn is_ptt_mode(settings: &Value) -> bool {
+    settings["mode"].as_str().unwrap_or("continuous") == "ptt"
 }
 
 fn samples_to_base64(samples: &[f32]) -> String {
@@ -625,7 +617,7 @@ async fn main() {
         *playback_wav.lock().unwrap() = WavWriter::new(&format!("{}/playback.wav", dir), sample_rate).ok();
     }
 
-    let ptt = is_ptt_mode();
+    let ptt = is_ptt_mode(&settings);
     eprintln!("[mic-speaker] Mode: {}", if ptt { "PTT (push-to-talk)" } else { "AEC (continuous)" });
 
     if ptt {
