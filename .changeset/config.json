@@ -7,6 +7,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": [],
-  "version": "changeset version && node scripts/sync-cargo-versions.js"
+  "ignore": []
 }
