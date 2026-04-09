@@ -2,6 +2,7 @@ nodes:
   mic:
     use: "@acpfx/mic-speaker"
     settings:
+      mode: ptt
       sampleRate: 16000
       speaker: player
     outputs: [stt]
@@ -11,8 +12,7 @@ nodes:
     settings:
       language: en
       model: nova-3
-      utteranceEndMs: 2000
-      endpointing: 1000
+      turnDetection: false
     outputs: [bridge]
 
   bridge:

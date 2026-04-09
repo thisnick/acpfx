@@ -1,11 +1,11 @@
 nodes:
   mic:
     use: '@acpfx/mic-speaker'
-    settings: {speaker: player}
+    settings: {mode: ptt, speaker: player}
     outputs: [stt]
   stt:
     use: '@acpfx/stt-kyutai'
-    settings: {model: 'kyutai/stt-1b-en_fr-candle', language: en, device: auto}
+    settings: {model: 'kyutai/stt-1b-en_fr-candle', language: en, device: auto, turnDetection: false}
     outputs: [bridge]
   bridge:
     use: '@acpfx/bridge-acpx'

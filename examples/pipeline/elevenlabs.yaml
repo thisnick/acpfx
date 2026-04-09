@@ -2,6 +2,7 @@ nodes:
   mic:
     use: "@acpfx/mic-speaker"
     settings:
+      mode: ptt
       speaker: player
     outputs: [stt]
 
@@ -9,6 +10,7 @@ nodes:
     use: "@acpfx/stt-elevenlabs"
     settings:
       language: en
+      turnDetection: false
     outputs: [bridge]
 
   bridge:
