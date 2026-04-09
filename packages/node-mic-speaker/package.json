@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/mic-speaker",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "description": "acpfx microphone with acoustic echo cancellation",
   "repository": {
     "type": "git",

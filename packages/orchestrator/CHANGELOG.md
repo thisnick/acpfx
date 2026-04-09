@@ -1,5 +1,20 @@
 # acpfx
 
+## 0.6.0
+
+### Minor Changes
+
+- 1d5b797: Embed npm package versions at compile time for faster npx resolution, and sync Cargo.toml versions during changeset versioning
+- 921de4c: Independent mic/speaker for push-to-talk mode: hold Space to capture, release to finalize.
+
+  - sys-voice: add PlaybackHandle + IndependentCaptureHandle with per-platform backends (macOS VoiceProcessingIO capture-only, Linux PulseAudio, Windows WASAPI)
+  - mic-speaker: mode setting (ptt/continuous), independent capture created/dropped on mute/unmute, audio.start/end events for STT session boundaries, control.interrupt on unmute
+  - STT nodes: turnDetection setting to disable VAD/endpointing, audio.start/end handlers for PTT finalization, proper end-of-stream signaling (Deepgram Finalize, ElevenLabs manual commit, Kyutai buffer flush)
+  - UI: don't show "Interrupted" on the emitting node
+  - All example pipelines default to hold-to-unmute with turnDetection off
+
+- 26e1d1f: UI improvements: --verbose flag, scrollable conversation history, manifest-driven toggle controls, push-to-talk, node.status event, interrupt-on-unmute
+
 ## 0.5.2
 
 ### Patch Changes

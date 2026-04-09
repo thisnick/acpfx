@@ -1,5 +1,13 @@
 # @acpfx/tts-elevenlabs
 
+## 0.2.7
+
+### Patch Changes
+
+- Updated dependencies [921de4c]
+  - @acpfx/core@0.4.2
+  - @acpfx/node-sdk@0.3.2
+
 ## 0.2.6
 
 ### Patch Changes

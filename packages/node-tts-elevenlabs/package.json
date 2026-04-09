@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/tts-elevenlabs",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "type": "module",
   "bin": {
     "acpfx-tts-elevenlabs": "./dist/index.js"
