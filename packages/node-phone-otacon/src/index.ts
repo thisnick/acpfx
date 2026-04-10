@@ -1,5 +1,4 @@
 import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
-import WebSocket from "ws";
 
 handleManifestFlag();
 
@@ -54,22 +53,22 @@ async function apiGet(path: string): Promise<unknown> {
   return res.json();
 }
 
-// --- Audio WebSocket ---
+// --- Audio WebSocket (native WebSocket, Node 22+) ---
 function connectAudio(): void {
   if (audioWs) return;
 
   log.info("Connecting to call audio WebSocket");
-  audioWs = new WebSocket(wsUrl("/ws/audio/call"), { rejectUnauthorized: false });
+  audioWs = new WebSocket(wsUrl("/ws/audio/call"));
   audioWs.binaryType = "arraybuffer";
 
-  audioWs.on("open", () => {
+  audioWs.addEventListener("open", () => {
     log.info("Call audio connected");
     emit({ type: "audio.start", trackId: TRACK_ID });
   });
 
-  audioWs.on("message", (data: Buffer | ArrayBuffer) => {
-    // Incoming call audio → emit as audio.chunk for STT
-    const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  audioWs.addEventListener("message", (event) => {
+    if (typeof event.data === "string") return; // skip config messages
+    const buf = Buffer.from(event.data as ArrayBuffer);
     const durationMs = Math.round((buf.length / (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE)) * 1000);
 
     emit({
@@ -84,14 +83,14 @@ function connectAudio(): void {
     });
   });
 
-  audioWs.on("close", () => {
+  audioWs.addEventListener("close", () => {
     log.info("Call audio disconnected");
     audioWs = null;
     emit({ type: "audio.end", trackId: TRACK_ID });
   });
 
-  audioWs.on("error", (err) => {
-    log.error(`Audio WebSocket error: ${err.message}`);
+  audioWs.addEventListener("error", () => {
+    log.error("Audio WebSocket error");
     audioWs = null;
   });
 }
@@ -105,7 +104,7 @@ function disconnectAudio(): void {
 
 // --- Call state handling ---
 function isWhitelisted(number: string | null): boolean {
-  if (WHITELIST.length === 0) return true; // empty whitelist = answer all
+  if (WHITELIST.length === 0) return true;
   if (!number) return false;
   return WHITELIST.some((w) => number.includes(w) || w.includes(number));
 }
@@ -139,18 +138,18 @@ function handleCallEnded(): void {
   disconnectAudio();
 }
 
-// --- Events WebSocket ---
+// --- Events WebSocket (native WebSocket) ---
 function connectEvents(): void {
   log.info("Connecting to events WebSocket");
-  eventsWs = new WebSocket(wsUrl("/ws/events"), { rejectUnauthorized: false });
+  eventsWs = new WebSocket(wsUrl("/ws/events"));
 
-  eventsWs.on("open", () => {
+  eventsWs.addEventListener("open", () => {
     log.info("Events WebSocket connected");
   });
 
-  eventsWs.on("message", (data: Buffer) => {
+  eventsWs.addEventListener("message", (event) => {
     try {
-      const msg = JSON.parse(data.toString());
+      const msg = JSON.parse(event.data as string);
       const evt = msg.event || msg.type;
 
       switch (evt) {
@@ -174,14 +173,14 @@ function connectEvents(): void {
     }
   });
 
-  eventsWs.on("close", () => {
+  eventsWs.addEventListener("close", () => {
     log.warn("Events WebSocket disconnected, reconnecting in 2s");
     eventsWs = null;
     setTimeout(connectEvents, 2000);
   });
 
-  eventsWs.on("error", (err) => {
-    log.error(`Events WebSocket error: ${err.message}`);
+  eventsWs.addEventListener("error", () => {
+    log.error("Events WebSocket error");
   });
 }
 
@@ -198,12 +197,10 @@ async function pollSms(): Promise<void> {
     for (const thread of threads) {
       const date = parseInt(thread.date) || 0;
       if (date > lastSeenSmsDate) {
-        // Fetch full messages for this thread to get the latest
         const msgs = (await apiGet(`/api/sms/threads/${thread.thread_id}/messages`)) as Array<{
           body: string;
           date: string;
           msg_type: string;
-          address?: string;
         }>;
 
         for (const msg of msgs) {
@@ -215,7 +212,6 @@ async function pollSms(): Promise<void> {
       }
     }
 
-    // Update high-water mark
     const maxDate = Math.max(...threads.map((t) => parseInt(t.date) || 0), lastSeenSmsDate);
     lastSeenSmsDate = maxDate;
   } catch {
@@ -235,11 +231,12 @@ function drainSmsQueue(): void {
   const msg = smsQueue.shift()!;
   waitingForAgentComplete = true;
 
-  // Emit SMS as speech.final so the agent processes it like voice input
   emit({
-    type: "speech.final",
+    type: "prompt.text",
     trackId: TRACK_ID,
     text: msg.body,
+    source: "sms",
+    from: msg.from,
   });
 }
 
@@ -248,7 +245,6 @@ function handlePipelineEvent(event: Record<string, unknown>): void {
   const type = event.type as string;
 
   if (type === "audio.chunk") {
-    // TTS audio → send into the call
     if (audioWs && audioWs.readyState === WebSocket.OPEN) {
       const data = event.data as string;
       const pcm = Buffer.from(data, "base64");
@@ -258,13 +254,11 @@ function handlePipelineEvent(event: Record<string, unknown>): void {
   }
 
   if (type === "control.interrupt") {
-    // Barge-in: user started speaking during TTS
     log.info("Interrupt received");
     return;
   }
 
   if (type === "agent.complete") {
-    // Agent finished responding — drain next SMS if queued
     waitingForAgentComplete = false;
     drainSmsQueue();
     return;
@@ -276,7 +270,6 @@ async function main(): Promise<void> {
   log.info(`Phone node starting — otacon: ${OTACON_URL}`);
   log.info(`Whitelist: ${WHITELIST.length ? WHITELIST.join(", ") : "(all numbers)"}`);
 
-  // Initialize SMS high-water mark from current threads
   try {
     const threads = (await apiGet("/api/sms/threads")) as Array<{ date: string }>;
     lastSeenSmsDate = Math.max(...threads.map((t) => parseInt(t.date) || 0), 0);
@@ -285,7 +278,6 @@ async function main(): Promise<void> {
     log.warn("Could not fetch initial SMS threads");
   }
 
-  // Check current call state — may already be in a call
   try {
     const status = (await apiGet("/api/calls/status")) as { state: string; number?: string };
     if (status.state === "active") {
@@ -300,19 +292,13 @@ async function main(): Promise<void> {
     log.warn("Could not fetch initial call status");
   }
 
-  // Connect to events WebSocket
   connectEvents();
-
-  // Start SMS polling
   smsPollTimer = setInterval(pollSms, SMS_POLL_MS);
 
-  // Signal ready
   emit({ type: "lifecycle.ready", component: "phone-otacon" });
 
-  // Listen for pipeline events (TTS audio, interrupts, agent.complete)
   const rl = onEvent(handlePipelineEvent);
 
-  // Shutdown handling
   rl.on("close", () => {
     cleanup();
     emit({ type: "lifecycle.done", component: "phone-otacon" });

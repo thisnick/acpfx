@@ -294,6 +294,22 @@ function main(): void {
 
           handleSpeechPause(accumulatedText);
         }
+      } else if (event.type === "prompt.text") {
+        // Direct text prompt (e.g. SMS) — queued, does not interrupt
+        const text = (event.text as string) ?? "";
+        if (text) {
+          log.info(`prompt.text: "${text.substring(0, 80)}"`);
+          if (streaming) {
+            // Agent is busy — queue this for after agent.complete
+            // The phone node handles queueing, so we just log and skip
+            log.info("Agent busy — prompt.text will be resubmitted after completion");
+          } else {
+            active = true;
+            agentResponding = false;
+            accumulatedText = text;
+            handleSpeechPause(text);
+          }
+        }
       } else if (event.type === "control.interrupt" && event._from !== NODE_NAME) {
         // Ignore our own interrupts that cycled back through the graph
         interrupted = true;

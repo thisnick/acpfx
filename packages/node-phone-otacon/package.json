@@ -14,10 +14,6 @@
   "dependencies": {
     "@acpfx/core": "workspace:*",
     "@acpfx/node-sdk": "workspace:*",
-    "yaml": "^2.8.3",
-    "ws": "^8.18.0"
-  },
-  "devDependencies": {
-    "@types/ws": "^8.5.12"
+    "yaml": "^2.8.3"
   }
 }

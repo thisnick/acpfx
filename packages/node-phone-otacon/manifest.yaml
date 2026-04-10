@@ -8,7 +8,7 @@ emits:
   - audio.chunk
   - audio.start
   - audio.end
-  - speech.final
+  - prompt.text
   - lifecycle.ready
   - lifecycle.done
   - control.error
