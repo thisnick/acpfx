@@ -29,10 +29,6 @@ let callState: "idle" | "ringing" | "active" = "idle";
 let callNumber: string | null = null;
 let audioWs: WebSocket | null = null;
 let eventsWs: WebSocket | null = null;
-let lastSeenSmsDate = 0;
-let smsQueue: Array<{ from: string; body: string }> = [];
-let waitingForAgentComplete = false;
-let smsPollTimer: ReturnType<typeof setInterval> | null = null;
 
 // --- Helpers ---
 function apiUrl(path: string): string {
@@ -182,7 +178,7 @@ function connectEvents(): void {
           break;
         case "sms.received":
           if (msg.data?.from && msg.data?.body) {
-            enqueueSms(msg.data.from, msg.data.body);
+            handleSmsReceived(msg.data.from, msg.data.body);
           }
           break;
       }
@@ -202,60 +198,14 @@ function connectEvents(): void {
   });
 }
 
-// --- SMS polling ---
-async function pollSms(): Promise<void> {
-  try {
-    const threads = (await apiGet("/api/sms/threads")) as Array<{
-      thread_id: number;
-      address: string;
-      snippet: string;
-      date: string;
-    }>;
-
-    for (const thread of threads) {
-      const date = parseInt(thread.date) || 0;
-      if (date > lastSeenSmsDate) {
-        const msgs = (await apiGet(`/api/sms/threads/${thread.thread_id}/messages`)) as Array<{
-          body: string;
-          date: string;
-          type?: string;
-          msg_type?: string;
-        }>;
-
-        for (const msg of msgs) {
-          const msgDate = parseInt(msg.date) || 0;
-          if (msgDate > lastSeenSmsDate && ((msg as Record<string, unknown>).type === "received" || msg.msg_type === "received")) {
-            enqueueSms(thread.address, msg.body);
-          }
-        }
-      }
-    }
-
-    const maxDate = Math.max(...threads.map((t) => parseInt(t.date) || 0), lastSeenSmsDate);
-    lastSeenSmsDate = maxDate;
-  } catch {
-    // polling failure is non-fatal
-  }
-}
-
-function enqueueSms(from: string, body: string): void {
+function handleSmsReceived(from: string, body: string): void {
   log.info(`SMS from ${from}: ${body.substring(0, 50)}`);
-  smsQueue.push({ from, body });
-  drainSmsQueue();
-}
-
-function drainSmsQueue(): void {
-  if (waitingForAgentComplete || smsQueue.length === 0) return;
-
-  const msg = smsQueue.shift()!;
-  waitingForAgentComplete = true;
-
   emit({
     type: "prompt.text",
     trackId: TRACK_ID,
-    text: msg.body,
+    text: body,
     source: "sms",
-    from: msg.from,
+    from,
   });
 }
 
@@ -282,8 +232,7 @@ function handlePipelineEvent(event: Record<string, unknown>): void {
   }
 
   if (type === "agent.complete") {
-    waitingForAgentComplete = false;
-    drainSmsQueue();
+    // No action needed — SMS are sent immediately, no queueing
     return;
   }
 }
@@ -293,13 +242,7 @@ async function main(): Promise<void> {
   log.info(`Phone node starting — otacon: ${OTACON_URL}`);
   log.info(`Whitelist: ${WHITELIST_ALLOW_ALL ? "* (all numbers)" : WHITELIST.length ? WHITELIST.join(", ") : "(deny all)"}`);
 
-  try {
-    const threads = (await apiGet("/api/sms/threads")) as Array<{ date: string }>;
-    lastSeenSmsDate = Math.max(...threads.map((t) => parseInt(t.date) || 0), 0);
-    log.info(`SMS baseline set to ${lastSeenSmsDate}`);
-  } catch {
-    log.warn("Could not fetch initial SMS threads");
-  }
+  // SMS handled via push events from /ws/events — no polling needed
 
   try {
     const status = (await apiGet("/api/calls/status")) as { state: string; number?: string };
@@ -316,7 +259,6 @@ async function main(): Promise<void> {
   }
 
   connectEvents();
-  smsPollTimer = setInterval(pollSms, SMS_POLL_MS);
 
   emit({ type: "lifecycle.ready", component: "phone-otacon" });
 
@@ -344,7 +286,6 @@ async function main(): Promise<void> {
 }
 
 function cleanup(): void {
-  if (smsPollTimer) clearInterval(smsPollTimer);
   disconnectAudio();
   if (eventsWs) eventsWs.close();
 }
