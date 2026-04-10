@@ -15,7 +15,9 @@ type Settings = {
 
 const settings: Settings = JSON.parse(process.env.ACPFX_SETTINGS || "{}");
 const OTACON_URL = settings.otaconUrl ?? process.env.OTACON_URL ?? "https://otacon-pi.tail0437b8.ts.net:8080";
-const WHITELIST = (settings.whitelist ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+const WHITELIST_RAW = (settings.whitelist ?? "").trim();
+const WHITELIST_ALLOW_ALL = WHITELIST_RAW === "*";
+const WHITELIST = WHITELIST_RAW.split(",").map((s) => s.trim()).filter(Boolean);
 const SMS_POLL_MS = settings.smsPollIntervalMs ?? 5000;
 const TRACK_ID = settings.trackId ?? "phone";
 const SAMPLE_RATE = 16000;
@@ -113,7 +115,8 @@ function disconnectAudio(): void {
 
 // --- Call state handling ---
 function isWhitelisted(number: string | null): boolean {
-  if (WHITELIST.length === 0) return true;
+  if (WHITELIST_ALLOW_ALL) return true;
+  if (WHITELIST.length === 0) return false; // "" = deny all
   if (!number) return false;
   return WHITELIST.some((w) => number.includes(w) || w.includes(number));
 }
@@ -284,7 +287,7 @@ function handlePipelineEvent(event: Record<string, unknown>): void {
 // --- Main ---
 async function main(): Promise<void> {
   log.info(`Phone node starting — otacon: ${OTACON_URL}`);
-  log.info(`Whitelist: ${WHITELIST.length ? WHITELIST.join(", ") : "(all numbers)"}`);
+  log.info(`Whitelist: ${WHITELIST_ALLOW_ALL ? "* (all numbers)" : WHITELIST.length ? WHITELIST.join(", ") : "(deny all)"}`);
 
   try {
     const threads = (await apiGet("/api/sms/threads")) as Array<{ date: string }>;

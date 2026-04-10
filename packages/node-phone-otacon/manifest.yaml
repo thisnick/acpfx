@@ -19,7 +19,7 @@ arguments:
     description: "Otacon server base URL"
   whitelist:
     type: string
-    description: "Comma-separated phone numbers to auto-answer. Empty = answer all."
+    description: "Call whitelist: '*' = allow all, comma-separated numbers = allow listed, empty/omitted = deny all"
   smsPollIntervalMs:
     type: number
     default: 5000
