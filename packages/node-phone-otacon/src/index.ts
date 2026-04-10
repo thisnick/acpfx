@@ -2,6 +2,9 @@ import { emit, log, onEvent, handleManifestFlag } from "@acpfx/node-sdk";
 
 handleManifestFlag();
 
+// Allow self-signed certs (otacon uses Tailscale TLS certs)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 // --- Settings ---
 type Settings = {
   otaconUrl?: string;
@@ -58,8 +61,14 @@ function connectAudio(): void {
   if (audioWs) return;
 
   log.info("Connecting to call audio WebSocket");
-  audioWs = new WebSocket(wsUrl("/ws/audio/call"));
-  audioWs.binaryType = "arraybuffer";
+  try {
+    audioWs = new WebSocket(wsUrl("/ws/audio/call"));
+    audioWs.binaryType = "arraybuffer";
+  } catch (err) {
+    log.error(`Audio WebSocket creation failed: ${err}`);
+    audioWs = null;
+    return;
+  }
 
   audioWs.addEventListener("open", () => {
     log.info("Call audio connected");
@@ -141,7 +150,13 @@ function handleCallEnded(): void {
 // --- Events WebSocket (native WebSocket) ---
 function connectEvents(): void {
   log.info("Connecting to events WebSocket");
-  eventsWs = new WebSocket(wsUrl("/ws/events"));
+  try {
+    eventsWs = new WebSocket(wsUrl("/ws/events"));
+  } catch (err) {
+    log.error(`Events WebSocket creation failed: ${err}`);
+    setTimeout(connectEvents, 5000);
+    return;
+  }
 
   eventsWs.addEventListener("open", () => {
     log.info("Events WebSocket connected");
@@ -200,12 +215,13 @@ async function pollSms(): Promise<void> {
         const msgs = (await apiGet(`/api/sms/threads/${thread.thread_id}/messages`)) as Array<{
           body: string;
           date: string;
-          msg_type: string;
+          type?: string;
+          msg_type?: string;
         }>;
 
         for (const msg of msgs) {
           const msgDate = parseInt(msg.date) || 0;
-          if (msgDate > lastSeenSmsDate && msg.msg_type === "received") {
+          if (msgDate > lastSeenSmsDate && ((msg as Record<string, unknown>).type === "received" || msg.msg_type === "received")) {
             enqueueSms(thread.address, msg.body);
           }
         }
@@ -297,18 +313,27 @@ async function main(): Promise<void> {
 
   emit({ type: "lifecycle.ready", component: "phone-otacon" });
 
+  // Listen for pipeline events from orchestrator (stdin)
   const rl = onEvent(handlePipelineEvent);
 
-  rl.on("close", () => {
+  const shutdown = () => {
     cleanup();
     emit({ type: "lifecycle.done", component: "phone-otacon" });
     process.exit(0);
-  });
+  };
 
-  process.on("SIGTERM", () => {
-    cleanup();
-    process.exit(0);
+  // In orchestrator mode, stdin close = shutdown
+  // But don't exit immediately — let SMS poll finish current cycle
+  rl.on("close", () => {
+    log.info("stdin closed");
+    setTimeout(shutdown, 500);
   });
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+
+  // Keep process alive (event loop would exit without this since
+  // readline may close immediately in standalone/test mode)
+  setInterval(() => {}, 60000);
 }
 
 function cleanup(): void {
