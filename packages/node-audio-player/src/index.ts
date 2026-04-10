@@ -229,9 +229,14 @@ function cancelSfxDelay(): void {
   }
 }
 
-/** Stop SFX for incoming speech. */
+/** Stop SFX for incoming speech — reset pacing so speech gets a fresh burst. */
 function flushSfxForSpeech(): void {
   stopSfxLoop();
+  // Remove any SFX chunks already in the pacing queue
+  audioQueue = audioQueue.filter((c) => c.kind !== "sfx");
+  // Reset playback estimate — SFX time shouldn't eat into speech burst budget
+  playbackEndTime = 0;
+  if (pacingTimer) { clearTimeout(pacingTimer); pacingTimer = null; }
 }
 
 // ---- Event handling ----
@@ -305,6 +310,11 @@ function handleEvent(event: Record<string, unknown>): void {
     if (agentState !== "idle") {
       agentState = "idle";
       cancelSfxDelay();
+      stopSfxLoop();
+      // Reset pacing so upcoming speech gets a fresh burst
+      audioQueue = audioQueue.filter((c) => c.kind !== "sfx");
+      playbackEndTime = 0;
+      if (pacingTimer) { clearTimeout(pacingTimer); pacingTimer = null; }
       emitStatus();
     }
     return;
