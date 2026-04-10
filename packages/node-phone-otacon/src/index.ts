@@ -62,7 +62,7 @@ async function apiGet(path: string): Promise<unknown> {
 function connectAudio(): void {
   if (audioWs) return;
 
-  log.info("Connecting to call audio WebSocket");
+  log.info(`Connecting to call audio WebSocket: ${wsUrl("/ws/audio/call")}`);
   try {
     audioWs = new WebSocket(wsUrl("/ws/audio/call"));
     audioWs.binaryType = "arraybuffer";
@@ -94,14 +94,14 @@ function connectAudio(): void {
     });
   });
 
-  audioWs.addEventListener("close", () => {
-    log.info("Call audio disconnected");
+  audioWs.addEventListener("close", (event) => {
+    log.info(`Call audio disconnected (code=${(event as CloseEvent).code}, reason=${(event as CloseEvent).reason || "none"})`);
     audioWs = null;
     emit({ type: "audio.end", trackId: TRACK_ID });
   });
 
-  audioWs.addEventListener("error", () => {
-    log.error("Audio WebSocket error");
+  audioWs.addEventListener("error", (event) => {
+    log.error(`Audio WebSocket error: ${JSON.stringify(event)}`);
     audioWs = null;
   });
 }
