@@ -3,7 +3,7 @@
 #
 # Incoming calls are auto-answered (whitelist configurable).
 # SMS messages are fed to the agent as text input.
-# Agent responses go through TTS + audio player (SFX) into the active call.
+# Agent responses go through TTS + audio player (SFX) → phone node.
 # Phone node paces outbound audio to real-time rate.
 
 nodes:
@@ -40,4 +40,5 @@ nodes:
     use: "@acpfx/audio-player"
     settings:
       speechSource: tts
+      sfxVolume: 0.3
     outputs: [phone]
