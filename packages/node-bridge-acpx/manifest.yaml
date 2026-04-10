@@ -3,6 +3,7 @@ description: Agent bridge connecting to Claude via ACP
 consumes:
   - speech.partial
   - speech.pause
+  - prompt.text
   - control.interrupt
 emits:
   - agent.submit

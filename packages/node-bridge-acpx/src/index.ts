@@ -43,6 +43,7 @@ let activeChild: ChildProcess | null = null;
 let interrupted = false;
 let streaming = false;
 let agentResponding = false;
+const pendingPrompts: string[] = [];
 
 
 /** Build CLI args from settings.args */
@@ -219,6 +220,14 @@ function handleSpeechPause(pendingText: string): void {
     if (activeChild === child) activeChild = null;
     streaming = false;
 
+    // Drain pending prompt.text queue (SMS messages that arrived while busy)
+    if (pendingPrompts.length > 0) {
+      const next = pendingPrompts.shift()!;
+      log.info(`Draining queued prompt.text: "${next.substring(0, 80)}" (${pendingPrompts.length} remaining)`);
+      agentResponding = false;
+      handleSpeechPause(next);
+    }
+
     // null code + signal means we killed it (SIGTERM on cancel) — not an error
     if (code !== 0 && code !== null && !interrupted) {
       log.error(`acpx exited with code ${code}`);
@@ -293,6 +302,22 @@ function main(): void {
           }
 
           handleSpeechPause(accumulatedText);
+        }
+      } else if (event.type === "prompt.text") {
+        // Direct text prompt (e.g. SMS) — queued, does not interrupt
+        const text = (event.text as string) ?? "";
+        if (text) {
+          log.info(`prompt.text: "${text.substring(0, 80)}"`);
+          if (streaming) {
+            // Agent is busy — queue for processing after current response
+            pendingPrompts.push(text);
+            log.info(`Queued prompt.text (${pendingPrompts.length} pending)`);
+          } else {
+            active = true;
+            agentResponding = false;
+            accumulatedText = text;
+            handleSpeechPause(text);
+          }
         }
       } else if (event.type === "control.interrupt" && event._from !== NODE_NAME) {
         // Ignore our own interrupts that cycled back through the graph
