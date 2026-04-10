@@ -147,7 +147,6 @@ function handleCallEnded(): void {
   callState = "idle";
   callNumber = null;
   log.info(`Call ended (was ${was})`);
-  flushOutboundQueue();
   disconnectAudio();
 }
 
@@ -260,76 +259,22 @@ function drainSmsQueue(): void {
   });
 }
 
-// --- Outbound audio pacing (wall-clock scheduled) ---
-let outboundQueue: Array<{ pcm: Buffer; durationMs: number }> = [];
-let outboundNextSendTime = 0; // wall-clock ms when next chunk should be sent
-let outboundTimer: ReturnType<typeof setTimeout> | null = null;
-
-function enqueueOutboundAudio(pcm: Buffer, durationMs: number): void {
-  outboundQueue.push({ pcm, durationMs });
-  scheduleOutbound();
-}
-
-function scheduleOutbound(): void {
-  if (outboundTimer || outboundQueue.length === 0) return;
-  if (!audioWs || audioWs.readyState !== WebSocket.OPEN) {
-    outboundQueue = [];
-    return;
-  }
-
-  const now = performance.now();
-  // If we've fallen behind or just started, reset the clock
-  if (outboundNextSendTime <= now) {
-    outboundNextSendTime = now;
-  }
-
-  const delay = Math.max(0, outboundNextSendTime - now);
-  outboundTimer = setTimeout(() => {
-    outboundTimer = null;
-    if (!audioWs || audioWs.readyState !== WebSocket.OPEN) {
-      outboundQueue = [];
-      return;
-    }
-    const chunk = outboundQueue.shift();
-    if (!chunk) return;
-
-    audioWs.send(chunk.pcm);
-    outboundNextSendTime += chunk.durationMs;
-
-    // Schedule next chunk immediately if queue has more
-    if (outboundQueue.length > 0) {
-      scheduleOutbound();
-    }
-  }, delay);
-}
-
-function flushOutboundQueue(): void {
-  outboundQueue = [];
-  if (outboundTimer) {
-    clearTimeout(outboundTimer);
-    outboundTimer = null;
-  }
-  outboundNextSendTime = 0;
-}
-
 // --- Incoming ACPFX events (from TTS / pipeline) ---
 function handlePipelineEvent(event: Record<string, unknown>): void {
   const type = event.type as string;
 
   if (type === "audio.chunk") {
+    // Send directly — server's aplay handles real-time pacing via ALSA backpressure
     if (audioWs && audioWs.readyState === WebSocket.OPEN) {
       const data = event.data as string;
       const pcm = Buffer.from(data, "base64");
-      const durationMs = (event.durationMs as number) ||
-        Math.round((pcm.length / (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE)) * 1000);
-      enqueueOutboundAudio(pcm, durationMs);
+      audioWs.send(pcm);
     }
     return;
   }
 
   if (type === "control.interrupt") {
-    log.info("Interrupt — flushing outbound audio");
-    flushOutboundQueue();
+    log.info("Interrupt received");
     return;
   }
 
