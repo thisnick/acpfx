@@ -1,9 +1,10 @@
 # Phone agent pipeline — connects Otacon phone to a voice AI agent
 # Usage: acpfx run examples/pipeline/phone-agent.yaml
 #
-# Incoming calls are auto-answered (whitelist optional).
+# Incoming calls are auto-answered (whitelist configurable).
 # SMS messages are fed to the agent as text input.
-# Agent responses go through TTS and into the active call.
+# Agent responses go through TTS + audio player (SFX) into the active call.
+# Phone node paces outbound audio to real-time rate.
 
 nodes:
   phone:
@@ -27,10 +28,16 @@ nodes:
       session: phone
       args:
         approve-all: true
-    outputs: [tts]
+    outputs: [tts, player]
 
   tts:
     use: "@acpfx/tts-deepgram"
     settings:
       voice: "aura-asteria-en"
+    outputs: [player]
+
+  player:
+    use: "@acpfx/audio-player"
+    settings:
+      speechSource: tts
     outputs: [phone]

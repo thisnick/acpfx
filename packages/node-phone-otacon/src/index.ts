@@ -147,6 +147,7 @@ function handleCallEnded(): void {
   callState = "idle";
   callNumber = null;
   log.info(`Call ended (was ${was})`);
+  flushOutboundQueue();
   disconnectAudio();
 }
 
@@ -259,6 +260,38 @@ function drainSmsQueue(): void {
   });
 }
 
+// --- Outbound audio pacing ---
+let outboundQueue: Array<{ pcm: Buffer; durationMs: number }> = [];
+let outboundPlaying = false;
+
+function enqueueOutboundAudio(pcm: Buffer, durationMs: number): void {
+  outboundQueue.push({ pcm, durationMs });
+  drainOutboundQueue();
+}
+
+function drainOutboundQueue(): void {
+  if (outboundPlaying || outboundQueue.length === 0) return;
+  if (!audioWs || audioWs.readyState !== WebSocket.OPEN) {
+    outboundQueue = [];
+    return;
+  }
+
+  outboundPlaying = true;
+  const chunk = outboundQueue.shift()!;
+  audioWs.send(chunk.pcm);
+
+  // Wait for the chunk's real-time duration before sending next
+  setTimeout(() => {
+    outboundPlaying = false;
+    drainOutboundQueue();
+  }, chunk.durationMs);
+}
+
+function flushOutboundQueue(): void {
+  outboundQueue = [];
+  outboundPlaying = false;
+}
+
 // --- Incoming ACPFX events (from TTS / pipeline) ---
 function handlePipelineEvent(event: Record<string, unknown>): void {
   const type = event.type as string;
@@ -267,13 +300,16 @@ function handlePipelineEvent(event: Record<string, unknown>): void {
     if (audioWs && audioWs.readyState === WebSocket.OPEN) {
       const data = event.data as string;
       const pcm = Buffer.from(data, "base64");
-      audioWs.send(pcm);
+      const durationMs = (event.durationMs as number) ||
+        Math.round((pcm.length / (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE)) * 1000);
+      enqueueOutboundAudio(pcm, durationMs);
     }
     return;
   }
 
   if (type === "control.interrupt") {
-    log.info("Interrupt received");
+    log.info("Interrupt — flushing outbound audio");
+    flushOutboundQueue();
     return;
   }
 
