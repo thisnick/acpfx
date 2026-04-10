@@ -113,12 +113,22 @@ function enqueueAudio(pcm: Buffer, kind: "speech" | "sfx"): void {
 
 function drainToLookahead(): void {
   const now = Date.now();
-  if (playbackEndTime <= now) playbackEndTime = now;
+  const wasBehind = playbackEndTime <= now;
+  if (wasBehind) playbackEndTime = now;
+  const aheadBefore = playbackEndTime - now;
+  let emitted = 0;
+  let emittedMs = 0;
   while (audioQueue.length > 0 && (playbackEndTime - now) < LOOKAHEAD_MS) {
     const chunk = audioQueue.shift()!;
     emitChunk(chunk.pcm, chunk.kind);
     const durationMs = Math.round((chunk.pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000);
     playbackEndTime += durationMs;
+    emitted++;
+    emittedMs += durationMs;
+  }
+  if (emitted > 0) {
+    const aheadAfter = playbackEndTime - now;
+    log.info(`drain: emitted=${emitted} (${emittedMs}ms) ahead=${Math.round(aheadAfter)}ms queued=${audioQueue.length} reset=${wasBehind}`);
   }
   if (audioQueue.length > 0) schedulePacing();
 }
@@ -231,12 +241,12 @@ function cancelSfxDelay(): void {
 
 /** Stop SFX for incoming speech — reset pacing so speech gets a fresh burst. */
 function flushSfxForSpeech(): void {
+  const sfxRemoved = audioQueue.filter((c) => c.kind === "sfx").length;
   stopSfxLoop();
-  // Remove any SFX chunks already in the pacing queue
   audioQueue = audioQueue.filter((c) => c.kind !== "sfx");
-  // Reset playback estimate — SFX time shouldn't eat into speech burst budget
   playbackEndTime = 0;
   if (pacingTimer) { clearTimeout(pacingTimer); pacingTimer = null; }
+  log.info(`flushSfxForSpeech: removed=${sfxRemoved} sfx chunks, reset playbackEndTime`);
 }
 
 // ---- Event handling ----
@@ -259,6 +269,8 @@ function handleEvent(event: Record<string, unknown>): void {
 
     playingKind = "speech";
     const pcm = Buffer.from(event.data as string, "base64");
+    const ahead = Math.max(0, playbackEndTime - Date.now());
+    log.debug(`speech chunk: ${Math.round(pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE) * 1000)}ms, ahead=${Math.round(ahead)}ms, queued=${audioQueue.length}, sfxWas=${sfxActive}`);
     enqueueAudio(pcm, "speech");
     return;
   }
