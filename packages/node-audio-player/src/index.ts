@@ -118,6 +118,8 @@ function drainToLookahead(): void {
   const aheadBefore = playbackEndTime - now;
   let emitted = 0;
   let emittedMs = 0;
+  let emittedSpeech = 0;
+  let emittedSfx = 0;
   while (audioQueue.length > 0 && (playbackEndTime - now) < LOOKAHEAD_MS) {
     const chunk = audioQueue.shift()!;
     emitChunk(chunk.pcm, chunk.kind);
@@ -125,10 +127,13 @@ function drainToLookahead(): void {
     playbackEndTime += durationMs;
     emitted++;
     emittedMs += durationMs;
+    if (chunk.kind === "speech") emittedSpeech++;
+    else emittedSfx++;
   }
   if (emitted > 0) {
     const aheadAfter = playbackEndTime - now;
-    log.info(`drain: emitted=${emitted} (${emittedMs}ms) ahead=${Math.round(aheadAfter)}ms queued=${audioQueue.length} reset=${wasBehind}`);
+    const kinds = emittedSfx > 0 ? `${emittedSpeech}sp+${emittedSfx}sfx` : `${emittedSpeech}sp`;
+    log.info(`drain: emitted=${emitted}[${kinds}] (${emittedMs}ms) ahead=${Math.round(aheadAfter)}ms queued=${audioQueue.length} reset=${wasBehind}`);
   }
   if (audioQueue.length > 0) schedulePacing();
 }
@@ -211,6 +216,8 @@ function writeSfxChunk(): void {
   const chunk = sfxCurrentClip.subarray(sfxClipOffset, sfxClipOffset + bytesToWrite);
   sfxClipOffset += bytesToWrite;
 
+  const ahead = Math.max(0, playbackEndTime - Date.now());
+  log.debug(`sfx chunk: ${Math.round(chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE) * 1000)}ms, ahead=${Math.round(ahead)}ms, queued=${audioQueue.length}`);
   enqueueAudio(chunk, "sfx");
 }
 
