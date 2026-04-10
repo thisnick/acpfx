@@ -274,7 +274,10 @@ function handlePipelineEvent(event: Record<string, unknown>): void {
   }
 
   if (type === "control.interrupt") {
-    log.info("Interrupt received");
+    log.info("Interrupt — flushing server playback");
+    if (audioWs && audioWs.readyState === WebSocket.OPEN) {
+      audioWs.send(JSON.stringify({ type: "flush" }));
+    }
     return;
   }
 
