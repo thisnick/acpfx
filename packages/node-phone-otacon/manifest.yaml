@@ -1,0 +1,33 @@
+name: phone-otacon
+description: Bidirectional phone audio + SMS via Otacon server. Replaces mic-speaker for telephony pipelines.
+consumes:
+  - audio.chunk
+  - control.interrupt
+  - agent.complete
+emits:
+  - audio.chunk
+  - audio.start
+  - audio.end
+  - speech.final
+  - lifecycle.ready
+  - lifecycle.done
+  - control.error
+arguments:
+  otaconUrl:
+    type: string
+    default: "https://otacon-pi.tail0437b8.ts.net:8080"
+    description: "Otacon server base URL"
+  whitelist:
+    type: string
+    description: "Comma-separated phone numbers to auto-answer. Empty = answer all."
+  smsPollIntervalMs:
+    type: number
+    default: 5000
+    description: "How often to poll for new SMS messages (ms)"
+  trackId:
+    type: string
+    default: "phone"
+    description: "Track ID for emitted audio events"
+env:
+  OTACON_URL:
+    description: "Otacon server base URL (fallback if not in settings)"
