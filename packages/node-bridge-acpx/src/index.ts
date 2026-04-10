@@ -43,6 +43,7 @@ let activeChild: ChildProcess | null = null;
 let interrupted = false;
 let streaming = false;
 let agentResponding = false;
+const pendingPrompts: string[] = [];
 
 
 /** Build CLI args from settings.args */
@@ -219,6 +220,15 @@ function handleSpeechPause(pendingText: string): void {
     if (activeChild === child) activeChild = null;
     streaming = false;
 
+    // Drain pending prompt.text queue (SMS messages that arrived while busy)
+    if (pendingPrompts.length > 0) {
+      const next = pendingPrompts.shift()!;
+      log.info(`Draining queued prompt.text: "${next.substring(0, 80)}" (${pendingPrompts.length} remaining)`);
+      accumulatedText = next;
+      agentResponding = false;
+      handleSpeechPause(next);
+    }
+
     // null code + signal means we killed it (SIGTERM on cancel) — not an error
     if (code !== 0 && code !== null && !interrupted) {
       log.error(`acpx exited with code ${code}`);
@@ -300,9 +310,9 @@ function main(): void {
         if (text) {
           log.info(`prompt.text: "${text.substring(0, 80)}"`);
           if (streaming) {
-            // Agent is busy — queue this for after agent.complete
-            // The phone node handles queueing, so we just log and skip
-            log.info("Agent busy — prompt.text will be resubmitted after completion");
+            // Agent is busy — queue for processing after current response
+            pendingPrompts.push(text);
+            log.info(`Queued prompt.text (${pendingPrompts.length} pending)`);
           } else {
             active = true;
             agentResponding = false;
