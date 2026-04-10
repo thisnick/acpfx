@@ -113,27 +113,12 @@ function enqueueAudio(pcm: Buffer, kind: "speech" | "sfx"): void {
 
 function drainToLookahead(): void {
   const now = Date.now();
-  const wasBehind = playbackEndTime <= now;
-  if (wasBehind) playbackEndTime = now;
-  const aheadBefore = playbackEndTime - now;
-  let emitted = 0;
-  let emittedMs = 0;
-  let emittedSpeech = 0;
-  let emittedSfx = 0;
+  if (playbackEndTime <= now) playbackEndTime = now;
   while (audioQueue.length > 0 && (playbackEndTime - now) < LOOKAHEAD_MS) {
     const chunk = audioQueue.shift()!;
     emitChunk(chunk.pcm, chunk.kind);
     const durationMs = Math.round((chunk.pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000);
     playbackEndTime += durationMs;
-    emitted++;
-    emittedMs += durationMs;
-    if (chunk.kind === "speech") emittedSpeech++;
-    else emittedSfx++;
-  }
-  if (emitted > 0) {
-    const aheadAfter = playbackEndTime - now;
-    const kinds = emittedSfx > 0 ? `${emittedSpeech}sp+${emittedSfx}sfx` : `${emittedSpeech}sp`;
-    log.info(`drain: emitted=${emitted}[${kinds}] (${emittedMs}ms) ahead=${Math.round(aheadAfter)}ms queued=${audioQueue.length} reset=${wasBehind}`);
   }
   if (audioQueue.length > 0) schedulePacing();
 }
@@ -216,8 +201,6 @@ function writeSfxChunk(): void {
   const chunk = sfxCurrentClip.subarray(sfxClipOffset, sfxClipOffset + bytesToWrite);
   sfxClipOffset += bytesToWrite;
 
-  const ahead = Math.max(0, playbackEndTime - Date.now());
-  log.debug(`sfx chunk: ${Math.round(chunk.length / (SAMPLE_RATE * BYTES_PER_SAMPLE) * 1000)}ms, ahead=${Math.round(ahead)}ms, queued=${audioQueue.length}`);
   enqueueAudio(chunk, "sfx");
 }
 
@@ -248,12 +231,10 @@ function cancelSfxDelay(): void {
 
 /** Stop SFX for incoming speech — reset pacing so speech gets a fresh burst. */
 function flushSfxForSpeech(): void {
-  const sfxRemoved = audioQueue.filter((c) => c.kind === "sfx").length;
   stopSfxLoop();
   audioQueue = audioQueue.filter((c) => c.kind !== "sfx");
   playbackEndTime = 0;
   if (pacingTimer) { clearTimeout(pacingTimer); pacingTimer = null; }
-  log.info(`flushSfxForSpeech: removed=${sfxRemoved} sfx chunks, reset playbackEndTime`);
 }
 
 // ---- Event handling ----
@@ -276,8 +257,6 @@ function handleEvent(event: Record<string, unknown>): void {
 
     playingKind = "speech";
     const pcm = Buffer.from(event.data as string, "base64");
-    const ahead = Math.max(0, playbackEndTime - Date.now());
-    log.debug(`speech chunk: ${Math.round(pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE) * 1000)}ms, ahead=${Math.round(ahead)}ms, queued=${audioQueue.length}, sfxWas=${sfxActive}`);
     enqueueAudio(pcm, "speech");
     return;
   }
