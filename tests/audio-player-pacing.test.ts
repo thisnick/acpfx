@@ -484,6 +484,127 @@ test("12. Empty queue no crash", async () => {
   killProc(proc);
 });
 
+// ---- Additional tests: tool calls before speech ----
+
+test("13. Tool calls then speech — burst still works", async () => {
+  const proc = spawnPlayer();
+  const events = collectEvents(proc);
+  await waitForReady(events);
+  const t0 = Date.now();
+
+  // Two tool calls first
+  send(proc, { type: "agent.tool_start", _from: "bridge" });
+  await waitFor(100);
+  send(proc, { type: "agent.tool_done", _from: "bridge" });
+  await waitFor(100);
+  send(proc, { type: "agent.tool_start", _from: "bridge" });
+  await waitFor(100);
+  send(proc, { type: "agent.tool_done", _from: "bridge" });
+  await waitFor(50);
+
+  // Now speech arrives — should burst ~500ms
+  const speechStart = Date.now();
+  for (let i = 0; i < 10; i++) {
+    send(proc, makeAudioChunk(100));
+  }
+
+  await waitFor(800);
+
+  const speech = speechChunks(events);
+  if (speech.length < 5) {
+    throw new Error(`Expected at least 5 speech chunks, got ${speech.length}`);
+  }
+
+  // First ~5 chunks should have been burst (within ~100ms of speechStart)
+  const burstChunks = speech.filter((e) => e.timestamp - speechStart < 100);
+  if (burstChunks.length < 4) {
+    throw new Error(`Expected ~5 burst chunks within 100ms, got ${burstChunks.length}`);
+  }
+
+  killProc(proc);
+});
+
+test("14. Tool calls then pause then speech — burst still works", async () => {
+  const proc = spawnPlayer();
+  const events = collectEvents(proc);
+  await waitForReady(events);
+
+  // Two tool calls
+  send(proc, { type: "agent.tool_start", _from: "bridge" });
+  await waitFor(100);
+  send(proc, { type: "agent.tool_done", _from: "bridge" });
+  await waitFor(100);
+  send(proc, { type: "agent.tool_start", _from: "bridge" });
+  await waitFor(100);
+  send(proc, { type: "agent.tool_done", _from: "bridge" });
+
+  // Brief pause (like agent thinking between tool and speech)
+  await waitFor(300);
+
+  // Speech arrives — should burst ~500ms
+  const speechStart = Date.now();
+  for (let i = 0; i < 10; i++) {
+    send(proc, makeAudioChunk(100));
+  }
+
+  await waitFor(800);
+
+  const speech = speechChunks(events);
+  if (speech.length < 5) {
+    throw new Error(`Expected at least 5 speech chunks, got ${speech.length}`);
+  }
+
+  // First ~5 chunks should have been burst
+  const burstChunks = speech.filter((e) => e.timestamp - speechStart < 100);
+  if (burstChunks.length < 4) {
+    throw new Error(`Expected ~5 burst chunks within 100ms of speech start, got ${burstChunks.length}`);
+  }
+
+  killProc(proc);
+});
+
+test("15. Speech then tool then speech — second speech bursts fresh", async () => {
+  const proc = spawnPlayer();
+  const events = collectEvents(proc);
+  await waitForReady(events);
+
+  // First speech segment
+  for (let i = 0; i < 5; i++) {
+    send(proc, makeAudioChunk(100));
+  }
+
+  // Wait for first speech to "play out"
+  await waitFor(700);
+
+  // Tool call
+  send(proc, { type: "agent.tool_start", _from: "bridge" });
+  await waitFor(200);
+  send(proc, { type: "agent.tool_done", _from: "bridge" });
+  await waitFor(100);
+
+  // Second speech — should burst fresh
+  const speech2Start = Date.now();
+  for (let i = 0; i < 8; i++) {
+    send(proc, makeAudioChunk(100));
+  }
+
+  await waitFor(1000);
+
+  // Get speech chunks that arrived after the tool call
+  const speech2 = speechChunks(events).filter((e) => e.timestamp >= speech2Start);
+  if (speech2.length < 5) {
+    throw new Error(`Expected at least 5 second-segment speech chunks, got ${speech2.length}`);
+  }
+
+  // Should burst the first ~5 of segment 2
+  const burstChunks = speech2.filter((e) => e.timestamp - speech2Start < 100);
+  if (burstChunks.length < 4) {
+    throw new Error(`Expected ~5 burst chunks for second segment, got ${burstChunks.length}`);
+  }
+
+  killProc(proc);
+});
+
 // ---- Run ----
 
 console.log("Audio player pacing tests\n");

@@ -99,29 +99,43 @@ const SFX_CHUNK_MS = 100;
 const SFX_CHUNK_BYTES = Math.floor(SAMPLE_RATE * BYTES_PER_SAMPLE * SFX_CHUNK_MS / 1000);
 
 // ---- Pacing state ----
+// All audio (speech + SFX) goes through the pacing queue.
+// We maintain a ~500ms lookahead buffer downstream.
 const LOOKAHEAD_MS = 500;
-let speechQueue: Array<{pcm: Buffer, durationMs: number}> = [];
+let audioQueue: Array<{pcm: Buffer, kind: "speech" | "sfx"}> = [];
 let playbackEndTime = 0;
 let pacingTimer: ReturnType<typeof setTimeout> | null = null;
+
+function enqueueAudio(pcm: Buffer, kind: "speech" | "sfx"): void {
+  audioQueue.push({ pcm, kind });
+  drainToLookahead();
+}
 
 function drainToLookahead(): void {
   const now = Date.now();
   if (playbackEndTime <= now) playbackEndTime = now;
-  while (speechQueue.length > 0 && (playbackEndTime - now) < LOOKAHEAD_MS) {
-    const chunk = speechQueue.shift()!;
-    emitChunk(chunk.pcm, "speech");
-    playbackEndTime += chunk.durationMs;
+  while (audioQueue.length > 0 && (playbackEndTime - now) < LOOKAHEAD_MS) {
+    const chunk = audioQueue.shift()!;
+    emitChunk(chunk.pcm, chunk.kind);
+    const durationMs = Math.round((chunk.pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000);
+    playbackEndTime += durationMs;
   }
-  if (speechQueue.length > 0) schedulePacing();
+  if (audioQueue.length > 0) schedulePacing();
 }
 
 function schedulePacing(): void {
-  if (pacingTimer || speechQueue.length === 0) return;
+  if (pacingTimer || audioQueue.length === 0) return;
   const delay = Math.max(0, (playbackEndTime - LOOKAHEAD_MS) - Date.now());
   pacingTimer = setTimeout(() => {
     pacingTimer = null;
     drainToLookahead();
   }, delay);
+}
+
+function flushAudioQueue(): void {
+  audioQueue = [];
+  if (pacingTimer) { clearTimeout(pacingTimer); pacingTimer = null; }
+  playbackEndTime = 0;
 }
 
 
@@ -187,7 +201,7 @@ function writeSfxChunk(): void {
   const chunk = sfxCurrentClip.subarray(sfxClipOffset, sfxClipOffset + bytesToWrite);
   sfxClipOffset += bytesToWrite;
 
-  emitChunk(chunk, "sfx");
+  enqueueAudio(chunk, "sfx");
 }
 
 /** Stop the SFX loop timer. */
@@ -240,9 +254,7 @@ function handleEvent(event: Record<string, unknown>): void {
 
     playingKind = "speech";
     const pcm = Buffer.from(event.data as string, "base64");
-    const durationMs = (event.durationMs as number) || Math.round((pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000);
-    speechQueue.push({ pcm, durationMs });
-    drainToLookahead();
+    enqueueAudio(pcm, "speech");
     return;
   }
 
@@ -301,6 +313,8 @@ function handleEvent(event: Record<string, unknown>): void {
   // Agent complete
   if (type === "agent.complete") {
     agentState = "idle";
+    // Don't flush queue — let remaining audio play out
+    // Just reset playbackEndTime so next turn gets a fresh burst
     playbackEndTime = 0;
     cancelSfxDelay();
     stopSfxLoop();
@@ -311,9 +325,7 @@ function handleEvent(event: Record<string, unknown>): void {
   // Interrupt — stop everything
   if (type === "control.interrupt") {
     agentState = "idle";
-    speechQueue = [];
-    if (pacingTimer) { clearTimeout(pacingTimer); pacingTimer = null; }
-    playbackEndTime = 0;
+    flushAudioQueue();
     cancelSfxDelay();
     stopSfxLoop();
     playingKind = null;
