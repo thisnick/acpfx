@@ -98,6 +98,32 @@ let sfxCurrentClip: Buffer | null = null;
 const SFX_CHUNK_MS = 100;
 const SFX_CHUNK_BYTES = Math.floor(SAMPLE_RATE * BYTES_PER_SAMPLE * SFX_CHUNK_MS / 1000);
 
+// ---- Pacing state ----
+const LOOKAHEAD_MS = 500;
+let speechQueue: Array<{pcm: Buffer, durationMs: number}> = [];
+let playbackEndTime = 0;
+let pacingTimer: ReturnType<typeof setTimeout> | null = null;
+
+function drainToLookahead(): void {
+  const now = Date.now();
+  if (playbackEndTime <= now) playbackEndTime = now;
+  while (speechQueue.length > 0 && (playbackEndTime - now) < LOOKAHEAD_MS) {
+    const chunk = speechQueue.shift()!;
+    emitChunk(chunk.pcm, "speech");
+    playbackEndTime += chunk.durationMs;
+  }
+  if (speechQueue.length > 0) schedulePacing();
+}
+
+function schedulePacing(): void {
+  if (pacingTimer || speechQueue.length === 0) return;
+  const delay = Math.max(0, (playbackEndTime - LOOKAHEAD_MS) - Date.now());
+  pacingTimer = setTimeout(() => {
+    pacingTimer = null;
+    drainToLookahead();
+  }, delay);
+}
+
 
 function emitStatus(): void {
   let text: string;
@@ -214,28 +240,41 @@ function handleEvent(event: Record<string, unknown>): void {
 
     playingKind = "speech";
     const pcm = Buffer.from(event.data as string, "base64");
-    emitChunk(pcm, "speech");
+    const durationMs = (event.durationMs as number) || Math.round((pcm.length / (SAMPLE_RATE * BYTES_PER_SAMPLE)) * 1000);
+    speechQueue.push({ pcm, durationMs });
+    drainToLookahead();
     return;
   }
 
-  // Agent thinking — delay SFX start by 500ms
+  // Agent thinking — delay SFX start by 500ms (+ speech drain time if buffered)
   if (type === "agent.thinking") {
     agentState = "thinking";
     cancelSfxDelay();
+    const now = Date.now();
+    const speechRemaining = Math.max(0, playbackEndTime - now);
     sfxDelayTimer = setTimeout(() => {
       sfxDelayTimer = null;
       if (agentState === "thinking") startSfxLoop();
-    }, THINKING_DELAY_MS);
+    }, speechRemaining + THINKING_DELAY_MS);
     emitStatus();
     return;
   }
 
-  // Tool started — start SFX immediately
+  // Tool started — start SFX immediately (or after speech drains)
   if (type === "agent.tool_start") {
     agentState = "tool";
     cancelSfxDelay();
     stopSfxLoop();
-    startSfxLoop();
+    const now = Date.now();
+    const speechRemaining = Math.max(0, playbackEndTime - now);
+    if (speechRemaining > 0) {
+      sfxDelayTimer = setTimeout(() => {
+        sfxDelayTimer = null;
+        if (agentState === "tool") startSfxLoop();
+      }, speechRemaining);
+    } else {
+      startSfxLoop();
+    }
     emitStatus();
     return;
   }
@@ -262,6 +301,7 @@ function handleEvent(event: Record<string, unknown>): void {
   // Agent complete
   if (type === "agent.complete") {
     agentState = "idle";
+    playbackEndTime = 0;
     cancelSfxDelay();
     stopSfxLoop();
     emitStatus();
@@ -271,6 +311,9 @@ function handleEvent(event: Record<string, unknown>): void {
   // Interrupt — stop everything
   if (type === "control.interrupt") {
     agentState = "idle";
+    speechQueue = [];
+    if (pacingTimer) { clearTimeout(pacingTimer); pacingTimer = null; }
+    playbackEndTime = 0;
     cancelSfxDelay();
     stopSfxLoop();
     playingKind = null;
