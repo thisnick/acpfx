@@ -224,7 +224,6 @@ function handleSpeechPause(pendingText: string): void {
     if (pendingPrompts.length > 0) {
       const next = pendingPrompts.shift()!;
       log.info(`Draining queued prompt.text: "${next.substring(0, 80)}" (${pendingPrompts.length} remaining)`);
-      accumulatedText = next;
       agentResponding = false;
       handleSpeechPause(next);
     }
