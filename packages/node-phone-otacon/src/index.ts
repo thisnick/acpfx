@@ -260,36 +260,56 @@ function drainSmsQueue(): void {
   });
 }
 
-// --- Outbound audio pacing ---
+// --- Outbound audio pacing (wall-clock scheduled) ---
 let outboundQueue: Array<{ pcm: Buffer; durationMs: number }> = [];
-let outboundPlaying = false;
+let outboundNextSendTime = 0; // wall-clock ms when next chunk should be sent
+let outboundTimer: ReturnType<typeof setTimeout> | null = null;
 
 function enqueueOutboundAudio(pcm: Buffer, durationMs: number): void {
   outboundQueue.push({ pcm, durationMs });
-  drainOutboundQueue();
+  scheduleOutbound();
 }
 
-function drainOutboundQueue(): void {
-  if (outboundPlaying || outboundQueue.length === 0) return;
+function scheduleOutbound(): void {
+  if (outboundTimer || outboundQueue.length === 0) return;
   if (!audioWs || audioWs.readyState !== WebSocket.OPEN) {
     outboundQueue = [];
     return;
   }
 
-  outboundPlaying = true;
-  const chunk = outboundQueue.shift()!;
-  audioWs.send(chunk.pcm);
+  const now = performance.now();
+  // If we've fallen behind or just started, reset the clock
+  if (outboundNextSendTime <= now) {
+    outboundNextSendTime = now;
+  }
 
-  // Wait for the chunk's real-time duration before sending next
-  setTimeout(() => {
-    outboundPlaying = false;
-    drainOutboundQueue();
-  }, chunk.durationMs);
+  const delay = Math.max(0, outboundNextSendTime - now);
+  outboundTimer = setTimeout(() => {
+    outboundTimer = null;
+    if (!audioWs || audioWs.readyState !== WebSocket.OPEN) {
+      outboundQueue = [];
+      return;
+    }
+    const chunk = outboundQueue.shift();
+    if (!chunk) return;
+
+    audioWs.send(chunk.pcm);
+    outboundNextSendTime += chunk.durationMs;
+
+    // Schedule next chunk immediately if queue has more
+    if (outboundQueue.length > 0) {
+      scheduleOutbound();
+    }
+  }, delay);
 }
 
 function flushOutboundQueue(): void {
   outboundQueue = [];
-  outboundPlaying = false;
+  if (outboundTimer) {
+    clearTimeout(outboundTimer);
+    outboundTimer = null;
+  }
+  outboundNextSendTime = 0;
 }
 
 // --- Incoming ACPFX events (from TTS / pipeline) ---
