@@ -182,7 +182,7 @@ impl Orchestrator {
             .map(|(k, v)| {
                 (
                     k.clone(),
-                    (v.emits.clone(), v.outputs.clone(), v.consumes.clone()),
+                    (v.emits.clone(), v.outputs.clone(), v.consumes.clone()), // .outputs = plain names
                 )
             })
             .collect();
@@ -403,12 +403,15 @@ impl Orchestrator {
 
                     let serialized = serde_json::to_string(&event).unwrap_or_default();
 
-                    // Route to destination nodes per DAG edges, filtered by manifest
+                    // Route to destination nodes per DAG edges, filtered by manifest + whenFieldEquals
                     if let Some(dag_node) = self.dag.nodes.get(&from_node) {
-                        let outputs = dag_node.outputs.clone();
-                        for dest in &outputs {
+                        let edges = dag_node.output_edges.clone();
+                        for edge in &edges {
+                            let dest = edge.node_name();
                             if let Some(dest_node) = self.dag.nodes.get(dest) {
-                                if node_consumes_event(dest_node, &event_type) {
+                                if node_consumes_event(dest_node, &event_type)
+                                    && edge.matches(&event)
+                                {
                                     if let Some(runner) = self.runners.get(dest) {
                                         runner.send(&serialized).await;
                                     }
@@ -423,7 +426,7 @@ impl Orchestrator {
                             .dag
                             .nodes
                             .get(&from_node)
-                            .map(|n| n.outputs.clone())
+                            .map(|n| n.outputs.clone()) // plain names, filter doesn't apply to logs
                             .unwrap_or_default();
 
                         for (name, dag_node) in &self.dag.nodes {

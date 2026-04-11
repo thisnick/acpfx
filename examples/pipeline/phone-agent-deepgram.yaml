@@ -1,10 +1,11 @@
-# Phone agent pipeline — connects Otacon phone to a voice AI agent
-# Usage: acpfx run examples/pipeline/phone-agent.yaml
+# Phone agent pipeline (Deepgram STT+TTS) — connects Otacon phone to voice AI agent
+# Usage: acpfx run examples/pipeline/phone-agent-deepgram.yaml
 #
 # Incoming calls are auto-answered (whitelist configurable).
 # SMS messages are fed to the agent as text input.
-# Agent responses go through TTS + audio player (SFX) → phone node.
-# Phone node paces outbound audio to real-time rate.
+# Voice responses go through TTS + audio player → phone (audio).
+# Text (SMS) responses go directly to phone node → SMS reply.
+# Routing is based on responseMode field set by the bridge.
 
 nodes:
   phone:
@@ -15,21 +16,20 @@ nodes:
     outputs: [stt, agent]
 
   stt:
-    use: '@acpfx/stt-deepgram'
+    use: "@acpfx/stt-deepgram"
     settings:
       endpointing: 500
       language: en
       model: nova-3
       turnDetection: true
       utteranceEndMs: 1500
-    outputs:
-    - agent
+    outputs: [agent]
+
   tts:
-    use: '@acpfx/tts-deepgram'
+    use: "@acpfx/tts-deepgram"
     settings:
       voice: aura-2-aries-en
-    outputs:
-    - player
+    outputs: [player]
 
   agent:
     use: "@acpfx/bridge-acpx"
@@ -38,7 +38,15 @@ nodes:
       session: phone
       args:
         approve-all: true
-    outputs: [tts, player]
+    outputs:
+      # Voice responses → TTS → player → phone (audio)
+      - node: tts
+        whenFieldEquals: { responseMode: "voice" }
+      - node: player
+        whenFieldEquals: { responseMode: "voice" }
+      # Text responses → phone (SMS reply)
+      - node: phone
+        whenFieldEquals: { responseMode: "text" }
 
   player:
     use: "@acpfx/audio-player"

@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { parseConfig, ConfigError } from "@acpfx/core";
+import { parseConfig, ConfigError, outputNodeName } from "@acpfx/core";
 
 describe("config v2", () => {
   const standardYaml = `
@@ -170,5 +170,97 @@ nodes:
       "nodes:\n  sink:\n    use: '@acpfx/recorder'",
     );
     assert.equal(config.nodes.sink.outputs, undefined);
+  });
+
+  // --- Conditional output tests (whenFieldEquals) ---
+
+  it("parses filtered output with whenFieldEquals", () => {
+    const config = parseConfig(`
+nodes:
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    outputs:
+      - node: tts
+        whenFieldEquals: { responseMode: "voice" }
+  tts:
+    use: "@acpfx/tts-deepgram"
+    outputs: []
+`);
+    const edge = config.nodes.bridge.outputs![0];
+    assert.equal(outputNodeName(edge), "tts");
+    assert.equal(typeof edge, "object");
+    assert.deepEqual((edge as any).whenFieldEquals, { responseMode: "voice" });
+  });
+
+  it("parses mixed plain and filtered outputs", () => {
+    const config = parseConfig(`
+nodes:
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    outputs:
+      - stt
+      - node: tts
+        whenFieldEquals: { responseMode: "voice" }
+      - node: phone
+        whenFieldEquals: { responseMode: "text" }
+  stt:
+    use: echo
+    outputs: []
+  tts:
+    use: echo
+    outputs: []
+  phone:
+    use: echo
+    outputs: []
+`);
+    const names = config.nodes.bridge.outputs!.map(outputNodeName);
+    assert.deepEqual(names, ["stt", "tts", "phone"]);
+    assert.equal(typeof config.nodes.bridge.outputs![0], "string");
+    assert.equal(typeof config.nodes.bridge.outputs![1], "object");
+  });
+
+  it("rejects filtered output to undefined node", () => {
+    assert.throws(
+      () =>
+        parseConfig(`
+nodes:
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    outputs:
+      - node: nonexistent
+        whenFieldEquals: { responseMode: "voice" }
+`),
+      ConfigError,
+    );
+  });
+
+  it("parses filtered output with empty whenFieldEquals", () => {
+    const config = parseConfig(`
+nodes:
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    outputs:
+      - node: tts
+        whenFieldEquals: {}
+  tts:
+    use: echo
+    outputs: []
+`);
+    const edge = config.nodes.bridge.outputs![0] as any;
+    assert.deepEqual(edge.whenFieldEquals, {});
+  });
+
+  it("rejects invalid output format", () => {
+    assert.throws(
+      () =>
+        parseConfig(`
+nodes:
+  bridge:
+    use: "@acpfx/bridge-acpx"
+    outputs:
+      - 42
+`),
+      ConfigError,
+    );
   });
 });

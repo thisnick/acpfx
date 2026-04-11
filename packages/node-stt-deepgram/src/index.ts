@@ -46,6 +46,7 @@ if (!API_KEY) {
 
 let ws: WebSocket | null = null;
 let connected = false;
+let connecting = false;
 let lastFinalText = "";
 let pendingText = "";
 
@@ -128,12 +129,14 @@ function handleServerMessage(msg: Record<string, unknown>): void {
   // UtteranceEnd — speaker finished their turn (word-timing based, ignores noise)
   if (type === "UtteranceEnd") {
     if (!TURN_DETECTION) return; // Skip in PTT mode
+    log.debug(`UtteranceEnd: pendingText="${pendingText.substring(0, 60)}"`);
     if (pendingText) {
       emit({
         type: "speech.pause",
         trackId: TRACK_ID,
         pendingText,
         silenceMs: UTTERANCE_END_MS,
+        _pauseSource: "utterance_end",
       });
       pendingText = "";
     }
@@ -172,11 +175,13 @@ function handleServerMessage(msg: Record<string, unknown>): void {
 
       // If speech_final (endpointing detected silence), also emit pause
       if (speechFinal && TURN_DETECTION) {
+        log.debug(`speechFinal pause: pendingText="${pendingText.substring(0, 60)}"`);
         emit({
           type: "speech.pause",
           trackId: TRACK_ID,
           pendingText,
           silenceMs: ENDPOINTING,
+          _pauseSource: "speech_final",
         });
         pendingText = "";
       }
@@ -218,19 +223,20 @@ function closeWebSocket(): void {
 // --- Main ---
 
 async function main(): Promise<void> {
-  await connectWebSocket();
-
   emit({ type: "lifecycle.ready", component: "stt-deepgram" });
 
   const rl = onEvent((event) => {
     if (event.type === "audio.chunk") {
-      if (!connected) {
+      if (!connected && !connecting) {
+        connecting = true;
         connectWebSocket().then(() => {
+          connecting = false;
           sendAudio(event.data as string);
-        }).catch(() => {});
-      } else {
+        }).catch(() => { connecting = false; });
+      } else if (connected) {
         sendAudio(event.data as string);
       }
+      // If connecting but not yet connected, drop chunk (first ~200ms, acceptable)
     } else if (event.type === "audio.start") {
       // PTT session start: reset accumulated text for new utterance
       pendingText = "";
@@ -251,6 +257,8 @@ async function main(): Promise<void> {
         });
         pendingText = "";
       }
+      // Close STT connection when audio source disconnects
+      closeWebSocket();
     } else if (event.type === "control.interrupt") {
       // Don't close WebSocket — STT should keep listening for barge-in.
     }
