@@ -51,6 +51,23 @@ let connected = false;
 let interrupted = false;
 let pcmBuffer = Buffer.alloc(0);
 let currentRequestId: string | null = null;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+const IDLE_CLOSE_MS = 5000; // close connection after 5s of no activity
+
+function resetIdleTimer(): void {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (connected && !interrupted) {
+      log.debug("Idle timeout — closing TTS connection");
+      closeWebSocket();
+    }
+    idleTimer = null;
+  }, IDLE_CLOSE_MS);
+}
+
+function clearIdleTimer(): void {
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+}
 
 
 async function openWebSocket(): Promise<void> {
@@ -261,7 +278,8 @@ async function main(): Promise<void> {
 
   async function handleEvent(event: Record<string, unknown>): Promise<void> {
     if (event.type === "agent.submit") {
-      // Warm-up: open connection while agent is thinking (2-6s free time)
+      // Warm-up: open connection while agent is thinking
+      resetIdleTimer();
       if (!connected) {
         await openWebSocket();
       }
@@ -276,22 +294,25 @@ async function main(): Promise<void> {
           closeWebSocket();
           await openWebSocket();
         }
+        resetIdleTimer();
         currentRequestId = event.requestId as string;
         sendText(event.delta as string);
       }
     } else if (event.type === "agent.tool_start" && !interrupted) {
       // Tool call started — flush current segment
+      resetIdleTimer();
       if (connected) {
         log.info("Tool started — flushing TTS segment");
         flushStream();
       }
     } else if (event.type === "agent.complete" && !interrupted) {
-      // Agent done — flush remaining text
+      // Agent done — flush remaining text, let idle timer close connection
+      resetIdleTimer();
       flushStream();
-      closeWebSocket();
       currentRequestId = null;
     } else if (event.type === "control.interrupt") {
       interrupted = true;
+      clearIdleTimer();
       // Clear discards buffered text immediately
       clearStream();
       closeWebSocket();

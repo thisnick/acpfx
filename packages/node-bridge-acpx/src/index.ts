@@ -290,22 +290,28 @@ function main(): void {
         interruptedForBargein = false;
         active = true;
         const text = (event.pendingText as string) ?? (event.text as string) ?? "";
+        const pauseSource = (event._pauseSource as string) ?? "unknown";
+        log.info(`speech.pause [${pauseSource}]: text="${text.substring(0, 60)}" streaming=${streaming} agentResponding=${agentResponding} accumulated="${accumulatedText.substring(0, 60)}"`);
         if (text) {
           emit({ type: "control.interrupt", reason: "user_speech" });
 
           if (agentResponding) {
             // Agent already responded — this is a new turn, clear accumulator
+            log.debug(`speech.pause: agentResponding=true, replacing accumulatedText`);
             accumulatedText = text;
             agentResponding = false;
           } else if (streaming) {
             // Agent hasn't responded yet — append to accumulator and resubmit
+            log.debug(`speech.pause: streaming, canceling and appending`);
             cancelCurrentPrompt();
             accumulatedText = accumulatedText ? accumulatedText + " " + text : text;
           } else {
             // Fresh submission
+            log.debug(`speech.pause: fresh submission`);
             accumulatedText = accumulatedText ? accumulatedText + " " + text : text;
           }
 
+          log.info(`speech.pause: submitting "${accumulatedText.substring(0, 80)}"`);
           handleSpeechPause(accumulatedText);
         }
       } else if (event.type === "prompt.text") {
