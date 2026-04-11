@@ -3,6 +3,8 @@ description: Bidirectional phone audio + SMS via Otacon server. Replaces mic-spe
 consumes:
   - audio.chunk
   - control.interrupt
+  - agent.delta
+  - agent.complete
 emits:
   - audio.chunk
   - audio.start

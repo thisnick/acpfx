@@ -6,7 +6,7 @@
  * - Computes downstream sets for interrupt propagation
  */
 
-import { PipelineConfig } from "./config.js";
+import { PipelineConfig, outputNodeName } from "./config.js";
 
 export class DagError extends Error {
   constructor(message: string) {
@@ -44,7 +44,7 @@ export function buildDag(config: PipelineConfig): Dag {
       name,
       use: nc.use,
       settings: nc.settings,
-      outputs: nc.outputs ?? [],
+      outputs: (nc.outputs ?? []).map(outputNodeName),
       consumes: [],
       emits: [],
     });

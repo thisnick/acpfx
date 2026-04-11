@@ -43,7 +43,8 @@ let activeChild: ChildProcess | null = null;
 let interrupted = false;
 let streaming = false;
 let agentResponding = false;
-const pendingPrompts: string[] = [];
+let currentResponseMode: "voice" | "text" = "voice";
+const pendingPrompts: Array<{ text: string; responseMode: "voice" | "text" }> = [];
 
 
 /** Build CLI args from settings.args */
@@ -93,7 +94,7 @@ function handleSpeechPause(pendingText: string): void {
   const requestId = randomUUID();
   streaming = true;
 
-  emit({ type: "agent.submit", requestId, text: pendingText });
+  emit({ type: "agent.submit", requestId, text: pendingText, responseMode: currentResponseMode });
 
   // Build acpx command: npx -y acpx@latest --format json [extra-args] <agent> -s <session> "text"
   const args = [
@@ -141,7 +142,7 @@ function handleSpeechPause(pendingText: string): void {
       if (sessionUpdate === "agent_thought_chunk") {
         if (!emittedThinking) {
           emittedThinking = true;
-          emit({ type: "agent.thinking", requestId });
+          emit({ type: "agent.thinking", requestId, responseMode: currentResponseMode });
         }
         return;
       }
@@ -152,6 +153,7 @@ function handleSpeechPause(pendingText: string): void {
           type: "agent.tool_start",
           requestId,
           toolCallId: (typeof update.toolCallId === "string" ? update.toolCallId : ""),
+          responseMode: currentResponseMode,
         });
         return;
       }
@@ -165,6 +167,7 @@ function handleSpeechPause(pendingText: string): void {
             requestId,
             toolCallId: (update.toolCallId as string) ?? "",
             status,
+            responseMode: currentResponseMode,
           });
         }
         return;
@@ -176,7 +179,7 @@ function handleSpeechPause(pendingText: string): void {
         if (content?.type === "text" && typeof content.text === "string" && content.text) {
           fullText += content.text;
           agentResponding = true;
-          emit({ type: "agent.delta", requestId, delta: content.text, seq: seq++ });
+          emit({ type: "agent.delta", requestId, delta: content.text, seq: seq++, responseMode: currentResponseMode });
         }
         return;
       }
@@ -189,7 +192,7 @@ function handleSpeechPause(pendingText: string): void {
       const result = msg.result as Record<string, unknown> | undefined;
       if (result && typeof result.stopReason === "string") {
         if (!interrupted) {
-          emit({ type: "agent.complete", requestId, text: fullText });
+          emit({ type: "agent.complete", requestId, text: fullText, responseMode: currentResponseMode });
         }
       }
     }
@@ -223,9 +226,10 @@ function handleSpeechPause(pendingText: string): void {
     // Drain pending prompt.text queue (SMS messages that arrived while busy)
     if (pendingPrompts.length > 0) {
       const next = pendingPrompts.shift()!;
-      log.info(`Draining queued prompt.text: "${next.substring(0, 80)}" (${pendingPrompts.length} remaining)`);
+      log.info(`Draining queued prompt.text: "${next.text.substring(0, 80)}" (${pendingPrompts.length} remaining)`);
+      currentResponseMode = next.responseMode;
       agentResponding = false;
-      handleSpeechPause(next);
+      handleSpeechPause(next.text);
     }
 
     // null code + signal means we killed it (SIGTERM on cancel) — not an error
@@ -282,6 +286,7 @@ function main(): void {
         emit({ type: "control.interrupt", reason: "user_speech" });
         if (streaming) cancelCurrentPrompt();
       } else if (event.type === "speech.pause") {
+        currentResponseMode = "voice";
         interruptedForBargein = false;
         active = true;
         const text = (event.pendingText as string) ?? (event.text as string) ?? "";
@@ -309,10 +314,11 @@ function main(): void {
         if (text) {
           log.info(`prompt.text: "${text.substring(0, 80)}"`);
           if (streaming) {
-            // Agent is busy — queue for processing after current response
-            pendingPrompts.push(text);
+            // Agent is busy — queue with its responseMode for later
+            pendingPrompts.push({ text, responseMode: "text" });
             log.info(`Queued prompt.text (${pendingPrompts.length} pending)`);
           } else {
+            currentResponseMode = "text";
             active = true;
             agentResponding = false;
             accumulatedText = text;

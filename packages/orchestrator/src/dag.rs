@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use std::cmp::Reverse;
 
-use crate::config::PipelineConfig;
+use crate::config::{OutputEdge, PipelineConfig};
 
 /// A node in the DAG with its manifest contract.
 #[derive(Debug, Clone)]
@@ -15,6 +15,9 @@ pub struct DagNode {
     pub name: String,
     pub use_: String,
     pub settings: Option<serde_json::Value>,
+    /// Output edges with optional filters. Use `output_names()` for plain node names.
+    pub output_edges: Vec<OutputEdge>,
+    /// Plain output node names (derived from output_edges). Used by topo sort, downstream, etc.
     pub outputs: Vec<String>,
     /// Event types this node consumes (from manifest). Empty = accepts all.
     pub consumes: Vec<String>,
@@ -44,7 +47,8 @@ pub fn build_dag(config: &PipelineConfig) -> Dag {
                 name: name.clone(),
                 use_: nc.use_.clone(),
                 settings: nc.settings.clone(),
-                outputs: nc.outputs.clone(),
+                output_edges: nc.outputs.clone(),
+                outputs: nc.output_node_names(),
                 consumes: Vec::new(),
                 emits: Vec::new(),
             },
@@ -229,6 +233,7 @@ nodes:
             name: "test".into(),
             use_: "echo".into(),
             settings: None,
+            output_edges: vec![],
             outputs: vec![],
             consumes: vec![],
             emits: vec![],
@@ -243,6 +248,7 @@ nodes:
             name: "test".into(),
             use_: "echo".into(),
             settings: None,
+            output_edges: vec![],
             outputs: vec![],
             consumes: vec!["audio.chunk".into(), "control.interrupt".into()],
             emits: vec![],

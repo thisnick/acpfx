@@ -235,8 +235,6 @@ function closeWebSocket(): void {
 // --- Main ---
 
 async function main(): Promise<void> {
-  await openWebSocket();
-
   emit({ type: "lifecycle.ready", component: "tts-deepgram" });
 
   const rl = createInterface({ input: process.stdin });
@@ -262,6 +260,14 @@ async function main(): Promise<void> {
   }
 
   async function handleEvent(event: Record<string, unknown>): Promise<void> {
+    if (event.type === "agent.submit") {
+      // Warm-up: open connection while agent is thinking (2-6s free time)
+      if (!connected) {
+        await openWebSocket();
+      }
+      return;
+    }
+
     if (event.type === "agent.delta") {
       if (event.delta) {
         if (interrupted || !connected) {
@@ -282,6 +288,7 @@ async function main(): Promise<void> {
     } else if (event.type === "agent.complete" && !interrupted) {
       // Agent done — flush remaining text
       flushStream();
+      closeWebSocket();
       currentRequestId = null;
     } else if (event.type === "control.interrupt") {
       interrupted = true;

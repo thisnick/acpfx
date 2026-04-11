@@ -30,6 +30,12 @@ let callNumber: string | null = null;
 let audioWs: WebSocket | null = null;
 let eventsWs: WebSocket | null = null;
 
+// Channel binding — maps pipeline events back to the right contact
+let activeSmsContact: string | null = null;
+let activeCallContact: string | null = null;
+let smsBuffer = "";
+const SMS_MAX_LENGTH = 1500;
+
 // --- Helpers ---
 function apiUrl(path: string): string {
   return `${OTACON_URL}${path}`;
@@ -134,6 +140,7 @@ async function handleIncomingCall(number: string | null): Promise<void> {
 function handleCallConnected(number: string | null): void {
   callState = "active";
   callNumber = number || callNumber;
+  activeCallContact = number || callNumber;
   log.info(`Call connected with ${callNumber || "unknown"}`);
   connectAudio();
 }
@@ -142,6 +149,7 @@ function handleCallEnded(): void {
   const was = callState;
   callState = "idle";
   callNumber = null;
+  activeCallContact = null;
   log.info(`Call ended (was ${was})`);
   disconnectAudio();
 }
@@ -199,13 +207,13 @@ function connectEvents(): void {
 }
 
 function handleSmsReceived(from: string, body: string): void {
+  activeSmsContact = from;
   log.info(`SMS from ${from}: ${body.substring(0, 50)}`);
   emit({
     type: "prompt.text",
     trackId: TRACK_ID,
     text: body,
     source: "sms",
-    from,
   });
 }
 
@@ -231,8 +239,21 @@ function handlePipelineEvent(event: Record<string, unknown>): void {
     return;
   }
 
-  if (type === "agent.complete") {
-    // No action needed — SMS are sent immediately, no queueing
+  if (type === "agent.delta" && event.responseMode === "text") {
+    if (!activeSmsContact) return; // no contact bound — discard
+    smsBuffer += (event.delta as string) ?? "";
+    if (smsBuffer.length >= SMS_MAX_LENGTH) {
+      apiPost("/api/sms/messages", { to: activeSmsContact, body: smsBuffer });
+      smsBuffer = "";
+    }
+    return;
+  }
+
+  if (type === "agent.complete" && event.responseMode === "text") {
+    if (activeSmsContact && smsBuffer.length > 0) {
+      apiPost("/api/sms/messages", { to: activeSmsContact, body: smsBuffer });
+    }
+    smsBuffer = ""; // always reset — prevent stale buffer leaking into next conversation
     return;
   }
 }

@@ -1,6 +1,7 @@
 name: tts-deepgram
 description: Text-to-speech via Deepgram streaming API
 consumes:
+  - agent.submit
   - agent.delta
   - agent.complete
   - agent.tool_start

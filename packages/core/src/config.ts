@@ -7,7 +7,10 @@
  *   <name>:
  *     use: "@acpfx/<impl>"
  *     settings: { ... }
- *     outputs: [<name>, ...]
+ *     outputs:
+ *       - <name>                                    # unconditional
+ *       - node: <name>                              # conditional
+ *         whenFieldEquals: { field: "value", ... }
  * env:
  *   KEY: value
  * ```
@@ -18,10 +21,20 @@ import { parse as parseYaml } from "yaml";
 
 // ---- Config types ----
 
+/** An output edge — either a plain node name or a filtered edge. */
+export type OutputEdge =
+  | string
+  | { node: string; whenFieldEquals?: Record<string, unknown> };
+
+/** Get the destination node name from an output edge. */
+export function outputNodeName(edge: OutputEdge): string {
+  return typeof edge === "string" ? edge : edge.node;
+}
+
 export type NodeConfig = {
   use: string;
   settings?: Record<string, unknown>;
-  outputs?: string[];
+  outputs?: OutputEdge[];
 };
 
 export type PipelineConfig = {
@@ -85,24 +98,34 @@ function validateConfig(doc: unknown): PipelineConfig {
       throw new ConfigError(`Node '${name}' must have a 'use' string`);
     }
 
-    let outputs: string[] | undefined;
+    let outputs: OutputEdge[] | undefined;
     if (node.outputs !== undefined) {
       if (!Array.isArray(node.outputs)) {
         throw new ConfigError(`Node '${name}'.outputs must be an array`);
       }
       outputs = [];
       for (const out of node.outputs) {
-        if (typeof out !== "string") {
+        let destName: string;
+        if (typeof out === "string") {
+          destName = out;
+          outputs.push(out);
+        } else if (out && typeof out === "object" && typeof out.node === "string") {
+          destName = out.node;
+          const edge: OutputEdge = { node: out.node };
+          if (out.whenFieldEquals && typeof out.whenFieldEquals === "object") {
+            (edge as { node: string; whenFieldEquals: Record<string, unknown> }).whenFieldEquals = out.whenFieldEquals;
+          }
+          outputs.push(edge);
+        } else {
           throw new ConfigError(
-            `Node '${name}'.outputs must contain strings`,
+            `Node '${name}'.outputs entries must be strings or {node, whenFieldEquals?} objects`,
           );
         }
-        if (!nodeNames.has(out)) {
+        if (!nodeNames.has(destName)) {
           throw new ConfigError(
-            `Node '${name}' outputs to undefined node '${out}'`,
+            `Node '${name}' outputs to undefined node '${destName}'`,
           );
         }
-        outputs.push(out);
       }
     }
 

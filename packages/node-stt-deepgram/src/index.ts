@@ -218,8 +218,6 @@ function closeWebSocket(): void {
 // --- Main ---
 
 async function main(): Promise<void> {
-  await connectWebSocket();
-
   emit({ type: "lifecycle.ready", component: "stt-deepgram" });
 
   const rl = onEvent((event) => {
@@ -251,6 +249,8 @@ async function main(): Promise<void> {
         });
         pendingText = "";
       }
+      // Close STT connection when audio source disconnects
+      closeWebSocket();
     } else if (event.type === "control.interrupt") {
       // Don't close WebSocket — STT should keep listening for barge-in.
     }

@@ -430,9 +430,7 @@ fn build_flow(
                 let to_name = node_names[to.unwrap()].to_string();
 
                 if let Some(node) = nodes.get_mut(&from_name) {
-                    if !node.outputs.contains(&to_name) {
-                        node.outputs.push(to_name.clone());
-                    }
+                    node.add_simple_output(to_name.clone());
                 }
                 connections.push((from_name, to_name));
             }
@@ -721,21 +719,21 @@ fn configure_nodes(
                 }
 
                 // Show edges
-                let outputs = &config.nodes[&node_name].outputs;
+                let output_names = config.nodes[&node_name].output_node_names();
                 let incoming: Vec<&str> = config
                     .nodes
                     .iter()
-                    .filter(|(_, n)| n.outputs.contains(&node_name))
+                    .filter(|(_, n)| n.outputs_to(&node_name))
                     .map(|(name, _)| name.as_str())
                     .collect();
                 output.print_line("\n  Connections:");
                 if !incoming.is_empty() {
                     output.print_dim(&format!("    in:  {}", incoming.join(", ")));
                 }
-                if !outputs.is_empty() {
-                    output.print_dim(&format!("    out: {}", outputs.join(", ")));
+                if !output_names.is_empty() {
+                    output.print_dim(&format!("    out: {}", output_names.join(", ")));
                 }
-                if incoming.is_empty() && outputs.is_empty() {
+                if incoming.is_empty() && output_names.is_empty() {
                     output.print_dim("    (none)");
                 }
                 output.print_line("");
@@ -786,10 +784,8 @@ fn configure_nodes(
                             }
                             // Update all edges referencing the old name
                             for (_, other_node) in config.nodes.iter_mut() {
-                                for output_name in other_node.outputs.iter_mut() {
-                                    if *output_name == node_name {
-                                        *output_name = new_name.clone();
-                                    }
+                                for edge in other_node.outputs.iter_mut() {
+                                    edge.rename_dest(&node_name, &new_name);
                                 }
                             }
                             output.print_colored(
@@ -804,10 +800,10 @@ fn configure_nodes(
                         let incoming: Vec<String> = config
                             .nodes
                             .iter()
-                            .filter(|(_, n)| n.outputs.contains(&node_name))
+                            .filter(|(_, n)| n.outputs_to(&node_name))
                             .map(|(name, _)| name.clone())
                             .collect();
-                        let outgoing = config.nodes[&node_name].outputs.clone();
+                        let outgoing = config.nodes[&node_name].output_node_names();
 
                         output.print_line("");
                         if !incoming.is_empty() {
@@ -831,7 +827,7 @@ fn configure_nodes(
                         if confirm == Some(0) {
                             // Remove from all other nodes' outputs
                             for (_, other_node) in config.nodes.iter_mut() {
-                                other_node.outputs.retain(|o| o != &node_name);
+                                other_node.remove_output(&node_name);
                             }
                             // Remove the node itself
                             config.nodes.shift_remove(&node_name);
@@ -863,8 +859,8 @@ fn edit_connections(
         let node_names: Vec<String> = config.nodes.keys().cloned().collect();
         let mut connections: Vec<(String, String)> = Vec::new();
         for name in &node_names {
-            for out in &config.nodes[name].outputs {
-                connections.push((name.clone(), out.clone()));
+            for edge in &config.nodes[name].outputs {
+                connections.push((name.clone(), edge.node_name().to_string()));
             }
         }
 
@@ -889,7 +885,7 @@ fn edit_connections(
                 // Remove this connection
                 let (from, to) = &connections[idx];
                 if let Some(node) = config.nodes.get_mut(from) {
-                    node.outputs.retain(|o| o != to);
+                    node.remove_output(to);
                 }
                 output.print_colored(
                     &format!("  Removed {} → {}", from, to),
@@ -922,14 +918,14 @@ fn edit_connections(
                 }
 
                 if let Some(node) = config.nodes.get_mut(from_name) {
-                    if node.outputs.contains(to_name) {
+                    if node.outputs_to(to_name) {
                         output.print_colored(
                             &format!("  {} → {} already exists.", from_name, to_name),
                             Color::Yellow,
                         );
                         input.read_key()?;
                     } else {
-                        node.outputs.push(to_name.clone());
+                        node.add_simple_output(to_name.clone());
                         output.print_colored(
                             &format!("  Added {} → {}", from_name, to_name),
                             Color::Green,
@@ -1598,7 +1594,7 @@ mod tests {
             crate::config::NodeConfig {
                 use_: "@acpfx/stt-deepgram".to_string(),
                 settings: None,
-                outputs: vec!["bridge".to_string()],
+                outputs: vec![crate::config::OutputEdge::Simple("bridge".to_string())],
             },
         );
         PipelineConfig {
@@ -1635,7 +1631,7 @@ mod tests {
         let mut node_config = crate::config::NodeConfig {
             use_: "@acpfx/stt-deepgram".to_string(),
             settings: None,
-            outputs: vec![],
+            outputs: vec![],  // empty Vec<OutputEdge> is fine
         };
 
         // BTreeMap sorts alphabetically: apiKey, endpointing, language, model, utteranceEndMs
