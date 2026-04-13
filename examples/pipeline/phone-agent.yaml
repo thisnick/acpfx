@@ -1,4 +1,4 @@
-# Phone agent pipeline — connects Otacon phone to a voice AI agent
+# Phone agent pipeline (ElevenLabs TTS) — connects Otacon phone to voice AI agent
 # Usage: acpfx run examples/pipeline/phone-agent.yaml
 #
 # Incoming calls are auto-answered (whitelist configurable).
@@ -40,9 +40,8 @@ nodes:
         whenFieldEquals: { responseMode: "text" }
 
   tts:
-    use: "@acpfx/tts-deepgram"
-    settings:
-      voice: "aura-asteria-en"
+    use: "@acpfx/tts-elevenlabs"
+    settings: {}
     outputs: [player]
 
   player:
