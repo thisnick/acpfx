@@ -50,7 +50,23 @@ let connected = false;
 let interrupted = false;
 let pcmBuffer = Buffer.alloc(0);
 let currentRequestId: string | null = null;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+const IDLE_CLOSE_MS = 60000; // close connection after 60s of no activity
 
+function resetIdleTimer(): void {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => {
+    if (connected && !interrupted) {
+      log.debug("Idle timeout — closing TTS connection");
+      closeWebSocket();
+    }
+    idleTimer = null;
+  }, IDLE_CLOSE_MS);
+}
+
+function clearIdleTimer(): void {
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+}
 
 async function openWebSocket(): Promise<void> {
   if (ws && connected) return;
@@ -105,6 +121,7 @@ async function openWebSocket(): Promise<void> {
       const msg = JSON.parse(data);
 
       if (msg.audio) {
+        resetIdleTimer();
         const rawPcm = Buffer.from(msg.audio, "base64");
         pcmBuffer = Buffer.concat([pcmBuffer, rawPcm]);
 
@@ -214,6 +231,7 @@ function endStream(): void {
 
 function closeWebSocket(): void {
   connected = false;
+  clearIdleTimer();
   pcmBuffer = Buffer.alloc(0);
   if (ws) {
     try {
@@ -270,6 +288,7 @@ async function main(): Promise<void> {
           closeWebSocket();
           await openWebSocket();
         }
+        resetIdleTimer();
         currentRequestId = event.requestId as string;
         sendText(event.delta as string);
       }
@@ -288,11 +307,13 @@ async function main(): Promise<void> {
       }
     } else if (event.type === "agent.complete" && !interrupted) {
       // Agent is done — signal end of text stream so TTS can finalize
+      resetIdleTimer();
       endStream();
       currentRequestId = null;
     } else if (event.type === "control.interrupt") {
       interrupted = true;
       afterTool = false;
+      clearIdleTimer();
       closeWebSocket();
       currentRequestId = null;
     }

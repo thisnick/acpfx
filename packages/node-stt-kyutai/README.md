@@ -17,7 +17,7 @@ Requires [uv](https://docs.astral.sh/uv/) for Python dependency management. GPU 
 
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `model` | string | `kyutai/stt-1b-en_fr-candle` | HuggingFace model ID |
+| `model` | string | `kyutai/stt-1b-en_fr` | HuggingFace model ID |
 | `language` | string | `en` | Language code |
 | `device` | string | `auto` | Compute device: `auto`, `cpu`, `cuda`, or `metal` |
 

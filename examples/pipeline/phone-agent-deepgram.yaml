@@ -28,7 +28,7 @@ nodes:
   tts:
     use: "@acpfx/tts-deepgram"
     settings:
-      voice: aura-2-aries-en
+      voice: aura-asteria-en
     outputs: [player]
 
   agent:

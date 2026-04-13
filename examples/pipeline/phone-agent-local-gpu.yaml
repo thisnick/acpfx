@@ -1,5 +1,8 @@
-# Phone agent pipeline (ElevenLabs TTS) — connects Otacon phone to voice AI agent
-# Usage: acpfx run examples/pipeline/phone-agent.yaml
+# Phone agent pipeline (local GPU STT+TTS) — connects Otacon phone to voice AI agent
+# Usage: acpfx run examples/pipeline/phone-agent-local-gpu.yaml
+#
+# Uses Kyutai on-device models for both STT and TTS (no API keys needed).
+# Requires a GPU (CUDA or Metal).
 #
 # Incoming calls are auto-answered (whitelist configurable).
 # SMS messages are fed to the agent as text input.
@@ -13,16 +16,21 @@ nodes:
     settings:
       otaconUrl: "https://otacon-pi.tail0437b8.ts.net:8080"
       whitelist: "*"
-    outputs: [stt, bridge]
+    outputs: [stt, agent]
 
   stt:
-    use: "@acpfx/stt-deepgram"
+    use: "@acpfx/stt-kyutai"
     settings:
-      model: "nova-3"
-      utteranceEndMs: 1000
-    outputs: [bridge]
+      language: en
+      turnDetection: true
+    outputs: [agent]
 
-  bridge:
+  tts:
+    use: "@acpfx/tts-kyutai"
+    settings: {}
+    outputs: [player]
+
+  agent:
     use: "@acpfx/bridge-acpx"
     settings:
       agent: claude
@@ -38,11 +46,6 @@ nodes:
       # Text responses → phone (SMS reply)
       - node: phone
         whenFieldEquals: { responseMode: "text" }
-
-  tts:
-    use: "@acpfx/tts-elevenlabs"
-    settings: {}
-    outputs: [player]
 
   player:
     use: "@acpfx/audio-player"

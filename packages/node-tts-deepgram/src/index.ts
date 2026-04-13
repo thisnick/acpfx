@@ -52,7 +52,13 @@ let interrupted = false;
 let pcmBuffer = Buffer.alloc(0);
 let currentRequestId: string | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
-const IDLE_CLOSE_MS = 5000; // close connection after 5s of no activity
+const IDLE_CLOSE_MS = 60000; // close connection after 60s of no activity
+
+// ---- Diagnostics ----
+let diagCharsSent = 0;
+let diagChunksEmitted = 0;
+let diagTotalDurationMs = 0;
+let diagBytesReceived = 0;
 
 function resetIdleTimer(): void {
   if (idleTimer) clearTimeout(idleTimer);
@@ -126,6 +132,7 @@ async function openWebSocket(): Promise<void> {
             emitAudioChunk(pcmBuffer);
             pcmBuffer = Buffer.alloc(0);
           }
+          log.info(`[diag] Flushed — chars sent: ${diagCharsSent}, bytes recv: ${diagBytesReceived}, chunks: ${diagChunksEmitted}, duration: ${(diagTotalDurationMs / 1000).toFixed(1)}s`);
         } else if (msg.type === "Warning") {
           log.warn(`Deepgram warning: ${msg.description ?? msg.code ?? "unknown"}`);
         }
@@ -136,6 +143,8 @@ async function openWebSocket(): Promise<void> {
   });
 
   function handleAudioData(rawPcm: Buffer): void {
+    resetIdleTimer();
+    diagBytesReceived += rawPcm.length;
     pcmBuffer = Buffer.concat([pcmBuffer, rawPcm]);
     while (pcmBuffer.length >= CHUNK_SIZE) {
       const chunk = pcmBuffer.subarray(0, CHUNK_SIZE);
@@ -164,6 +173,8 @@ function emitAudioChunk(pcm: Buffer): void {
   const durationMs = Math.round(
     (pcm.length / (SAMPLE_RATE * CHANNELS * BYTES_PER_SAMPLE)) * 1000,
   );
+  diagChunksEmitted++;
+  diagTotalDurationMs += durationMs;
   emit({
     type: "audio.chunk",
     trackId: TRACK_ID,
@@ -220,6 +231,7 @@ function sendText(text: string): void {
   }
   const clean = stripMarkdown(text);
   if (!clean) return;
+  diagCharsSent += clean.length;
   ws.send(JSON.stringify({ type: "Speak", text: clean }));
 }
 
@@ -291,6 +303,7 @@ async function main(): Promise<void> {
         if (interrupted || !connected) {
           log.info(`Reconnecting (interrupted=${interrupted}, connected=${connected})`);
           interrupted = false;
+          diagCharsSent = 0; diagChunksEmitted = 0; diagTotalDurationMs = 0; diagBytesReceived = 0;
           closeWebSocket();
           await openWebSocket();
         }
@@ -307,6 +320,7 @@ async function main(): Promise<void> {
       }
     } else if (event.type === "agent.complete" && !interrupted) {
       // Agent done — flush remaining text, let idle timer close connection
+      log.info(`[diag] agent.complete — chars sent so far: ${diagCharsSent}, audio so far: ${(diagTotalDurationMs / 1000).toFixed(1)}s (${diagChunksEmitted} chunks, ${diagBytesReceived} bytes)`);
       resetIdleTimer();
       flushStream();
       currentRequestId = null;
