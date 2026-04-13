@@ -452,6 +452,41 @@ def main():
     # Text accumulation state
     accumulated_text = ""
     pending_text = ""
+    last_word_time = 0.0
+    silence_timer = None
+    SILENCE_PAUSE_MS = SETTINGS.get("utteranceEndMs", 1500)
+
+    def emit_pause():
+        nonlocal accumulated_text, pending_text, silence_timer
+        silence_timer = None
+        if not TURN_DETECTION:
+            return
+        full_text = f"{pending_text}{accumulated_text.strip()}".strip()
+        if full_text:
+            emit({
+                "type": "speech.pause",
+                "trackId": "stt",
+                "pendingText": full_text,
+                "silenceMs": SILENCE_PAUSE_MS,
+            })
+            pending_text = ""
+            accumulated_text = ""
+
+    def reset_silence_timer():
+        nonlocal silence_timer, last_word_time
+        import time
+        last_word_time = time.monotonic()
+        if silence_timer is not None:
+            silence_timer.cancel()
+        silence_timer = threading.Timer(SILENCE_PAUSE_MS / 1000.0, emit_pause)
+        silence_timer.daemon = True
+        silence_timer.start()
+
+    def cancel_silence_timer():
+        nonlocal silence_timer
+        if silence_timer is not None:
+            silence_timer.cancel()
+            silence_timer = None
 
     def on_word(word: str):
         nonlocal accumulated_text
@@ -463,6 +498,7 @@ def main():
                 "trackId": "stt",
                 "text": f"{pending_text}{partial}",
             })
+            reset_silence_timer()
 
     def on_end_word():
         nonlocal accumulated_text, pending_text
@@ -475,11 +511,13 @@ def main():
                 "text": word_text,
             })
             accumulated_text = ""
+            reset_silence_timer()
 
     def on_vad():
         nonlocal accumulated_text, pending_text
         if not TURN_DETECTION:
             return  # Skip in PTT mode
+        cancel_silence_timer()
         full_text = f"{pending_text}{accumulated_text.strip()}".strip()
         if full_text:
             emit({
@@ -551,6 +589,7 @@ def main():
             continue
 
         if event_type == "audio.end":
+            cancel_silence_timer()
             # PTT session end: flush remaining audio buffer through the model
             # Pad remaining audio to chunk size so the model can process it
             if len(audio_buffer) > 0:

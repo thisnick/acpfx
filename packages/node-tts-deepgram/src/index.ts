@@ -52,7 +52,7 @@ let interrupted = false;
 let pcmBuffer = Buffer.alloc(0);
 let currentRequestId: string | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
-const IDLE_CLOSE_MS = 5000; // close connection after 5s of no activity
+const IDLE_CLOSE_MS = 60000; // close connection after 60s of no activity
 
 // ---- Diagnostics ----
 let diagCharsSent = 0;
@@ -143,6 +143,7 @@ async function openWebSocket(): Promise<void> {
   });
 
   function handleAudioData(rawPcm: Buffer): void {
+    resetIdleTimer();
     diagBytesReceived += rawPcm.length;
     pcmBuffer = Buffer.concat([pcmBuffer, rawPcm]);
     while (pcmBuffer.length >= CHUNK_SIZE) {

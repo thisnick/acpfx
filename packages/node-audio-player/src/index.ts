@@ -275,7 +275,7 @@ function handleEvent(event: Record<string, unknown>): void {
     return;
   }
 
-  // Tool started — start SFX immediately (or after speech drains)
+  // Tool started — stop thinking SFX, start tool SFX
   if (type === "agent.tool_start") {
     agentState = "tool";
     cancelSfxDelay();
@@ -294,12 +294,8 @@ function handleEvent(event: Record<string, unknown>): void {
     return;
   }
 
-  // Tool done
+  // Tool done — keep SFX playing until agent.delta or agent.complete
   if (type === "agent.tool_done") {
-    agentState = "idle";
-    cancelSfxDelay();
-    stopSfxLoop();
-    emitStatus();
     return;
   }
 
