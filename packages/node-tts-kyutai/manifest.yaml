@@ -17,7 +17,7 @@ arguments:
     description: "HuggingFace model ID for TTS"
   voice:
     type: string
-    default: "expresso/ex03-ex01_happy_001_channel1_334s.wav"
+    default: "expresso/ex03-ex01_calm_001_channel1_1143s.wav"
     description: "Voice name from the voice repo, or path to a .safetensors file"
   device:
     type: string

@@ -5,7 +5,7 @@ nodes:
     outputs: [stt]
   stt:
     use: '@acpfx/stt-kyutai'
-    settings: {model: 'kyutai/stt-1b-en_fr-candle', language: en, device: auto, turnDetection: false}
+    settings: {model: 'kyutai/stt-1b-en_fr', language: en, device: auto, turnDetection: false}
     outputs: [bridge]
   bridge:
     use: '@acpfx/bridge-acpx'

@@ -18,7 +18,7 @@ Uses MLX acceleration on Apple Silicon Macs for fast on-device inference.
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
 | `model` | string | `kyutai/tts-1.6b-en_fr` | HuggingFace model ID |
-| `voice` | string | `expresso/ex03-ex01_happy_001_channel1_334s.wav` | Voice name or path to `.safetensors` file |
+| `voice` | string | `expresso/ex03-ex01_calm_001_channel1_1143s.wav` | Voice name or path to `.safetensors` file |
 | `device` | string | `auto` | Compute device: `auto`, `cpu`, `cuda`, or `metal` |
 
 ## Pipeline Example
@@ -27,7 +27,7 @@ Uses MLX acceleration on Apple Silicon Macs for fast on-device inference.
 nodes:
   tts:
     use: "@acpfx/tts-kyutai"
-    settings: { voice: "expresso/ex03-ex01_happy_001_channel1_334s.wav", device: auto }
+    settings: { voice: "expresso/ex03-ex01_calm_001_channel1_1143s.wav", device: auto }
     outputs: [player]
 ```
 

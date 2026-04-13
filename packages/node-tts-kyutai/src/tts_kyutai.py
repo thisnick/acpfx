@@ -42,7 +42,7 @@ COMPONENT = "tts-kyutai"
 SETTINGS = json.loads(os.environ.get("ACPFX_SETTINGS", "{}"))
 
 MODEL_ID = SETTINGS.get("model", "kyutai/tts-1.6b-en_fr")
-DEFAULT_VOICE = "expresso/ex03-ex01_happy_001_channel1_334s.wav"
+DEFAULT_VOICE = "expresso/ex03-ex01_calm_001_channel1_1143s.wav"
 VOICE = SETTINGS.get("voice", DEFAULT_VOICE)
 if VOICE == "default":
     VOICE = DEFAULT_VOICE

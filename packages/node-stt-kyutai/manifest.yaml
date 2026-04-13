@@ -14,7 +14,7 @@ emits:
 arguments:
   model:
     type: string
-    default: "kyutai/stt-1b-en_fr-candle"
+    default: "kyutai/stt-1b-en_fr"
     description: "HuggingFace model ID for STT"
   language:
     type: string
