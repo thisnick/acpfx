@@ -1,5 +1,5 @@
 ---
-"@acpfx/orchestrator": minor
+"@acpfx/cli": minor
 "@acpfx/core": minor
 "@acpfx/bridge-acpx": minor
 "@acpfx/phone-otacon": minor
