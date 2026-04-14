@@ -111,6 +111,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm check
+      - name: Python node tests (tts-kyutai)
+        run: python3 -m unittest discover -s packages/node-tts-kyutai/tests -p 'test_*.py' -v
       - name: npm pack integration tests (manifest via npx)
         run: ./tests/npm-pack-test.sh
 
