@@ -25,6 +25,8 @@ pub enum UiAction {
         control_id: String,
         /// The new value for the toggle.
         value: bool,
+        /// Monotonic sequence number to prevent stale events from racing.
+        seq: u64,
     },
 }
 
@@ -384,12 +386,19 @@ impl HoldState {
         }
     }
 
-    /// Called on key press. Returns true if this is a new activation.
+    /// Called on key press. Returns true if the caller should send an activation event.
+    ///
+    /// Returns true on new activation OR when re-pressing after a gap that suggests
+    /// the key was released and pressed again (gap > half the release timeout).
+    /// This ensures a fresh unmute is sent even if the timeout-triggered mute
+    /// hasn't fired yet, preventing the stale mute from killing the new hold.
     pub fn on_press(&mut self) -> bool {
         let was_active = self.active;
+        let gap = self.last_press.elapsed();
         self.active = true;
         self.last_press = std::time::Instant::now();
-        !was_active
+        // New activation, or re-press after a gap (key was likely released and pressed again)
+        !was_active || gap > self.release_timeout / 2
     }
 
     /// Called on key release (native). Returns true if this is a deactivation.
@@ -650,6 +659,27 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(15));
         assert!(hold.check_timeout());
         assert!(!hold.active);
+    }
+
+    #[test]
+    fn hold_state_repress_after_gap_reactivates() {
+        // Use a short timeout so the test runs fast.
+        // release_timeout = 20ms, so half = 10ms.
+        let mut hold = HoldState::new(20);
+
+        // Initial press — activates
+        assert!(hold.on_press());
+        assert!(hold.active);
+
+        // Immediate repeat — no re-activation (gap < half timeout)
+        assert!(!hold.on_press());
+
+        // Simulate release: wait past half the timeout (>10ms) but before
+        // the full timeout (20ms), then press again.
+        std::thread::sleep(std::time::Duration::from_millis(12));
+        // Re-press after gap — should re-send activation to beat a stale mute
+        assert!(hold.on_press(), "re-press after gap should re-activate");
+        assert!(hold.active);
     }
 
     #[test]
