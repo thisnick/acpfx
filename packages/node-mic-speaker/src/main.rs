@@ -20,7 +20,7 @@ use base64::Engine;
 use serde_json::{json, Value};
 use std::fs::File;
 use std::io::{self, BufRead, Seek, SeekFrom, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 const DEFAULT_SAMPLE_RATE: u32 = 16000;
@@ -158,7 +158,7 @@ impl Drop for WavWriter {
 // ---------------------------------------------------------------------------
 
 enum StdinCommand {
-    Mute { is_muted: bool },
+    Mute { is_muted: bool, seq: u64 },
     Interrupt,
 }
 
@@ -238,8 +238,9 @@ async fn run_ptt_mode(
 
                 if event_type == "custom.mute" {
                     let is_muted = event["muted"].as_bool().unwrap_or(true);
-                    eprintln!("[mic-speaker] custom.mute muted={}", is_muted);
-                    let _ = cmd_tx.send(StdinCommand::Mute { is_muted });
+                    let seq = event["seq"].as_u64().unwrap_or(0);
+                    eprintln!("[mic-speaker] custom.mute muted={} seq={}", is_muted, seq);
+                    let _ = cmd_tx.send(StdinCommand::Mute { is_muted, seq });
                 } else if event_type == "control.interrupt" {
                     let _ = playback_for_stdin.clear_playback();
                     eprintln!("[mic-speaker] Interrupt — cleared playback buffer");
@@ -266,6 +267,7 @@ async fn run_ptt_mode(
     // State machine
     let mut capture: Option<sys_voice::IndependentCaptureHandle> = None;
     let mut is_muted = true;
+    let mut last_mute_seq: u64 = 0;
     let mut buffer: Vec<f32> = Vec::with_capacity(chunk_samples * 2);
     let interrupted = Arc::new(AtomicBool::new(false));
 
@@ -278,7 +280,14 @@ async fn run_ptt_mode(
         // Process commands from stdin thread (non-blocking)
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                StdinCommand::Mute { is_muted: new_muted } => {
+                StdinCommand::Mute { is_muted: new_muted, seq } => {
+                    // Ignore stale mute events from a previous hold cycle
+                    if seq > 0 && seq < last_mute_seq {
+                        eprintln!("[mic-speaker] Ignoring stale mute seq={} (last={})", seq, last_mute_seq);
+                        continue;
+                    }
+                    last_mute_seq = seq;
+
                     let was_muted = is_muted;
                     is_muted = new_muted;
 
@@ -456,6 +465,7 @@ async fn run_aec_mode(
     let muted = Arc::new(AtomicBool::new(true)); // start muted — hold Space to talk (push-to-talk)
     let muted_for_stdin = muted.clone();
     let muted_for_capture = muted.clone();
+    let last_mute_seq_aec = Arc::new(AtomicU64::new(0));
     let speaker_clone = speaker.clone();
 
     if sample_rate != native_rate {
@@ -481,6 +491,14 @@ async fn run_aec_mode(
                 let event_type = event["type"].as_str().unwrap_or("");
 
                 if event_type == "custom.mute" {
+                    let seq = event["seq"].as_u64().unwrap_or(0);
+                    let prev_seq = last_mute_seq_aec.load(Ordering::Relaxed);
+                    if seq > 0 && seq < prev_seq {
+                        eprintln!("[mic-speaker] Ignoring stale mute seq={} (last={})", seq, prev_seq);
+                        continue;
+                    }
+                    last_mute_seq_aec.store(seq, Ordering::Relaxed);
+
                     let was_muted = muted_for_stdin.load(Ordering::Relaxed);
                     let is_muted = event["muted"].as_bool().unwrap_or(true);
                     muted_for_stdin.store(is_muted, Ordering::Relaxed);

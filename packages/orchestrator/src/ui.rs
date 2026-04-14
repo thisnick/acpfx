@@ -691,6 +691,9 @@ pub fn run_ui(
         }
     }
 
+    // Monotonic sequence counter for control events (prevents stale mute/unmute races)
+    let mut control_seq: u64 = 0;
+
     // Hold state for hold-to-activate controls
     let mut hold_states: BTreeMap<String, HoldState> = BTreeMap::new();
     for kb in &keybinds {
@@ -730,10 +733,12 @@ pub fn run_ui(
                 // Key released — deactivate (mute)
                 let parts: Vec<&str> = key.splitn(2, ':').collect();
                 if parts.len() == 2 {
+                    control_seq += 1;
                     let _ = cmd_tx.send(UiAction::ControlToggle {
                         node: parts[0].to_string(),
                         control_id: parts[1].to_string(),
                         value: true, // hold released = muted=true (re-mute)
+                        seq: control_seq,
                     });
                 }
             }
@@ -759,19 +764,23 @@ pub fn run_ui(
                                 if let Some(hold) = hold_states.get_mut(&hold_key) {
                                     if hold.on_press() {
                                         // Push-to-talk: hold to unmute, release to mute
+                                        control_seq += 1;
                                         let _ = cmd_tx.send(UiAction::ControlToggle {
                                             node: kb.node.clone(),
                                             control_id: kb.control_id.clone(),
                                             value: false, // muted=false (unmute while held)
+                                            seq: control_seq,
                                         });
                                     }
                                 }
                             } else {
                                 // Simple toggle — alternate value
+                                control_seq += 1;
                                 let _ = cmd_tx.send(UiAction::ControlToggle {
                                     node: kb.node.clone(),
                                     control_id: kb.control_id.clone(),
                                     value: true,
+                                    seq: control_seq,
                                 });
                             }
                             handled = true;

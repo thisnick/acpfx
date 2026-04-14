@@ -201,6 +201,10 @@ def stdin_reader_thread(input_q: queue.Queue):
             event = json.loads(line)
         except json.JSONDecodeError:
             continue
+        etype = event.get("type", "")
+        if etype == "control.interrupt":
+            efrom = event.get("_from", "?")
+            log("warn", f"[stdin] control.interrupt received from={efrom}")
         input_q.put(event)
     input_q.put(_EOF)
 
@@ -252,8 +256,16 @@ class TtsBackend(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def flush_remaining(self) -> None:
-        """Process remaining entries until generation is complete."""
+    def flush_remaining(self, check_interrupted=None) -> bool:
+        """Process remaining entries until generation is complete.
+
+        Args:
+            check_interrupted: Optional callable returning True if an interrupt
+                has been received.  Checked before each step.
+
+        Returns:
+            True if completed normally, False if interrupted.
+        """
         ...
 
 
@@ -481,9 +493,12 @@ class MlxBackend(TtsBackend):
         self.lm_gen = None
         self.state = None
 
-    def flush_remaining(self):
+    def flush_remaining(self, check_interrupted=None):
         while not self.is_done():
+            if check_interrupted and check_interrupted():
+                return False
             self.step()
+        return True
 
 
 # ---- PyTorch Backend ----
@@ -653,15 +668,20 @@ class PyTorchBackend(TtsBackend):
         self._lm_gen = None
         self._state = None
 
-    def flush_remaining(self):
+    def flush_remaining(self, check_interrupted=None):
         # Process until entries consumed
         while not self.is_done():
+            if check_interrupted and check_interrupted():
+                return False
             self.step()
         # Additional steps for delay pipeline flush
         if self.tts_model is not None:
             additional = self.tts_model.delay_steps + max(self.tts_model.lm.delays) + 8
             for _ in range(additional):
+                if check_interrupted and check_interrupted():
+                    return False
                 self.step()
+        return True
 
 
 # ---- Main ----
@@ -752,15 +772,38 @@ def main():
 
     def finish_generation():
         """Flush remaining text, run flush_remaining, stop backend."""
-        nonlocal text_buffer, generating, first_turn
+        log("warn", "[finish_generation] entering flush_remaining")
+        nonlocal text_buffer, generating, first_turn, output_buffer
         remaining = text_buffer.strip()
         if remaining:
             backend.feed_text(remaining, first_turn)
             first_turn = False
         text_buffer = ""
-        backend.flush_remaining()
-        flush_output()
-        backend.stop()
+
+        was_interrupted = [False]
+        def check_interrupted():
+            try:
+                event = input_q.get_nowait()
+            except queue.Empty:
+                return False
+            if event is _INTERRUPT or (isinstance(event, dict) and event.get("type") == "control.interrupt"):
+                was_interrupted[0] = True
+                log("warn", "[finish_generation] interrupt caught during flush!")
+                return True
+            # Put non-interrupt events back
+            input_q.put(event)
+            return False
+
+        completed = backend.flush_remaining(check_interrupted)
+
+        if not completed or was_interrupted[0]:
+            log("warn", "[finish_generation] interrupted — discarding output")
+            output_buffer = []
+            backend.stop()
+        else:
+            flush_output()
+            backend.stop()
+
         generating = False
         first_turn = True
 
@@ -786,7 +829,7 @@ def main():
                 abort_generation()
                 break
             elif event is _INTERRUPT or (isinstance(event, dict) and event.get("type") == "control.interrupt"):
-                log("info", "Interrupted — stopping synthesis")
+                log("warn", f"[generating] interrupt dequeued, backend.is_done={backend.is_done()}")
                 abort_generation()
                 continue
             elif isinstance(event, dict) and event.get("type") == "agent.delta":
@@ -849,17 +892,15 @@ def main():
                     generating = True
                     backend.feed_text(full_text, first_turn)
                     first_turn = False
-                    backend.flush_remaining()
-                    flush_output()
-                    backend.stop()
-                    generating = False
-                    first_turn = True
+                    finish_generation()
+                    continue
 
             elif event_type == "agent.tool_start":
                 pass  # Nothing to do if not generating
 
             elif event_type == "control.interrupt":
-                log("info", "Interrupted — clearing buffer")
+                efrom = event.get("_from", "?")
+                log("warn", f"[idle] interrupt dequeued from={efrom}")
                 text_buffer = ""
 
     emit({"type": "lifecycle.done", "component": COMPONENT})

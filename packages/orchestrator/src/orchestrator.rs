@@ -477,13 +477,14 @@ impl Orchestrator {
     /// Handle a UI action (e.g., control toggle).
     async fn handle_ui_action(&self, action: crate::ui_widgets::UiAction) {
         match action {
-            crate::ui_widgets::UiAction::ControlToggle { ref node, ref control_id, value } => {
+            crate::ui_widgets::UiAction::ControlToggle { ref node, ref control_id, value, seq } => {
                 // Find the control spec for this node
                 if let Some(controls) = self.ui_controls.get(node.as_str()) {
                     if let Some(ctrl) = controls.iter().find(|c| c.id == *control_id) {
                         let event = serde_json::json!({
                             "type": ctrl.event.type_,
                             ctrl.event.field.clone(): value,
+                            "seq": seq,
                         });
                         self.send_to_node(node, &event).await;
                     }

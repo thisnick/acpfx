@@ -111,6 +111,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm check
+      - name: Package tests
+        run: pnpm test
+      - name: Integration tests
+        run: pnpm test:integration
       - name: npm pack integration tests (manifest via npx)
         run: ./tests/npm-pack-test.sh
 
