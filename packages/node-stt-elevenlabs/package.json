@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/stt-elevenlabs",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
   "bin": {
     "acpfx-stt-elevenlabs": "./dist/index.js"

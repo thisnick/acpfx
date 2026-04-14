@@ -1,5 +1,31 @@
 # @acpfx/tts-deepgram
 
+## 0.3.0
+
+### Minor Changes
+
+- a994112: Add conditional output routing, responseMode tagging, SMS reply, and lazy STT/TTS connections
+
+  - Orchestrator: `whenFieldEquals` conditional filter on output edges for field-based routing
+  - Bridge: tags all agent events with `responseMode: "voice" | "text"` based on input source
+  - Phone node: channel binding (activeSmsContact/activeCallContact), SMS reply with delta accumulation and chunking at 1500 chars, `from` removed from prompt.text (pipeline is channel-agnostic)
+  - TTS: lazy connection — warm-up on `agent.submit`, disconnect on `agent.complete`, zero idle connections
+  - STT: lazy connection — connect on first `audio.chunk`, disconnect on `audio.end`
+  - Pipeline configs: phone-agent YAMLs use whenFieldEquals to route voice→TTS and text→phone
+
+### Patch Changes
+
+- 4b83cb4: Fix TTS audio cutoff, improve SFX lifecycle, and add Kyutai silence-based pause detection
+
+  - TTS Deepgram/ElevenLabs: increase idle timeout to 60s and reset on incoming audio chunks to prevent premature WebSocket close during long responses
+  - Audio player: keep SFX playing through consecutive tool calls, only stop on agent.delta or agent.complete
+  - STT Kyutai: add silence timer (utteranceEndMs) to emit speech.pause after period of no words, fixing agent not responding after speech.final
+  - Add phone-agent-local-gpu.yaml pipeline config for on-device Kyutai STT+TTS
+
+- Updated dependencies [a994112]
+  - @acpfx/core@0.5.0
+  - @acpfx/node-sdk@0.3.3
+
 ## 0.2.7
 
 ### Patch Changes

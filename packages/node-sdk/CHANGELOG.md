@@ -1,5 +1,12 @@
 # @acpfx/node-sdk
 
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [a994112]
+  - @acpfx/core@0.5.0
+
 ## 0.3.2
 
 ### Patch Changes

@@ -1,5 +1,18 @@
 # acpfx
 
+## 0.7.0
+
+### Minor Changes
+
+- a994112: Add conditional output routing, responseMode tagging, SMS reply, and lazy STT/TTS connections
+
+  - Orchestrator: `whenFieldEquals` conditional filter on output edges for field-based routing
+  - Bridge: tags all agent events with `responseMode: "voice" | "text"` based on input source
+  - Phone node: channel binding (activeSmsContact/activeCallContact), SMS reply with delta accumulation and chunking at 1500 chars, `from` removed from prompt.text (pipeline is channel-agnostic)
+  - TTS: lazy connection — warm-up on `agent.submit`, disconnect on `agent.complete`, zero idle connections
+  - STT: lazy connection — connect on first `audio.chunk`, disconnect on `audio.end`
+  - Pipeline configs: phone-agent YAMLs use whenFieldEquals to route voice→TTS and text→phone
+
 ## 0.6.0
 
 ### Minor Changes
