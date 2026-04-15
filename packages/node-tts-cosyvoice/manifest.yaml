@@ -1,0 +1,29 @@
+name: tts-cosyvoice
+description: Local text-to-speech via CosyVoice3 (on-device, GPU, streaming)
+consumes:
+  - agent.delta
+  - agent.complete
+  - agent.tool_start
+  - control.interrupt
+emits:
+  - audio.chunk
+  - lifecycle.ready
+  - lifecycle.done
+  - log
+arguments:
+  model:
+    type: string
+    default: "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
+    description: "HuggingFace model ID for CosyVoice3"
+  voice:
+    type: string
+    default: ""
+    description: "Path to reference WAV for voice cloning (empty = use bundled default voice)"
+  prompt_text:
+    type: string
+    default: ""
+    description: "Transcript of the reference audio (enables zero-shot mode when set with voice)"
+  device:
+    type: string
+    default: "auto"
+    description: "Compute device: auto, mps, cuda, or cpu"

@@ -74,6 +74,7 @@ const NODE_REGISTRY_RAW: &[(&str, &str)] = &[
     ("@acpfx/stt-kyutai", include_str!("../../../packages/node-stt-kyutai/manifest.yaml")),
     ("@acpfx/tts-pocket", include_str!("../../../packages/node-tts-pocket/manifest.yaml")),
     ("@acpfx/tts-kyutai", include_str!("../../../packages/node-tts-kyutai/manifest.yaml")),
+    ("@acpfx/tts-cosyvoice", include_str!("../../../packages/node-tts-cosyvoice/manifest.yaml")),
 ];
 
 /// Parse and return all node registry entries.
@@ -188,12 +189,12 @@ mod tests {
     }
 
     #[test]
-    fn node_registry_has_14_nodes() {
+    fn node_registry_has_15_nodes() {
         let nodes = available_nodes();
         assert_eq!(
             nodes.len(),
-            14,
-            "Expected 14 nodes in registry, got {}",
+            15,
+            "Expected 15 nodes in registry, got {}",
             nodes.len()
         );
     }

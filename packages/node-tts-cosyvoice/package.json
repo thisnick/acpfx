@@ -1,0 +1,22 @@
+{
+  "name": "@acpfx/tts-cosyvoice",
+  "version": "0.1.0",
+  "description": "Local TTS via CosyVoice3 (on-device, GPU, Python/uv)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thisnick/acpfx",
+    "directory": "packages/node-tts-cosyvoice"
+  },
+  "license": "ISC",
+  "scripts": {
+    "test": "python3 -m unittest discover -s tests -p 'test_*.py' -v"
+  },
+  "bin": {
+    "acpfx-tts-cosyvoice": "./bin/tts-cosyvoice"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "manifest.yaml"
+  ]
+}
