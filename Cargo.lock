@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "acpfx-orchestrator"
-version = "0.6.0"
+version = "0.7.1"
 dependencies = [
  "acpfx-schema",
  "clap",
@@ -2239,7 +2239,7 @@ dependencies = [
 
 [[package]]
 name = "mic-speaker"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "base64 0.22.1",
  "serde_json",

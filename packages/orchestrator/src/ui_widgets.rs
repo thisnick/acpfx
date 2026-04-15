@@ -42,7 +42,7 @@ pub trait InteractiveWidget {
     fn handle_mouse_scroll(&mut self, delta: i32);
 
     /// Render the widget into the given area.
-    fn render(&self, f: &mut Frame, area: Rect);
+    fn render(&mut self, f: &mut Frame, area: Rect);
 }
 
 // ---- ScrollableText ----
@@ -65,6 +65,8 @@ pub struct ScrollableText {
     pub border_color: Color,
     /// Whether this panel is currently focused.
     pub focused: bool,
+    /// Last known visible height (for clamping scroll offset in event handlers).
+    last_visible_height: usize,
 }
 
 impl ScrollableText {
@@ -76,6 +78,7 @@ impl ScrollableText {
             title: title.into(),
             border_color: Color::DarkGray,
             focused: false,
+            last_visible_height: 10,
         }
     }
 
@@ -98,9 +101,14 @@ impl ScrollableText {
 
     /// Scroll to the bottom.
     pub fn scroll_to_bottom(&mut self) {
-        // scroll_offset is applied during render based on visible height
-        self.scroll_offset = usize::MAX;
+        self.scroll_offset = self.lines.len().saturating_sub(self.last_visible_height);
         self.auto_scroll = true;
+    }
+
+    /// Clamp scroll_offset to the valid range using last known dimensions.
+    fn clamp_offset(&mut self) {
+        let max_offset = self.lines.len().saturating_sub(self.last_visible_height);
+        self.scroll_offset = self.scroll_offset.min(max_offset);
     }
 
     /// Visible height for a given area (minus borders).
@@ -120,22 +128,28 @@ impl InteractiveWidget for ScrollableText {
         match key.code {
             KeyCode::Up => {
                 self.auto_scroll = false;
+                self.clamp_offset();
                 self.scroll_offset = self.scroll_offset.saturating_sub(1);
                 None
             }
             KeyCode::Down => {
                 self.auto_scroll = false;
+                self.clamp_offset();
                 self.scroll_offset = self.scroll_offset.saturating_add(1);
+                self.clamp_offset();
                 None
             }
             KeyCode::PageUp => {
                 self.auto_scroll = false;
+                self.clamp_offset();
                 self.scroll_offset = self.scroll_offset.saturating_sub(10);
                 None
             }
             KeyCode::PageDown => {
                 self.auto_scroll = false;
+                self.clamp_offset();
                 self.scroll_offset = self.scroll_offset.saturating_add(10);
+                self.clamp_offset();
                 None
             }
             KeyCode::Home => {
@@ -153,16 +167,16 @@ impl InteractiveWidget for ScrollableText {
 
     fn handle_mouse_scroll(&mut self, delta: i32) {
         self.auto_scroll = false;
+        self.clamp_offset(); // resolve from usize::MAX before arithmetic
         if delta < 0 {
-            // Scroll up
             self.scroll_offset = self.scroll_offset.saturating_sub((-delta) as usize);
         } else {
-            // Scroll down
             self.scroll_offset = self.scroll_offset.saturating_add(delta as usize);
+            self.clamp_offset();
         }
     }
 
-    fn render(&self, f: &mut Frame, area: Rect) {
+    fn render(&mut self, f: &mut Frame, area: Rect) {
         let border_color = if self.focused {
             Color::Cyan
         } else {
@@ -177,8 +191,9 @@ impl InteractiveWidget for ScrollableText {
                 Style::default().add_modifier(Modifier::BOLD),
             )));
 
-        let visible_height = self.visible_height(area);
-        let offset = self.clamped_offset(visible_height);
+        // Save visible height for scroll clamping in event handlers
+        self.last_visible_height = self.visible_height(area);
+        let offset = self.clamped_offset(self.last_visible_height);
 
         let paragraph = Paragraph::new(self.lines.clone())
             .block(block)
@@ -302,6 +317,13 @@ impl FocusRing {
     /// Check if a given panel is focused.
     pub fn is_focused(&self, panel: &str) -> bool {
         self.focused_panel() == Some(panel)
+    }
+
+    /// Focus a panel by name.
+    pub fn focus_by_name(&mut self, panel: &str) {
+        if let Some(idx) = self.panels.iter().position(|p| p == panel) {
+            self.focused = idx;
+        }
     }
 
     /// Update the area for a panel (call during render).

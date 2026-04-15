@@ -14,7 +14,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 use ratatui::Terminal;
 
 use crate::ui_widgets::{FocusRing, HoldState, InteractiveWidget, ScrollableText, StatusBar, UiAction};
@@ -355,7 +355,10 @@ fn render_frame(
 ) -> io::Result<()> {
     // Build agent conversation lines before entering the draw closure
     // (we need &mut state to update agent_scroll, but the draw closure borrows state)
-    let agent_lines = build_agent_lines(state);
+    // Use terminal size to compute wrap width (area.width - 4 for borders + padding)
+    let term_width = terminal.size().map(|s| s.width).unwrap_or(100);
+    let agent_wrap_width = term_width.saturating_sub(4) as usize;
+    let agent_lines = build_agent_lines(state, agent_wrap_width);
     state.agent_scroll.set_lines(agent_lines);
 
     terminal.draw(|frame| {
@@ -363,14 +366,28 @@ fn render_frame(
         // Each node box gets 3 lines (border top + content + border bottom),
         // except nodes with speech/agent which need more. Use 4 per node + rest for logs.
         let mut constraints: Vec<Constraint> = Vec::new();
+        let term_width = frame.area().width.saturating_sub(4) as usize; // minus borders/padding
         for manifest in &state.manifests {
             if manifest.emits_category("agent") {
                 // Agent box gets flexible height to show streamed text
                 constraints.push(Constraint::Min(5));
             } else {
-                let mut height = 3u16; // minimum: border + 1 line + border
-                if manifest.emits_category("speech") { height += 1; }
-                constraints.push(Constraint::Length(height));
+                // Estimate content lines to size the box dynamically
+                let node_state = state.nodes.get(&manifest.name).cloned().unwrap_or_default();
+                let mut content_lines = 1u16; // at least 1 line of content
+                if manifest.emits_category("speech") {
+                    let text = if node_state.speech.text.is_empty() { "..." } else { &node_state.speech.text };
+                    // Estimate wrapped lines: text length / available width, minimum 1
+                    let wrapped = if term_width > 0 { (text.len() / term_width + 1) as u16 } else { 1 };
+                    content_lines = content_lines.max(wrapped);
+                    if node_state.speech.state != "idle" {
+                        content_lines += 1; // state line
+                    }
+                }
+                if manifest.emits_category("audio") { content_lines = content_lines.max(1); }
+                if manifest.emits_category("player") { content_lines = content_lines.max(1); }
+                // height = content + 2 for borders, minimum 3
+                constraints.push(Constraint::Length((content_lines + 2).max(3)));
             }
         }
         // Log panel gets remaining space when verbose, hidden otherwise
@@ -478,7 +495,10 @@ fn render_frame(
             let content_height = lines.len() as u16;
             let box_height = areas[i].height.saturating_sub(2); // minus borders
             let scroll = content_height.saturating_sub(box_height);
-            let paragraph = Paragraph::new(lines).block(block).scroll((scroll, 0));
+            let paragraph = Paragraph::new(lines)
+                .block(block)
+                .wrap(Wrap { trim: false })
+                .scroll((scroll, 0));
             frame.render_widget(paragraph, areas[i]);
         }
 
@@ -524,7 +544,7 @@ fn render_frame(
 }
 
 /// Build the agent conversation lines from UiState (extracted for reuse with ScrollableText).
-fn build_agent_lines(state: &UiState) -> Vec<Line<'static>> {
+fn build_agent_lines(state: &UiState, wrap_width: usize) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
 
     // Find the agent node state (first node that emits agent events)
@@ -538,13 +558,13 @@ fn build_agent_lines(state: &UiState) -> Vec<Line<'static>> {
     for entry in &state.conversation {
         match entry {
             ConversationEntry::Turn { prompt, response, ttft, had_tool, .. } => {
-                lines.push(Line::from(Span::styled(
-                    format!("> \"{prompt}\""),
-                    Style::default().fg(Color::Cyan),
-                )));
-                let max_width = 100usize;
+                // Wrap prompt text (it can be long spoken input)
+                let prompt_text = format!("> \"{prompt}\"");
+                for raw_line in prompt_text.lines() {
+                    push_wrapped_lines(&mut lines, raw_line, wrap_width, "> ");
+                }
                 for raw_line in response.lines() {
-                    push_wrapped_lines(&mut lines, raw_line, max_width, "  ");
+                    push_wrapped_lines(&mut lines, raw_line, wrap_width, "  ");
                 }
                 let mut meta_parts = Vec::new();
                 if let Some(t) = ttft {
@@ -585,12 +605,12 @@ fn build_agent_lines(state: &UiState) -> Vec<Line<'static>> {
             icon, agent_node_state.agent.status, agent_node_state.agent.tokens, ttft_str
         )));
 
-        // Current prompt
+        // Current prompt (wrap long spoken input)
         if !agent_node_state.agent.prompt.is_empty() {
-            lines.push(Line::from(Span::styled(
-                format!("> \"{}\"", agent_node_state.agent.prompt),
-                Style::default().fg(Color::Cyan),
-            )));
+            let prompt_text = format!("> \"{}\"", agent_node_state.agent.prompt);
+            for raw_line in prompt_text.lines() {
+                push_wrapped_lines(&mut lines, raw_line, wrap_width, "> ");
+            }
         }
 
         // Thinking indicator
@@ -611,9 +631,8 @@ fn build_agent_lines(state: &UiState) -> Vec<Line<'static>> {
 
         // Streamed response text
         if !agent_node_state.agent.text.is_empty() {
-            let max_width = 100usize;
             for raw_line in agent_node_state.agent.text.lines() {
-                push_wrapped_lines(&mut lines, raw_line, max_width, "  ");
+                push_wrapped_lines(&mut lines, raw_line, wrap_width, "  ");
             }
         }
     } else if state.conversation.is_empty() {
@@ -814,7 +833,11 @@ pub fn run_ui(
                     match mouse.kind {
                         MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                             if let Some(delta) = FocusRing::scroll_delta(&mouse) {
-                                if let Some(panel) = s.focus.panel_at(&mouse) {
+                                let target = s.focus.panel_at(&mouse)
+                                    .map(|s| s.to_string())
+                                    .or_else(|| s.focus.focused_panel().map(|s| s.to_string()));
+                                if let Some(panel) = target {
+                                    s.focus.focus_by_name(&panel);
                                     if panel == "agent" {
                                         s.agent_scroll.handle_mouse_scroll(delta);
                                     }
