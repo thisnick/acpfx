@@ -23,6 +23,44 @@ struct PendingPrompt {
     response_mode: &'static str,
 }
 
+/// Mutable state for the bridge main loop.
+struct BridgeState {
+    active_request_id: Option<String>,
+    streaming: bool,
+    agent_active: bool,
+    accumulated_text: String,
+    seq: u64,
+    pending_text: String,
+    pending_prompts: VecDeque<PendingPrompt>,
+    response_mode: &'static str,
+    active_prompt_rpc_id: Option<u64>,
+}
+
+impl BridgeState {
+    fn new() -> Self {
+        Self {
+            active_request_id: None,
+            streaming: false,
+            agent_active: false,
+            accumulated_text: String::new(),
+            seq: 0,
+            pending_text: String::new(),
+            pending_prompts: VecDeque::new(),
+            response_mode: "voice",
+            active_prompt_rpc_id: None,
+        }
+    }
+
+    fn reset(&mut self) {
+        self.streaming = false;
+        self.agent_active = false;
+        self.active_request_id = None;
+        self.active_prompt_rpc_id = None;
+        self.accumulated_text.clear();
+        self.seq = 0;
+    }
+}
+
 /// Manifest YAML embedded at compile time.
 const MANIFEST_YAML: &str = include_str!("../manifest.yaml");
 
@@ -363,17 +401,12 @@ async fn main() {
     // These are buffered in client.messages while request() was awaiting.
     {
         let mut replay_count = 0u32;
+        let mut replay_state = BridgeState::new();
         while let Ok(msg) = client.messages.try_recv() {
             if let crate::acp_client::AgentMessage::Notification(notif) = msg {
-                let mut _rid: Option<String> = None;
-                let mut _streaming = false;
-                let mut _agent_active = false;
-                let mut _text = String::new();
-                let mut _seq = 0u64;
                 handle_notification(
-                    &notif, &node_name, &mut _rid, &mut _streaming, &mut _agent_active, &mut _text, &mut _seq,
+                    &notif, &node_name, &mut replay_state,
                     true, // is_replay = true
-                    "voice",
                 );
                 replay_count += 1;
             }
@@ -420,17 +453,8 @@ async fn main() {
     });
 
     // State
-    let mut active_request_id: Option<String> = None;
-    let mut streaming = false;
-    let mut agent_active = false; // true from first voice prompt until next speech.pause — barge-in window
-    let mut accumulated_text = String::new();
-    let mut seq: u64 = 0;
-    let mut pending_text = String::new(); // last speech.partial text (used as fallback in speech.pause)
-    let mut pending_prompts: VecDeque<PendingPrompt> = VecDeque::new();
-    let mut response_mode: &str = "voice"; // "voice" for speech.pause, "text" for prompt.text
-    let mut active_prompt_rpc_id: Option<u64> = None; // JSON-RPC id of current send_request
+    let mut state = BridgeState::new();
     let permission_mode = settings.permission_mode.clone();
-    let replaying = false; // always false in main loop — replay handled above
 
     loop {
         tokio::select! {
@@ -442,34 +466,30 @@ async fn main() {
                 match event_type {
                     "speech.partial" => {
                         let text = event.get("text").and_then(|t| t.as_str()).unwrap_or("");
-                        pending_text = text.to_string();
+                        state.pending_text = text.to_string();
 
                         // Barge-in: if agent responded (even if done streaming), interrupt
-                        if agent_active && !text.is_empty() {
+                        if state.agent_active && !text.is_empty() {
                             emit_log("info", "barge-in detected, interrupting");
                             emit(&json!({
                                 "type": "control.interrupt",
                                 "reason": "barge-in",
                             }));
-                            streaming = false;
                             // Send cancel as notification (no response expected)
                             let _ = client.notify("session/cancel", json!({"sessionId": session_id})).await;
-                            active_request_id = None;
-                            active_prompt_rpc_id = None;
-                            accumulated_text.clear();
-                            agent_active = false;
+                            state.reset();
                         }
                     }
 
                     "speech.pause" => {
                         let text = event.get("pendingText").and_then(|t| t.as_str()).unwrap_or("");
-                        let text = if text.is_empty() { &pending_text } else { text };
+                        let text = if text.is_empty() { &state.pending_text } else { text };
 
                         if text.trim().is_empty() {
                             continue;
                         }
 
-                        response_mode = "voice";
+                        state.response_mode = "voice";
 
                         // Always emit interrupt to cancel downstream TTS/playback
                         emit(&json!({
@@ -477,42 +497,42 @@ async fn main() {
                             "reason": "user_speech",
                         }));
 
-                        if agent_active {
+                        if state.agent_active {
                             let _ = client.notify("session/cancel", json!({"sessionId": session_id})).await;
-                            if streaming {
+                            if state.streaming {
                                 // Agent started responding but still streaming —
                                 // accumulate (user speaking in rapid chunks)
                                 emit_log("debug", "speech.pause: agent_active+streaming, canceling and appending");
-                                if accumulated_text.is_empty() {
-                                    accumulated_text = text.to_string();
+                                if state.accumulated_text.is_empty() {
+                                    state.accumulated_text = text.to_string();
                                 } else {
-                                    accumulated_text.push(' ');
-                                    accumulated_text.push_str(text);
+                                    state.accumulated_text.push(' ');
+                                    state.accumulated_text.push_str(text);
                                 }
                             } else {
                                 // Agent finished responding — new turn, replace
                                 emit_log("debug", "speech.pause: agent_active+done, replacing accumulatedText");
-                                accumulated_text = text.to_string();
+                                state.accumulated_text = text.to_string();
                             }
-                            agent_active = false;
-                        } else if streaming {
+                            state.agent_active = false;
+                        } else if state.streaming {
                             // Submitted but agent hasn't responded yet — cancel and append
                             emit_log("debug", "speech.pause: streaming (no delta yet), canceling and appending");
                             let _ = client.notify("session/cancel", json!({"sessionId": session_id})).await;
-                            if accumulated_text.is_empty() {
-                                accumulated_text = text.to_string();
+                            if state.accumulated_text.is_empty() {
+                                state.accumulated_text = text.to_string();
                             } else {
-                                accumulated_text.push(' ');
-                                accumulated_text.push_str(text);
+                                state.accumulated_text.push(' ');
+                                state.accumulated_text.push_str(text);
                             }
                         } else {
                             // Fresh submission
                             emit_log("debug", "speech.pause: fresh submission");
-                            if accumulated_text.is_empty() {
-                                accumulated_text = text.to_string();
+                            if state.accumulated_text.is_empty() {
+                                state.accumulated_text = text.to_string();
                             } else {
-                                accumulated_text.push(' ');
-                                accumulated_text.push_str(text);
+                                state.accumulated_text.push(' ');
+                                state.accumulated_text.push_str(text);
                             }
                         }
 
@@ -520,17 +540,17 @@ async fn main() {
                         // Note: agent_active is NOT set here — it's set in
                         // handle_notification when the first delta arrives,
                         // matching the TS agentResponding semantics.
-                        let submit_text = accumulated_text.clone();
+                        let submit_text = state.accumulated_text.clone();
                         let request_id = Uuid::new_v4().to_string();
-                        active_request_id = Some(request_id.clone());
-                        streaming = true;
-                        seq = 0;
+                        state.active_request_id = Some(request_id.clone());
+                        state.streaming = true;
+                        state.seq = 0;
 
                         emit(&json!({
                             "type": "agent.submit",
                             "requestId": request_id,
                             "text": submit_text,
-                            "responseMode": response_mode,
+                            "responseMode": state.response_mode,
                         }));
 
                         emit_log("info", &format!("sending prompt to agent (session={}): {}", &session_id[..8.min(session_id.len())], &submit_text[..80.min(submit_text.len())]));
@@ -541,16 +561,16 @@ async fn main() {
                             }))
                             .await
                         {
-                            Ok(rpc_id) => { active_prompt_rpc_id = Some(rpc_id); }
+                            Ok(rpc_id) => { state.active_prompt_rpc_id = Some(rpc_id); }
                             Err(e) => {
                                 emit_log("error", &format!("failed to send prompt: {}", e));
-                                streaming = false;
-                                active_request_id = None;
-                                active_prompt_rpc_id = None;
+                                state.streaming = false;
+                                state.active_request_id = None;
+                                state.active_prompt_rpc_id = None;
                             }
                         }
 
-                        pending_text.clear();
+                        state.pending_text.clear();
                     }
 
                     "prompt.text" => {
@@ -559,31 +579,31 @@ async fn main() {
                             continue;
                         }
 
-                        if streaming {
+                        if state.streaming {
                             // Agent is busy — queue with its responseMode for later
-                            pending_prompts.push_back(PendingPrompt {
+                            state.pending_prompts.push_back(PendingPrompt {
                                 text: text.to_string(),
                                 response_mode: "text",
                             });
-                            emit_log("info", &format!("queued prompt.text ({} pending)", pending_prompts.len()));
+                            emit_log("info", &format!("queued prompt.text ({} pending)", state.pending_prompts.len()));
                             continue;
                         }
 
-                        response_mode = "text";
+                        state.response_mode = "text";
                         // Do NOT set agent_active — text prompts are not interruptible
                         // by speech.partial barge-in
 
                         let request_id = Uuid::new_v4().to_string();
-                        active_request_id = Some(request_id.clone());
-                        streaming = true;
-                        accumulated_text.clear();
-                        seq = 0;
+                        state.active_request_id = Some(request_id.clone());
+                        state.streaming = true;
+                        state.accumulated_text.clear();
+                        state.seq = 0;
 
                         emit(&json!({
                             "type": "agent.submit",
                             "requestId": request_id,
                             "text": text,
-                            "responseMode": response_mode,
+                            "responseMode": state.response_mode,
                         }));
 
                         match client
@@ -593,12 +613,12 @@ async fn main() {
                             }))
                             .await
                         {
-                            Ok(rpc_id) => { active_prompt_rpc_id = Some(rpc_id); }
+                            Ok(rpc_id) => { state.active_prompt_rpc_id = Some(rpc_id); }
                             Err(e) => {
                                 emit_log("error", &format!("failed to send prompt: {}", e));
-                                streaming = false;
-                                active_request_id = None;
-                                active_prompt_rpc_id = None;
+                                state.streaming = false;
+                                state.active_request_id = None;
+                                state.active_prompt_rpc_id = None;
                             }
                         }
                     }
@@ -609,14 +629,14 @@ async fn main() {
                             continue;
                         }
 
-                        if streaming {
-                            streaming = false;
+                        if state.streaming {
+                            state.streaming = false;
                             let _ = client.notify("session/cancel", json!({"sessionId": session_id})).await;
-                            active_request_id = None;
-                            active_prompt_rpc_id = None;
-                            accumulated_text.clear();
+                            state.active_request_id = None;
+                            state.active_prompt_rpc_id = None;
+                            state.accumulated_text.clear();
                         }
-                        agent_active = false;
+                        state.agent_active = false;
                     }
 
                     _ => {
@@ -629,17 +649,13 @@ async fn main() {
             msg = client.messages.recv() => {
                 match msg {
                     Some(AgentMessage::Notification(notif)) => {
-                        let was_streaming = streaming;
-                        handle_notification(&notif, &node_name, &mut active_request_id, &mut streaming, &mut agent_active, &mut accumulated_text, &mut seq, replaying, response_mode);
+                        let was_streaming = state.streaming;
+                        handle_notification(&notif, &node_name, &mut state, false);
 
                         // If handle_notification saw "end" and cleared streaming,
                         // drain one queued prompt.
-                        if was_streaming && !streaming {
-                            drain_one_prompt(
-                                &mut client, &session_id, &mut pending_prompts,
-                                &mut response_mode, &mut agent_active, &mut active_request_id,
-                                &mut active_prompt_rpc_id, &mut streaming, &mut seq,
-                            ).await;
+                        if was_streaming && !state.streaming {
+                            drain_one_prompt(&mut client, &session_id, &mut state).await;
                         }
                     }
                     Some(AgentMessage::Request(req)) => {
@@ -654,8 +670,8 @@ async fn main() {
 
                         // Ignore stale responses from cancelled prompts
                         let resp_id = resp.get("id").and_then(|id| id.as_u64());
-                        if resp_id.is_some() && resp_id != active_prompt_rpc_id {
-                            emit_log("debug", &format!("ignoring stale response (id={:?}, active={:?})", resp_id, active_prompt_rpc_id));
+                        if resp_id.is_some() && resp_id != state.active_prompt_rpc_id {
+                            emit_log("debug", &format!("ignoring stale response (id={:?}, active={:?})", resp_id, state.active_prompt_rpc_id));
                         } else if resp.get("error").is_some() {
                             let msg = resp.get("error")
                                 .and_then(|e| e.get("message"))
@@ -670,33 +686,24 @@ async fn main() {
                             }));
                             // Clean up state on error — the stream will not produce
                             // an "end" notification, so we must reset here.
-                            streaming = false;
-                            agent_active = false;
-                            active_request_id = None;
-                            active_prompt_rpc_id = None;
-                            accumulated_text.clear();
-                            seq = 0;
+                            state.reset();
 
                             // Drain one queued prompt on error recovery
-                            drain_one_prompt(
-                                &mut client, &session_id, &mut pending_prompts,
-                                &mut response_mode, &mut agent_active, &mut active_request_id,
-                                &mut active_prompt_rpc_id, &mut streaming, &mut seq,
-                            ).await;
-                        } else if resp_id.is_some() && resp_id == active_prompt_rpc_id {
+                            drain_one_prompt(&mut client, &session_id, &mut state).await;
+                        } else if resp_id.is_some() && resp_id == state.active_prompt_rpc_id {
                             // Successful response to session/prompt — this IS the
                             // completion signal from real ACP agents (e.g. claude-agent-acp).
                             // The response contains result.stopReason and result.usage.
                             let result = resp.get("result").cloned().unwrap_or(json!({}));
 
-                            let rid = active_request_id.take().unwrap_or_default();
-                            let text = accumulated_text.clone();
+                            let rid = state.active_request_id.take().unwrap_or_default();
+                            let text = state.accumulated_text.clone();
 
                             let mut event = json!({
                                 "type": "agent.complete",
                                 "requestId": rid,
                                 "text": text,
-                                "responseMode": response_mode,
+                                "responseMode": state.response_mode,
                             });
 
                             // Include stopReason if provided
@@ -712,19 +719,10 @@ async fn main() {
                             emit(&event);
 
                             // Clean up state
-                            streaming = false;
-                            agent_active = false;
-                            active_request_id = None;
-                            active_prompt_rpc_id = None;
-                            accumulated_text.clear();
-                            seq = 0;
+                            state.reset();
 
                             // Drain one queued prompt
-                            drain_one_prompt(
-                                &mut client, &session_id, &mut pending_prompts,
-                                &mut response_mode, &mut agent_active, &mut active_request_id,
-                                &mut active_prompt_rpc_id, &mut streaming, &mut seq,
-                            ).await;
+                            drain_one_prompt(&mut client, &session_id, &mut state).await;
                         }
                         // else: response without matching active id and no error — ignore
                     }
@@ -741,8 +739,8 @@ async fn main() {
                             "message": status_msg,
                             "fatal": true,
                         }));
-                        streaming = false;
-                        active_request_id = None;
+                        state.streaming = false;
+                        state.active_request_id = None;
                         break;
                     }
                 }
@@ -756,17 +754,11 @@ async fn main() {
     }));
 }
 
-#[allow(clippy::too_many_arguments)]
 fn handle_notification(
     notif: &Value,
     _node_name: &str,
-    active_request_id: &mut Option<String>,
-    streaming: &mut bool,
-    agent_active: &mut bool,
-    accumulated_text: &mut String,
-    seq: &mut u64,
+    state: &mut BridgeState,
     is_replay: bool,
-    response_mode: &str,
 ) {
     let method = notif
         .get("method")
@@ -804,23 +796,23 @@ fn handle_notification(
                             "text": delta,
                         }));
                     } else {
-                        let rid = active_request_id.clone().unwrap_or_default();
-                        accumulated_text.push_str(delta);
+                        let rid = state.active_request_id.clone().unwrap_or_default();
+                        state.accumulated_text.push_str(delta);
                         // Mark agent as active on first delta for voice responses
                         // — this enables barge-in and controls speech.pause
                         // accumulation semantics. Text prompts (prompt.text) are
                         // NOT interruptible by speech.partial barge-in.
-                        if response_mode == "voice" {
-                            *agent_active = true;
+                        if state.response_mode == "voice" {
+                            state.agent_active = true;
                         }
                         emit(&json!({
                             "type": "agent.delta",
                             "requestId": rid,
                             "delta": delta,
-                            "seq": *seq,
-                            "responseMode": response_mode,
+                            "seq": state.seq,
+                            "responseMode": state.response_mode,
                         }));
-                        *seq += 1;
+                        state.seq += 1;
                     }
                 }
 
@@ -846,10 +838,10 @@ fn handle_notification(
 
                 "agent_thought_chunk" | "thinking" => {
                     if !is_replay {
-                        let rid = active_request_id.clone().unwrap_or_default();
+                        let rid = state.active_request_id.clone().unwrap_or_default();
                         emit(&json!({
                             "type": "agent.thinking",
-                            "responseMode": response_mode,
+                            "responseMode": state.response_mode,
                             "requestId": rid,
                         }));
                     }
@@ -857,7 +849,7 @@ fn handle_notification(
 
                 "tool_call" | "tool_use_begin" => {
                     if !is_replay {
-                        let rid = active_request_id.clone().unwrap_or_default();
+                        let rid = state.active_request_id.clone().unwrap_or_default();
                         let tool_call_id = update
                             .get("toolCallId")
                             .or_else(|| params.get("toolCallId"))
@@ -873,7 +865,7 @@ fn handle_notification(
                             .map(String::from);
                         emit(&json!({
                             "type": "agent.tool_start",
-                            "responseMode": response_mode,
+                            "responseMode": state.response_mode,
                             "requestId": rid,
                             "toolCallId": tool_call_id,
                             "title": title,
@@ -883,7 +875,7 @@ fn handle_notification(
 
                 "tool_call_update" | "tool_use_end" => {
                     if !is_replay {
-                        let rid = active_request_id.clone().unwrap_or_default();
+                        let rid = state.active_request_id.clone().unwrap_or_default();
                         let tool_call_id = update
                             .get("toolCallId")
                             .or_else(|| params.get("toolCallId"))
@@ -899,7 +891,7 @@ fn handle_notification(
                             .to_string();
                         emit(&json!({
                             "type": "agent.tool_done",
-                            "responseMode": response_mode,
+                            "responseMode": state.response_mode,
                             "requestId": rid,
                             "toolCallId": tool_call_id,
                             "status": status,
@@ -912,26 +904,26 @@ fn handle_notification(
                         // Guard against double-fire: if the Response handler
                         // already emitted agent.complete and cleared streaming,
                         // skip this fallback path.
-                        if !*streaming {
+                        if !state.streaming {
                             return;
                         }
 
-                        let rid = active_request_id.take().unwrap_or_default();
-                        let text = if accumulated_text.is_empty() {
+                        let rid = state.active_request_id.take().unwrap_or_default();
+                        let text = if state.accumulated_text.is_empty() {
                             params
                                 .get("text")
                                 .and_then(|t| t.as_str())
                                 .unwrap_or("")
                                 .to_string()
                         } else {
-                            accumulated_text.clone()
+                            state.accumulated_text.clone()
                         };
 
                         let mut event = json!({
                             "type": "agent.complete",
                             "requestId": rid,
                             "text": text,
-                            "responseMode": response_mode,
+                            "responseMode": state.response_mode,
                         });
 
                         // Include token usage if provided
@@ -940,10 +932,10 @@ fn handle_notification(
                         }
 
                         emit(&event);
-                        *streaming = false;
-                        *agent_active = false;
-                        accumulated_text.clear();
-                        *seq = 0;
+                        state.streaming = false;
+                        state.agent_active = false;
+                        state.accumulated_text.clear();
+                        state.seq = 0;
                     }
                 }
 
@@ -970,37 +962,30 @@ fn handle_notification(
 }
 
 /// Drain one queued prompt if available — sends it to the agent and updates state.
-#[allow(clippy::too_many_arguments)]
 async fn drain_one_prompt(
     client: &mut AcpClient,
     session_id: &str,
-    pending_prompts: &mut VecDeque<PendingPrompt>,
-    response_mode: &mut &str,
-    agent_active: &mut bool,
-    active_request_id: &mut Option<String>,
-    active_prompt_rpc_id: &mut Option<u64>,
-    streaming: &mut bool,
-    seq: &mut u64,
+    state: &mut BridgeState,
 ) {
-    if let Some(next) = pending_prompts.pop_front() {
+    if let Some(next) = state.pending_prompts.pop_front() {
         emit_log("info", &format!(
             "draining queued prompt: \"{}\" ({} remaining)",
             &next.text[..80.min(next.text.len())],
-            pending_prompts.len()
+            state.pending_prompts.len()
         ));
-        *response_mode = next.response_mode;
-        *agent_active = false;
+        state.response_mode = next.response_mode;
+        state.agent_active = false;
 
         let request_id = Uuid::new_v4().to_string();
-        *active_request_id = Some(request_id.clone());
-        *streaming = true;
-        *seq = 0;
+        state.active_request_id = Some(request_id.clone());
+        state.streaming = true;
+        state.seq = 0;
 
         emit(&json!({
             "type": "agent.submit",
             "requestId": request_id,
             "text": next.text,
-            "responseMode": *response_mode,
+            "responseMode": state.response_mode,
         }));
 
         match client
@@ -1010,12 +995,12 @@ async fn drain_one_prompt(
             }))
             .await
         {
-            Ok(rpc_id) => { *active_prompt_rpc_id = Some(rpc_id); }
+            Ok(rpc_id) => { state.active_prompt_rpc_id = Some(rpc_id); }
             Err(e) => {
                 emit_log("error", &format!("failed to send queued prompt: {}", e));
-                *streaming = false;
-                *active_request_id = None;
-                *active_prompt_rpc_id = None;
+                state.streaming = false;
+                state.active_request_id = None;
+                state.active_prompt_rpc_id = None;
             }
         }
     }
