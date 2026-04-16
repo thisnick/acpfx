@@ -1,5 +1,13 @@
 # @acpfx/phone-otacon
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [a3e4495]
+  - @acpfx/core@0.5.1
+  - @acpfx/node-sdk@0.3.4
+
 ## 0.3.0
 
 ### Minor Changes

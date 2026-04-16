@@ -1,5 +1,13 @@
 # @acpfx/audio-player
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [a3e4495]
+  - @acpfx/core@0.5.1
+  - @acpfx/node-sdk@0.3.4
+
 ## 0.4.1
 
 ### Patch Changes
