@@ -407,7 +407,7 @@ fn render_frame(
                 if manifest.emits_category("speech") {
                     let text = if node_state.speech.text.is_empty() { "..." } else { &node_state.speech.text };
                     // Estimate wrapped lines: text length / available width, minimum 1
-                    let wrapped = if term_width > 0 { (text.len() / term_width + 1) as u16 } else { 1 };
+                    let wrapped = text.len().checked_div(term_width).map(|n| (n + 1) as u16).unwrap_or(1);
                     content_lines = content_lines.max(wrapped);
                     if node_state.speech.state != "idle" {
                         content_lines += 1; // state line

@@ -1367,10 +1367,8 @@ fn select_menu(
             KeyCode::Up => {
                 selected = selected.saturating_sub(1);
             }
-            KeyCode::Down => {
-                if selected < items.len() - 1 {
-                    selected += 1;
-                }
+            KeyCode::Down if selected < items.len() - 1 => {
+                selected += 1;
             }
             KeyCode::Enter => return Ok(Some(selected)),
             KeyCode::Esc => return Ok(None),
