@@ -37,7 +37,7 @@ chmod +x "$SCRIPT_DIR/mock-tts.sh"
 run_pipeline() {
     local config="$1"
     local timeout_sec="${2:-15}"
-    timeout "$timeout_sec" "$ACPFX" run --config "$config" --headless --skip-setup 2>&1 || true
+    timeout "$timeout_sec" "$ACPFX" run --config "$config" --dist "$PROJECT_DIR/dist" --headless --skip-setup 2>&1 || true
 }
 
 # Create a temporary directory for a test
