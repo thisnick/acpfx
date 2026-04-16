@@ -381,6 +381,7 @@ async fn main() {
     // State
     let mut active_request_id: Option<String> = None;
     let mut streaming = false;
+    let mut agent_active = false; // true from first prompt until next speech.pause — barge-in window
     let mut accumulated_text = String::new();
     let mut seq: u64 = 0;
     let mut pending_text = String::new();
@@ -399,8 +400,8 @@ async fn main() {
                         let text = event.get("text").and_then(|t| t.as_str()).unwrap_or("");
                         pending_text = text.to_string();
 
-                        // Barge-in: if agent is streaming, interrupt
-                        if streaming && !text.is_empty() {
+                        // Barge-in: if agent responded (even if done streaming), interrupt
+                        if agent_active && !text.is_empty() {
                             emit_log("info", "barge-in detected, interrupting");
                             emit(&json!({
                                 "type": "control.interrupt",
@@ -424,6 +425,15 @@ async fn main() {
                             continue;
                         }
 
+                        // New turn — emit interrupt if agent was active (cancel TTS playback)
+                        if agent_active {
+                            emit(&json!({
+                                "type": "control.interrupt",
+                                "reason": "new_turn",
+                            }));
+                        }
+                        agent_active = false;
+
                         // If already streaming, queue (we'll handle after current completes)
                         if streaming {
                             emit_log("info", "prompt queued — agent still streaming");
@@ -434,6 +444,7 @@ async fn main() {
                         let request_id = Uuid::new_v4().to_string();
                         active_request_id = Some(request_id.clone());
                         streaming = true;
+                        agent_active = true;
                         accumulated_text.clear();
                         seq = 0;
 
@@ -476,6 +487,7 @@ async fn main() {
                         let request_id = Uuid::new_v4().to_string();
                         active_request_id = Some(request_id.clone());
                         streaming = true;
+                        agent_active = true;
                         accumulated_text.clear();
                         seq = 0;
 
@@ -521,15 +533,15 @@ async fn main() {
             }
 
             // Messages from agent process
-            Some(msg) = client.messages.recv() => {
+            msg = client.messages.recv() => {
                 match msg {
-                    AgentMessage::Notification(notif) => {
+                    Some(AgentMessage::Notification(notif)) => {
                         handle_notification(&notif, &node_name, &mut active_request_id, &mut streaming, &mut accumulated_text, &mut seq, replaying);
                     }
-                    AgentMessage::Request(req) => {
+                    Some(AgentMessage::Request(req)) => {
                         handle_agent_request(&mut client, &req, &permission_mode).await;
                     }
-                    AgentMessage::Response(resp) => {
+                    Some(AgentMessage::Response(resp)) => {
                         // Prompt completed (from send_request)
                         if resp.get("error").is_some() {
                             let msg = resp.get("error")
@@ -557,20 +569,24 @@ async fn main() {
                         accumulated_text.clear();
                         seq = 0;
                     }
+                    None => {
+                        // Agent channel closed — agent process died
+                        let status_msg = match client.try_wait() {
+                            Some(status) => format!("agent process exited: {}", status),
+                            None => "agent process died unexpectedly".into(),
+                        };
+                        emit_log("error", &status_msg);
+                        emit(&json!({
+                            "type": "control.error",
+                            "component": node_name,
+                            "message": status_msg,
+                            "fatal": true,
+                        }));
+                        streaming = false;
+                        active_request_id = None;
+                        break;
+                    }
                 }
-            }
-
-            else => {
-                // Both channels closed — check if agent died
-                if let Some(status) = client.try_wait() {
-                    emit(&json!({
-                        "type": "control.error",
-                        "component": node_name,
-                        "message": format!("agent process exited: {}", status),
-                        "fatal": true,
-                    }));
-                }
-                break;
             }
         }
     }
