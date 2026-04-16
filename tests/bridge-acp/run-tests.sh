@@ -36,7 +36,7 @@ chmod +x "$SCRIPT_DIR/mock-tts.sh"
 
 run_pipeline() {
     local config="$1"
-    local timeout_sec="${2:-15}"
+    local timeout_sec="${2:-3}"
     timeout "$timeout_sec" "$ACPFX" run --config "$config" --dist "$PROJECT_DIR/dist" --headless --skip-setup 2>&1 || true
 }
 
@@ -191,7 +191,7 @@ T21_EVENTS="$T21_DIR/inject-events.jsonl"
 
 write_events "$T21_EVENTS" <<'EVENTS'
 {"type":"speech.pause","pendingText":"What is 2+2?","trackId":"mic-0","silenceMs":500}
-DELAY:3000
+DELAY:800
 EVENTS
 
 write_config "$T21_DIR/config.yaml" <<YAML
@@ -213,8 +213,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T21_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '5000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '800'
   OBSERVER_OUTPUT: '$T21_OBSERVER'
   MOCK_RESPONSE_TEXT: 'The answer is four'
 YAML
@@ -261,7 +261,7 @@ mkdir -p "$T22_SESSIONS" "$T22_CWD"
 # Run 1: create session with a prompt (establishes history)
 write_events "$T22_EVENTS_R1" <<'EVENTS'
 {"type":"speech.pause","pendingText":"Hello history test","trackId":"mic-0","silenceMs":500}
-DELAY:3000
+DELAY:800
 EVENTS
 
 write_config "$T22_DIR/config-r1.yaml" <<YAML
@@ -283,8 +283,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T22_EVENTS_R1'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '5000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '800'
   OBSERVER_OUTPUT: '$T22_OBSERVER1'
   ACPFX_SESSION_DIR: '$T22_SESSIONS'
   ACPFX_CWD: '$T22_CWD'
@@ -295,7 +295,7 @@ run_pipeline "$T22_DIR/config-r1.yaml" 15 >/dev/null 2>&1
 # Run 2: load session — agent replays history. Bridge should emit agent.history.
 # TTS node should NOT receive agent.history (not in its consumes).
 write_events "$T22_EVENTS_R2" <<'EVENTS'
-DELAY:4000
+DELAY:1000
 EVENTS
 
 write_config "$T22_DIR/config-r2.yaml" <<YAML
@@ -321,8 +321,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T22_EVENTS_R2'
-  INJECTOR_DELAY_MS: '500'
-  INJECTOR_EXIT_AFTER_MS: '5000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '800'
   OBSERVER_OUTPUT: '$T22_OBSERVER2'
   MOCK_TTS_OUTPUT: '$T22_TTS_OUTPUT'
   MOCK_REPLAY_COUNT: '3'
@@ -365,9 +365,9 @@ write_events "$T23_EVENTS" <<'EVENTS'
 {"type":"speech.pause","pendingText":"Tell me a very long story about dragons","trackId":"mic-0","silenceMs":500}
 DELAY:500
 {"type":"control.interrupt","reason":"barge-in"}
-DELAY:1500
+DELAY:500
 {"type":"speech.pause","pendingText":"What is 1+1?","trackId":"mic-0","silenceMs":500}
-DELAY:3000
+DELAY:800
 EVENTS
 
 write_config "$T23_DIR/config.yaml" <<YAML
@@ -389,10 +389,10 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T23_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '8000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '1000'
   OBSERVER_OUTPUT: '$T23_OBSERVER'
-  MOCK_STREAM_DELAY_MS: '200'
+  MOCK_STREAM_DELAY_MS: '50'
   MOCK_RESPONSE_TEXT: 'Once upon a time there was a dragon who lived in a cave'
 YAML
 
@@ -426,7 +426,7 @@ T24_EVENTS="$T24_DIR/inject-events.jsonl"
 
 write_events "$T24_EVENTS" <<'EVENTS'
 {"type":"speech.pause","pendingText":"This prompt will crash the agent","trackId":"mic-0","silenceMs":500}
-DELAY:3000
+DELAY:800
 EVENTS
 
 write_config "$T24_DIR/config.yaml" <<YAML
@@ -448,8 +448,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T24_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '6000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '1000'
   OBSERVER_OUTPUT: '$T24_OBSERVER'
   MOCK_CRASH_AFTER_PROMPT: 'true'
 YAML
@@ -487,7 +487,7 @@ mkdir -p "$T25_CWD" "$T25_SESSIONS"
 
 write_events "$T25_EVENTS" <<'EVENTS'
 {"type":"speech.pause","pendingText":"Hello","trackId":"mic-0","silenceMs":500}
-DELAY:3000
+DELAY:800
 EVENTS
 
 # Run 1: should create new session (no history replay)
@@ -510,8 +510,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T25_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '5000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '800'
   OBSERVER_OUTPUT: '$T25_OBSERVER1'
   ACPFX_SESSION_DIR: '$T25_SESSIONS'
   ACPFX_CWD: '$T25_CWD'
@@ -542,8 +542,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T25_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '5000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '800'
   OBSERVER_OUTPUT: '$T25_OBSERVER2'
   ACPFX_SESSION_DIR: '$T25_SESSIONS'
   ACPFX_CWD: '$T25_CWD'
@@ -592,7 +592,7 @@ T26_EVENTS="$T26_DIR/inject-events.jsonl"
 
 write_events "$T26_EVENTS" <<'EVENTS'
 {"type":"speech.pause","pendingText":"Run a command","trackId":"mic-0","silenceMs":500}
-DELAY:3000
+DELAY:800
 EVENTS
 
 write_config "$T26_DIR/config.yaml" <<YAML
@@ -615,8 +615,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T26_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '6000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '1000'
   OBSERVER_OUTPUT: '$T26_OBSERVER'
   MOCK_PERMISSION_REQUEST: 'true'
 YAML
@@ -646,7 +646,7 @@ write_events "$T27_EVENTS" <<'EVENTS'
 {"type":"speech.pause","pendingText":"Tell me something","trackId":"mic-0","silenceMs":500}
 DELAY:300
 {"type":"speech.partial","text":"wait","trackId":"mic-0"}
-DELAY:4000
+DELAY:1000
 EVENTS
 
 write_config "$T27_DIR/config.yaml" <<YAML
@@ -668,10 +668,10 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T27_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '7000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '1000'
   OBSERVER_OUTPUT: '$T27_OBSERVER'
-  MOCK_STREAM_DELAY_MS: '200'
+  MOCK_STREAM_DELAY_MS: '50'
   MOCK_RESPONSE_TEXT: 'This is a long response that should get interrupted before finishing all of these words'
 YAML
 
@@ -706,7 +706,7 @@ else
 
     write_events "$T28_EVENTS" <<'EVENTS'
 {"type":"speech.pause","pendingText":"Say hello and nothing else.","trackId":"mic-0","silenceMs":500}
-DELAY:15000
+DELAY:5000
 EVENTS
 
     write_config "$T28_DIR/config.yaml" <<YAML
@@ -727,8 +727,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T28_EVENTS'
-  INJECTOR_DELAY_MS: '2000'
-  INJECTOR_EXIT_AFTER_MS: '20000'
+  INJECTOR_DELAY_MS: '150'
+  INJECTOR_EXIT_AFTER_MS: '1500'
   OBSERVER_OUTPUT: '$T28_OBSERVER'
   ANTHROPIC_API_KEY: '${ANTHROPIC_API_KEY}'
 YAML
@@ -773,7 +773,7 @@ mkdir -p "$T29_CWD_A" "$T29_CWD_B" "$T29_SESSIONS"
 
 write_events "$T29_EVENTS" <<'EVENTS'
 {"type":"speech.pause","pendingText":"Hello","trackId":"mic-0","silenceMs":500}
-DELAY:3000
+DELAY:800
 EVENTS
 
 # Run 1A: CWD A — fresh session (no history)
@@ -796,8 +796,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T29_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '5000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '800'
   OBSERVER_OUTPUT: '$T29_OBSERVER_A1'
   ACPFX_SESSION_DIR: '$T29_SESSIONS'
   ACPFX_CWD: '$T29_CWD_A'
@@ -823,8 +823,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T29_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '5000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '800'
   OBSERVER_OUTPUT: '$T29_OBSERVER_B1'
   ACPFX_SESSION_DIR: '$T29_SESSIONS'
   ACPFX_CWD: '$T29_CWD_B'
@@ -859,8 +859,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T29_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '5000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '800'
   OBSERVER_OUTPUT: '$T29_OBSERVER_A2'
   ACPFX_SESSION_DIR: '$T29_SESSIONS'
   ACPFX_CWD: '$T29_CWD_A'
@@ -887,8 +887,8 @@ nodes:
     outputs: []
 env:
   INJECTOR_EVENTS: '$T29_EVENTS'
-  INJECTOR_DELAY_MS: '1000'
-  INJECTOR_EXIT_AFTER_MS: '5000'
+  INJECTOR_DELAY_MS: '100'
+  INJECTOR_EXIT_AFTER_MS: '800'
   OBSERVER_OUTPUT: '$T29_OBSERVER_B2'
   ACPFX_SESSION_DIR: '$T29_SESSIONS'
   ACPFX_CWD: '$T29_CWD_B'
