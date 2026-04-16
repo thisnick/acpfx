@@ -606,6 +606,7 @@ async fn main() {
     }));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn handle_notification(
     notif: &Value,
     _node_name: &str,
