@@ -333,6 +333,7 @@ async fn main() {
                 handle_notification(
                     &notif, &node_name, &mut _rid, &mut _streaming, &mut _text, &mut _seq,
                     true, // is_replay = true
+                    "voice",
                 );
                 replay_count += 1;
             }
@@ -385,6 +386,7 @@ async fn main() {
     let mut accumulated_text = String::new();
     let mut seq: u64 = 0;
     let mut pending_text = String::new();
+    let mut response_mode = "voice"; // "voice" for speech.pause, "text" for prompt.text
     let permission_mode = settings.permission_mode.clone();
     let replaying = false; // always false in main loop — replay handled above
 
@@ -407,13 +409,12 @@ async fn main() {
                                 "type": "control.interrupt",
                                 "reason": "barge-in",
                             }));
-                            let _ = client.request("session/cancel", json!({})).await;
                             streaming = false;
-                            if let Some(rid) = active_request_id.take() {
-                                // Don't emit agent.complete on interrupt
-                                let _ = rid;
-                            }
+                            // Send cancel as notification (no response expected)
+                            let _ = client.notify("session/cancel", json!({"sessionId": session_id})).await;
+                            active_request_id = None;
                             accumulated_text.clear();
+                            agent_active = false;
                         }
                     }
 
@@ -424,6 +425,8 @@ async fn main() {
                         if text.trim().is_empty() {
                             continue;
                         }
+
+                        response_mode = "voice";
 
                         // New turn — emit interrupt if agent was active (cancel TTS playback)
                         if agent_active {
@@ -453,6 +456,7 @@ async fn main() {
                             "type": "agent.submit",
                             "requestId": request_id,
                             "text": text,
+                            "responseMode": response_mode,
                         }));
 
                         // Send prompt to agent (non-blocking — response arrives via messages channel)
@@ -478,6 +482,8 @@ async fn main() {
                             continue;
                         }
 
+                        response_mode = "text";
+
                         if streaming {
                             emit_log("info", "prompt queued — agent still streaming");
                             pending_text = text.to_string();
@@ -495,6 +501,7 @@ async fn main() {
                             "type": "agent.submit",
                             "requestId": request_id,
                             "text": text,
+                            "responseMode": response_mode,
                         }));
 
                         if let Err(e) = client
@@ -519,11 +526,12 @@ async fn main() {
                         }
 
                         if streaming {
-                            let _ = client.request("session/cancel", json!({})).await;
                             streaming = false;
+                            let _ = client.notify("session/cancel", json!({"sessionId": session_id})).await;
                             active_request_id = None;
                             accumulated_text.clear();
                         }
+                        agent_active = false;
                     }
 
                     _ => {
@@ -536,7 +544,7 @@ async fn main() {
             msg = client.messages.recv() => {
                 match msg {
                     Some(AgentMessage::Notification(notif)) => {
-                        handle_notification(&notif, &node_name, &mut active_request_id, &mut streaming, &mut accumulated_text, &mut seq, replaying);
+                        handle_notification(&notif, &node_name, &mut active_request_id, &mut streaming, &mut accumulated_text, &mut seq, replaying, response_mode);
                     }
                     Some(AgentMessage::Request(req)) => {
                         handle_agent_request(&mut client, &req, &permission_mode).await;
@@ -562,6 +570,7 @@ async fn main() {
                                 "type": "agent.complete",
                                 "requestId": rid,
                                 "text": accumulated_text,
+                                "responseMode": response_mode,
                             }));
                         }
                         streaming = false;
@@ -605,6 +614,7 @@ fn handle_notification(
     accumulated_text: &mut String,
     seq: &mut u64,
     is_replay: bool,
+    response_mode: &str,
 ) {
     let method = notif
         .get("method")
@@ -649,6 +659,7 @@ fn handle_notification(
                             "requestId": rid,
                             "delta": delta,
                             "seq": *seq,
+                            "responseMode": response_mode,
                         }));
                         *seq += 1;
                     }
@@ -679,6 +690,7 @@ fn handle_notification(
                         let rid = active_request_id.clone().unwrap_or_default();
                         emit(&json!({
                             "type": "agent.thinking",
+                            "responseMode": response_mode,
                             "requestId": rid,
                         }));
                     }
@@ -702,6 +714,7 @@ fn handle_notification(
                             .map(String::from);
                         emit(&json!({
                             "type": "agent.tool_start",
+                            "responseMode": response_mode,
                             "requestId": rid,
                             "toolCallId": tool_call_id,
                             "title": title,
@@ -727,6 +740,7 @@ fn handle_notification(
                             .to_string();
                         emit(&json!({
                             "type": "agent.tool_done",
+                            "responseMode": response_mode,
                             "requestId": rid,
                             "toolCallId": tool_call_id,
                             "status": status,
