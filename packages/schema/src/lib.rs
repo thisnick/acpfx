@@ -69,6 +69,8 @@ pub enum Event {
     AgentToolStart(AgentToolStart),
     #[serde(rename = "agent.tool_done")]
     AgentToolDone(AgentToolDone),
+    #[serde(rename = "agent.history")]
+    AgentHistory(AgentHistory),
 
     // Control
     #[serde(rename = "control.interrupt")]
@@ -113,6 +115,7 @@ impl Event {
             Event::AgentThinking(_) => "agent.thinking",
             Event::AgentToolStart(_) => "agent.tool_start",
             Event::AgentToolDone(_) => "agent.tool_done",
+            Event::AgentHistory(_) => "agent.history",
             Event::ControlInterrupt(_) => "control.interrupt",
             Event::ControlState(_) => "control.state",
             Event::ControlError(_) => "control.error",
@@ -283,6 +286,10 @@ mod tests {
                 request_id: "r".into(), tool_call_id: "tc".into(), status: "ok".into(),
                 ts: None, from: None,
             }),
+            Event::AgentHistory(AgentHistory {
+                role: "user".into(), text: "hello".into(), request_id: None,
+                tool_call_id: None, ts: None, from: None,
+            }),
             Event::ControlInterrupt(ControlInterrupt {
                 reason: "r".into(), ts: None, from: None,
             }),
@@ -344,6 +351,6 @@ mod tests {
                 ty
             );
         }
-        assert_eq!(categories::ALL_EVENT_TYPES.len(), 20);
+        assert_eq!(categories::ALL_EVENT_TYPES.len(), 21);
     }
 }

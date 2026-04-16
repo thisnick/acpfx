@@ -14,12 +14,10 @@ nodes:
     outputs: [bridge]
 
   bridge:
-    use: "@acpfx/bridge-acpx"
+    use: "@acpfx/bridge-acp"
     settings:
       agent: claude
-      session: voice
-      args:
-        approve-all: true
+      permissionMode: approve-all
     outputs: [tts]
 
   tts:

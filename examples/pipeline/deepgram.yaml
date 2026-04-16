@@ -8,11 +8,10 @@ nodes:
     settings: {language: en, model: nova-3, turnDetection: false}
     outputs: [bridge]
   bridge:
-    use: '@acpfx/bridge-acpx'
+    use: '@acpfx/bridge-acp'
     settings:
       agent: claude
-      session: voice
-      args: {approve-all: true}
+      permissionMode: approve-all
     outputs: [tts, player]
   tts:
     use: '@acpfx/tts-deepgram'

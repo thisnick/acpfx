@@ -1,5 +1,5 @@
 //! Agent/LLM events: agent.submit, agent.delta, agent.complete,
-//! agent.thinking, agent.tool_start, agent.tool_done
+//! agent.thinking, agent.tool_start, agent.tool_done, agent.history
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -82,6 +82,22 @@ pub struct AgentToolDone {
     pub request_id: String,
     pub tool_call_id: String,
     pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ts: Option<u64>,
+    #[serde(rename = "_from", skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+}
+
+/// Replayed conversation history entry (from session resume).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentHistory {
+    pub role: String,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ts: Option<u64>,
     #[serde(rename = "_from", skip_serializing_if = "Option::is_none")]

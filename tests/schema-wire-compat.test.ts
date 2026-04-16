@@ -485,7 +485,7 @@ describe("schema wire format compatibility", () => {
       );
     });
 
-    it("generated-types.ts includes player.status (19 event types)", () => {
+    it("generated-types.ts includes player.status (21 event types)", () => {
       const root = findRoot();
       const generatedPath = join(root, "packages/core/src/generated-types.ts");
       if (!existsSync(generatedPath)) return;
@@ -501,7 +501,7 @@ describe("schema wire format compatibility", () => {
       );
     });
 
-    it("generated-types.ts KNOWN_TYPES has exactly 19 entries", () => {
+    it("generated-types.ts KNOWN_TYPES has exactly 21 entries", () => {
       const root = findRoot();
       const generatedPath = join(root, "packages/core/src/generated-types.ts");
       if (!existsSync(generatedPath)) return;
@@ -514,8 +514,8 @@ describe("schema wire format compatibility", () => {
       const entries = knownTypesMatch![1].match(/"[^"]+"/g) ?? [];
       assert.equal(
         entries.length,
-        19,
-        `KNOWN_TYPES should have 19 entries (matching Rust schema), got ${entries.length}: ${entries.join(", ")}`,
+        21,
+        `KNOWN_TYPES should have 21 entries (matching Rust schema), got ${entries.length}: ${entries.join(", ")}`,
       );
     });
 
@@ -525,16 +525,17 @@ describe("schema wire format compatibility", () => {
       if (!existsSync(generatedPath)) return;
 
       const content = readFileSync(generatedPath, "utf-8");
-      // These are the 19 types from Rust schema categories.rs
+      // These are the 21 types from Rust schema categories.rs
       const expectedTypes = [
         "audio.chunk", "audio.level",
         "speech.partial", "speech.delta", "speech.final", "speech.pause",
         "agent.submit", "agent.delta", "agent.complete", "agent.thinking",
-        "agent.tool_start", "agent.tool_done",
+        "agent.tool_start", "agent.tool_done", "agent.history",
         "control.interrupt", "control.state", "control.error",
         "lifecycle.ready", "lifecycle.done",
         "log",
         "player.status",
+        "node.status",
       ];
 
       for (const t of expectedTypes) {

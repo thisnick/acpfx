@@ -288,6 +288,35 @@ impl UiState {
                     });
                 }
             }
+            "agent.history" => {
+                let role = event.get("role").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let text = event.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                if role == "user" {
+                    // Start a new turn with user prompt; response filled by next assistant entry
+                    self.conversation.push(ConversationEntry::Turn {
+                        prompt: text,
+                        response: String::new(),
+                        ttft: None,
+                        had_thinking: false,
+                        had_tool: false,
+                    });
+                } else if role == "assistant" {
+                    // Fill in response of last turn, or create standalone
+                    if let Some(ConversationEntry::Turn { response, .. }) = self.conversation.last_mut() {
+                        if response.is_empty() {
+                            *response = text;
+                        } else {
+                            self.conversation.push(ConversationEntry::Turn {
+                                prompt: String::new(),
+                                response: text,
+                                ttft: None,
+                                had_thinking: false,
+                                had_tool: false,
+                            });
+                        }
+                    }
+                }
+            }
 
             "player.status" => {
                 node.player = Some(NodePlayerState {

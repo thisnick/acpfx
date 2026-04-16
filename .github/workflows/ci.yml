@@ -93,6 +93,25 @@ jobs:
           cargo build -p acpfx-orchestrator
           ./tests/dummy-node/run-tests.sh
 
+  # ---------- ACP bridge integration tests (parallel) ----------
+  bridge-test:
+    name: ACP bridge tests
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install PulseAudio dev libs
+        run: sudo apt-get update && sudo apt-get install -y libpulse-dev
+      - name: Build and test ACP bridge
+        run: |
+          cargo build -p acpfx-orchestrator -p bridge-acp
+          mkdir -p dist/nodes
+          cp target/debug/bridge-acp dist/nodes/
+          ./tests/bridge-acp/run-tests.sh
+
   # ---------- TypeScript: type check + test ----------
   ts-check:
     name: TypeScript check & test

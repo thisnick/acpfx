@@ -1,0 +1,36 @@
+name: bridge-acp
+description: Agent bridge connecting to any ACP-compatible agent via direct JSON-RPC
+consumes:
+  - speech.partial
+  - speech.pause
+  - prompt.text
+  - control.interrupt
+emits:
+  - agent.submit
+  - agent.delta
+  - agent.complete
+  - agent.thinking
+  - agent.tool_start
+  - agent.tool_done
+  - agent.history
+  - control.interrupt
+  - control.error
+  - lifecycle.ready
+  - lifecycle.done
+arguments:
+  agent:
+    type: string
+    required: true
+    description: "Agent to connect to (e.g., claude, codex)"
+  session:
+    type: string
+    default: "voice"
+    description: "Session name for persistence"
+  permissionMode:
+    type: string
+    default: "approve-all"
+    enum: ["approve-all", "approve-reads", "deny-all"]
+    description: "How to handle agent permission requests"
+  agentCommand:
+    type: string
+    description: "Override agent command (e.g., 'bash /path/to/mock-agent.sh'). If set, bypasses agent registry lookup."
