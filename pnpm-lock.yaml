@@ -49,17 +49,7 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
 
-  packages/node-bridge-acpx:
-    dependencies:
-      '@acpfx/core':
-        specifier: workspace:*
-        version: link:../core
-      '@acpfx/node-sdk':
-        specifier: workspace:*
-        version: link:../node-sdk
-      yaml:
-        specifier: ^2.8.3
-        version: 2.8.3
+  packages/node-bridge-acp: {}
 
   packages/node-echo:
     dependencies:

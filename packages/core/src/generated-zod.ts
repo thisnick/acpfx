@@ -95,6 +95,14 @@ export const AgentToolDoneEventSchema = OrchestratorStampSchema.extend({
   status: z.string(),
 });
 
+export const AgentHistoryEventSchema = OrchestratorStampSchema.extend({
+  type: z.literal("agent.history"),
+  role: z.string(),
+  text: z.string(),
+  requestId: z.string().optional(),
+  toolCallId: z.string().optional(),
+});
+
 export const ControlInterruptEventSchema = OrchestratorStampSchema.extend({
   type: z.literal("control.interrupt"),
   reason: z.string(),
@@ -155,6 +163,7 @@ export const PipelineEventSchema = z.discriminatedUnion("type", [
   AgentThinkingEventSchema,
   AgentToolStartEventSchema,
   AgentToolDoneEventSchema,
+  AgentHistoryEventSchema,
   ControlInterruptEventSchema,
   ControlStateEventSchema,
   ControlErrorEventSchema,

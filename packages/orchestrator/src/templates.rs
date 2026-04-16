@@ -64,7 +64,7 @@ const NODE_REGISTRY_RAW: &[(&str, &str)] = &[
     ("@acpfx/mic-speaker", include_str!("../../../packages/node-mic-speaker/manifest.yaml")),
     ("@acpfx/stt-deepgram", include_str!("../../../packages/node-stt-deepgram/manifest.yaml")),
     ("@acpfx/stt-elevenlabs", include_str!("../../../packages/node-stt-elevenlabs/manifest.yaml")),
-    ("@acpfx/bridge-acpx", include_str!("../../../packages/node-bridge-acpx/manifest.yaml")),
+    ("@acpfx/bridge-acp", include_str!("../../../packages/node-bridge-acp/manifest.yaml")),
     ("@acpfx/tts-deepgram", include_str!("../../../packages/node-tts-deepgram/manifest.yaml")),
     ("@acpfx/tts-elevenlabs", include_str!("../../../packages/node-tts-elevenlabs/manifest.yaml")),
     ("@acpfx/audio-player", include_str!("../../../packages/node-audio-player/manifest.yaml")),
@@ -188,12 +188,12 @@ mod tests {
     }
 
     #[test]
-    fn node_registry_has_14_nodes() {
+    fn node_registry_has_15_nodes() {
         let nodes = available_nodes();
         assert_eq!(
             nodes.len(),
-            14,
-            "Expected 14 nodes in registry, got {}",
+            15,
+            "Expected 15 nodes in registry, got {}",
             nodes.len()
         );
     }

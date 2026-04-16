@@ -533,6 +533,55 @@
       }
     },
     {
+      "description": "Replayed conversation history entry (from session resume).",
+      "type": "object",
+      "required": [
+        "role",
+        "text",
+        "type"
+      ],
+      "properties": {
+        "_from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requestId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "toolCallId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "agent.history"
+          ]
+        }
+      }
+    },
+    {
       "description": "Interrupt signal — stop current processing.",
       "type": "object",
       "required": [

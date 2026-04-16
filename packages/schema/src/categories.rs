@@ -31,6 +31,7 @@ pub const ALL_EVENT_TYPES: &[&str] = &[
     "agent.thinking",
     "agent.tool_start",
     "agent.tool_done",
+    "agent.history",
     "control.interrupt",
     "control.state",
     "control.error",
@@ -50,7 +51,7 @@ pub fn category_of(event_type: &str) -> Option<Category> {
             Some(Category::Speech)
         }
         "agent.submit" | "agent.delta" | "agent.complete" | "agent.thinking"
-        | "agent.tool_start" | "agent.tool_done" => Some(Category::Agent),
+        | "agent.tool_start" | "agent.tool_done" | "agent.history" => Some(Category::Agent),
         "control.interrupt" | "control.state" | "control.error" => Some(Category::Control),
         "lifecycle.ready" | "lifecycle.done" => Some(Category::Lifecycle),
         "log" => Some(Category::Log),
@@ -77,6 +78,7 @@ pub fn types_in_category(category: Category) -> &'static [&'static str] {
             "agent.thinking",
             "agent.tool_start",
             "agent.tool_done",
+            "agent.history",
         ],
         Category::Control => &["control.interrupt", "control.state", "control.error"],
         Category::Lifecycle => &["lifecycle.ready", "lifecycle.done"],
@@ -125,7 +127,7 @@ mod tests {
     fn types_in_category_counts() {
         assert_eq!(types_in_category(Category::Audio).len(), 2);
         assert_eq!(types_in_category(Category::Speech).len(), 4);
-        assert_eq!(types_in_category(Category::Agent).len(), 6);
+        assert_eq!(types_in_category(Category::Agent).len(), 7);
         assert_eq!(types_in_category(Category::Control).len(), 3);
         assert_eq!(types_in_category(Category::Lifecycle).len(), 2);
         assert_eq!(types_in_category(Category::Log).len(), 1);

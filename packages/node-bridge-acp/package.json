@@ -1,0 +1,25 @@
+{
+  "name": "@acpfx/bridge-acp",
+  "version": "0.1.0",
+  "description": "acpfx ACP bridge — direct JSON-RPC agent connection",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thisnick/acpfx",
+    "directory": "packages/node-bridge-acp"
+  },
+  "license": "ISC",
+  "bin": {
+    "acpfx-bridge-acp": "./bin/bridge-acp"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin/",
+    "scripts/"
+  ],
+  "scripts": {
+    "build:native": "cargo build --release && mkdir -p bin && cp target/release/bridge-acp bin/",
+    "postinstall": "node scripts/postinstall.js"
+  }
+}

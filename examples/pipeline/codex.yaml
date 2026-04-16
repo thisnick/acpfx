@@ -8,11 +8,10 @@ nodes:
     settings: {language: en, turnDetection: false}
     outputs: [bridge]
   bridge:
-    use: '@acpfx/bridge-acpx'
+    use: '@acpfx/bridge-acp'
     settings:
       agent: codex
-      session: voice
-      args: {approve-all: true}
+      permissionMode: approve-all
     outputs: [tts, player, recorder]
   tts:
     use: '@acpfx/tts-elevenlabs'

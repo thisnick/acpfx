@@ -8,11 +8,10 @@ nodes:
     settings: {model: 'kyutai/stt-1b-en_fr', language: en, device: auto, turnDetection: false}
     outputs: [bridge]
   bridge:
-    use: '@acpfx/bridge-acpx'
+    use: '@acpfx/bridge-acp'
     settings:
       agent: claude
-      session: voice
-      args: {approve-all: true}
+      permissionMode: approve-all
     outputs: [tts, player]
   tts:
     use: '@acpfx/tts-pocket'

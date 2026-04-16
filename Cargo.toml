@@ -4,6 +4,7 @@ members = [
     "packages/schema",
     "packages/sys-voice",
     "packages/node-mic-speaker",
+    "packages/node-bridge-acp",
     "packages/orchestrator",
     "packages/node-tts-pocket",
 ]

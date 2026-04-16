@@ -100,6 +100,14 @@ export type AgentToolDoneEvent = OrchestratorStamp & {
   status: string;
 };
 
+export type AgentHistoryEvent = OrchestratorStamp & {
+  type: "agent.history";
+  role: string;
+  text: string;
+  requestId?: string;
+  toolCallId?: string;
+};
+
 // ---- Control ----
 
 export type ControlInterruptEvent = OrchestratorStamp & {
@@ -173,7 +181,8 @@ export type AgentEvent =
   | AgentCompleteEvent
   | AgentThinkingEvent
   | AgentToolStartEvent
-  | AgentToolDoneEvent;
+  | AgentToolDoneEvent
+  | AgentHistoryEvent;
 
 export type ControlEvent =
   | ControlInterruptEvent
@@ -220,6 +229,7 @@ const KNOWN_TYPES = new Set([
   "agent.thinking",
   "agent.tool_start",
   "agent.tool_done",
+  "agent.history",
   "control.interrupt",
   "control.state",
   "control.error",

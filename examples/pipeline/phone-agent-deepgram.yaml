@@ -32,12 +32,11 @@ nodes:
     outputs: [player]
 
   agent:
-    use: "@acpfx/bridge-acpx"
+    use: "@acpfx/bridge-acp"
     settings:
       agent: claude
       session: phone
-      args:
-        approve-all: true
+      permissionMode: approve-all
     outputs:
       # Voice responses → TTS → player → phone (audio)
       - node: tts

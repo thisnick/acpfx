@@ -149,6 +149,14 @@ fn generate_typescript() -> String {
     out.push_str("  status: string;\n");
     out.push_str("};\n\n");
 
+    out.push_str("export type AgentHistoryEvent = OrchestratorStamp & {\n");
+    out.push_str("  type: \"agent.history\";\n");
+    out.push_str("  role: string;\n");
+    out.push_str("  text: string;\n");
+    out.push_str("  requestId?: string;\n");
+    out.push_str("  toolCallId?: string;\n");
+    out.push_str("};\n\n");
+
     // Control
     out.push_str("// ---- Control ----\n\n");
     out.push_str("export type ControlInterruptEvent = OrchestratorStamp & {\n");
@@ -220,7 +228,8 @@ fn generate_typescript() -> String {
     out.push_str("  | AgentCompleteEvent\n");
     out.push_str("  | AgentThinkingEvent\n");
     out.push_str("  | AgentToolStartEvent\n");
-    out.push_str("  | AgentToolDoneEvent;\n\n");
+    out.push_str("  | AgentToolDoneEvent\n");
+    out.push_str("  | AgentHistoryEvent;\n\n");
     out.push_str("export type ControlEvent =\n");
     out.push_str("  | ControlInterruptEvent\n");
     out.push_str("  | ControlStateEvent\n");
@@ -394,6 +403,14 @@ fn generate_zod() -> String {
     out.push_str("  status: z.string(),\n");
     out.push_str("});\n\n");
 
+    out.push_str("export const AgentHistoryEventSchema = OrchestratorStampSchema.extend({\n");
+    out.push_str("  type: z.literal(\"agent.history\"),\n");
+    out.push_str("  role: z.string(),\n");
+    out.push_str("  text: z.string(),\n");
+    out.push_str("  requestId: z.string().optional(),\n");
+    out.push_str("  toolCallId: z.string().optional(),\n");
+    out.push_str("});\n\n");
+
     // Control
     out.push_str("export const ControlInterruptEventSchema = OrchestratorStampSchema.extend({\n");
     out.push_str("  type: z.literal(\"control.interrupt\"),\n");
@@ -460,6 +477,7 @@ fn generate_zod() -> String {
     out.push_str("  AgentThinkingEventSchema,\n");
     out.push_str("  AgentToolStartEventSchema,\n");
     out.push_str("  AgentToolDoneEventSchema,\n");
+    out.push_str("  AgentHistoryEventSchema,\n");
     out.push_str("  ControlInterruptEventSchema,\n");
     out.push_str("  ControlStateEventSchema,\n");
     out.push_str("  ControlErrorEventSchema,\n");
