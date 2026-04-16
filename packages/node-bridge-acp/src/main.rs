@@ -7,59 +7,15 @@
 
 mod acp_client;
 mod agent_registry;
+mod state;
 
 use acp_client::{AcpClient, AgentMessage};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::VecDeque;
+use state::{BridgeState, PendingPrompt};
 use std::io::{self, BufRead, Write};
 use tokio::sync::mpsc;
 use uuid::Uuid;
-
-/// A queued prompt with its own response mode, used for prompt.text entries
-/// that arrive while the agent is busy streaming a response.
-struct PendingPrompt {
-    text: String,
-    response_mode: &'static str,
-}
-
-/// Mutable state for the bridge main loop.
-struct BridgeState {
-    active_request_id: Option<String>,
-    streaming: bool,
-    agent_active: bool,
-    accumulated_text: String,
-    seq: u64,
-    pending_text: String,
-    pending_prompts: VecDeque<PendingPrompt>,
-    response_mode: &'static str,
-    active_prompt_rpc_id: Option<u64>,
-}
-
-impl BridgeState {
-    fn new() -> Self {
-        Self {
-            active_request_id: None,
-            streaming: false,
-            agent_active: false,
-            accumulated_text: String::new(),
-            seq: 0,
-            pending_text: String::new(),
-            pending_prompts: VecDeque::new(),
-            response_mode: "voice",
-            active_prompt_rpc_id: None,
-        }
-    }
-
-    fn reset(&mut self) {
-        self.streaming = false;
-        self.agent_active = false;
-        self.active_request_id = None;
-        self.active_prompt_rpc_id = None;
-        self.accumulated_text.clear();
-        self.seq = 0;
-    }
-}
 
 /// Manifest YAML embedded at compile time.
 const MANIFEST_YAML: &str = include_str!("../manifest.yaml");
