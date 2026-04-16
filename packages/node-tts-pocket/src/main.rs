@@ -519,37 +519,16 @@ fn main() {
                 }
             }
 
-            "agent.complete" => {
-                if !interrupted.load(Ordering::Relaxed) {
-                    // Use the complete text if available, otherwise use accumulated buffer
-                    let text = if let Some(full_text) = event["text"].as_str() {
-                        let mut s = MarkdownStripper::new();
-                        s.strip(full_text)
-                    } else {
-                        std::mem::take(&mut text_buffer)
-                    };
+            "agent.complete" if !interrupted.load(Ordering::Relaxed) => {
+                // Use the complete text if available, otherwise use accumulated buffer
+                let text = if let Some(full_text) = event["text"].as_str() {
+                    let mut s = MarkdownStripper::new();
+                    s.strip(full_text)
+                } else {
+                    std::mem::take(&mut text_buffer)
+                };
 
-                    if !text.trim().is_empty() {
-                        synthesize_and_emit(
-                            &model,
-                            &voice_state,
-                            &text,
-                            model_sample_rate,
-                            &out,
-                            &interrupted,
-                        );
-                    }
-
-                    text_buffer.clear();
-                    stripper.reset();
-                    _current_request_id = None;
-                }
-            }
-
-            "agent.tool_start" => {
-                if !interrupted.load(Ordering::Relaxed) && !text_buffer.trim().is_empty() {
-                    log_msg(&out, "info", "Tool started — flushing accumulated text");
-                    let text = std::mem::take(&mut text_buffer);
+                if !text.trim().is_empty() {
                     synthesize_and_emit(
                         &model,
                         &voice_state,
@@ -558,8 +537,27 @@ fn main() {
                         &out,
                         &interrupted,
                     );
-                    stripper.reset();
                 }
+
+                text_buffer.clear();
+                stripper.reset();
+                _current_request_id = None;
+            }
+
+            "agent.tool_start"
+                if !interrupted.load(Ordering::Relaxed) && !text_buffer.trim().is_empty() =>
+            {
+                log_msg(&out, "info", "Tool started — flushing accumulated text");
+                let text = std::mem::take(&mut text_buffer);
+                synthesize_and_emit(
+                    &model,
+                    &voice_state,
+                    &text,
+                    model_sample_rate,
+                    &out,
+                    &interrupted,
+                );
+                stripper.reset();
             }
 
             "control.interrupt" => {
