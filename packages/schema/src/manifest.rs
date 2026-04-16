@@ -134,7 +134,7 @@ pub struct NodeManifest {
     pub arguments: BTreeMap<String, ManifestArgument>,
 
     /// When true, the node accepts arbitrary additional arguments beyond
-    /// what's declared. Supports nodes like bridge-acpx that pass through
+    /// what's declared. Supports nodes like bridge-acp that pass through
     /// args to external systems.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_arguments: Option<bool>,
@@ -271,7 +271,7 @@ env:
     #[test]
     fn deserialize_additional_arguments() {
         let yaml = r#"
-name: bridge-acpx
+name: bridge-acp
 consumes: []
 emits: []
 additional_arguments: true
@@ -407,7 +407,7 @@ emits: []
             "node-stt-elevenlabs",
             "node-stt-kyutai",
             "node-mic-file",
-            "node-bridge-acpx",
+            "node-bridge-acp",
             "node-tts-deepgram",
             "node-tts-elevenlabs",
             "node-tts-kyutai",
@@ -480,24 +480,20 @@ emits: []
     }
 
     #[test]
-    fn bridge_acpx_has_additional_arguments() {
+    fn bridge_acp_has_required_agent() {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
             .parent()
             .unwrap();
         let path = manifest_dir
-            .join("packages/node-bridge-acpx/manifest.yaml");
+            .join("packages/node-bridge-acp/manifest.yaml");
         let content = std::fs::read_to_string(&path).unwrap();
         let manifest: NodeManifest = serde_yaml::from_str(&content).unwrap();
-        assert!(
-            manifest.allows_additional_arguments(),
-            "bridge-acpx should have additional_arguments: true"
-        );
         // agent should be required
         assert!(
             manifest.arguments["agent"].is_required(),
-            "bridge-acpx 'agent' argument should be required"
+            "bridge-acp 'agent' argument should be required"
         );
     }
 

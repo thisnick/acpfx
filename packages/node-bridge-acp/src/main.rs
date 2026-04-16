@@ -325,19 +325,16 @@ async fn main() {
     {
         let mut replay_count = 0u32;
         while let Ok(msg) = client.messages.try_recv() {
-            match msg {
-                crate::acp_client::AgentMessage::Notification(notif) => {
-                    let mut _rid: Option<String> = None;
-                    let mut _streaming = false;
-                    let mut _text = String::new();
-                    let mut _seq = 0u64;
-                    handle_notification(
-                        &notif, &node_name, &mut _rid, &mut _streaming, &mut _text, &mut _seq,
-                        true, // is_replay = true
-                    );
-                    replay_count += 1;
-                }
-                _ => {} // ignore requests during replay drain
+            if let crate::acp_client::AgentMessage::Notification(notif) = msg {
+                let mut _rid: Option<String> = None;
+                let mut _streaming = false;
+                let mut _text = String::new();
+                let mut _seq = 0u64;
+                handle_notification(
+                    &notif, &node_name, &mut _rid, &mut _streaming, &mut _text, &mut _seq,
+                    true, // is_replay = true
+                );
+                replay_count += 1;
             }
         }
         if replay_count > 0 {

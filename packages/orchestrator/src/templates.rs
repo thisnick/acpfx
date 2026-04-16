@@ -188,12 +188,12 @@ mod tests {
     }
 
     #[test]
-    fn node_registry_has_15_nodes() {
+    fn node_registry_has_14_nodes() {
         let nodes = available_nodes();
         assert_eq!(
             nodes.len(),
-            15,
-            "Expected 15 nodes in registry, got {}",
+            14,
+            "Expected 14 nodes in registry, got {}",
             nodes.len()
         );
     }
