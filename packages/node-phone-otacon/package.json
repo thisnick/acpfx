@@ -1,6 +1,6 @@
 {
   "name": "@acpfx/phone-otacon",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "bin": {
     "acpfx-phone-otacon": "./dist/index.js"

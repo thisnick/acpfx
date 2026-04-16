@@ -1,5 +1,13 @@
 # @acpfx/recorder
 
+## 0.2.9
+
+### Patch Changes
+
+- Updated dependencies [a3e4495]
+  - @acpfx/core@0.5.1
+  - @acpfx/node-sdk@0.3.4
+
 ## 0.2.8
 
 ### Patch Changes
